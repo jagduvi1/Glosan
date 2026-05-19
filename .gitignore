@@ -1,36 +1,60 @@
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 */node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+.pnp.*
 
-# Environment
+# ── Environment ───────────────────────────────────────────────────────────────
 .env
+.env.*
 *.env
 !.env.example
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 logs/
-*.log
 
-# OS
+# ── Test / coverage ───────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── Build output / caches ─────────────────────────────────────────────────────
+backend/dist/
+frontend/build/
+*.tsbuildinfo
+.eslintcache
+.cache/
+.parcel-cache/
+
+# ── Process / runtime ─────────────────────────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+ehthumbs.db
+desktop.ini
 
-# IDE
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
+*~
+*.bak
+*.tmp
 *.code-workspace
+.history/
 
-# Build output
-backend/dist/
-frontend/build/
-
-# Misc
-.cache/
-
-# Claude Code
+# ── Claude Code workspace ─────────────────────────────────────────────────────
 .claude/
