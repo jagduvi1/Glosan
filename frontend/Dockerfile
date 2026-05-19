@@ -1,18 +1,18 @@
-# ── Stage 1: build React app ──────────────────────────────────────────────────
+# ── Stage 1: build with Vite ──────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --legacy-peer-deps
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 
-ARG REACT_APP_UMAMI_URL=
-ARG REACT_APP_UMAMI_WEBSITE_ID=
-RUN export REACT_APP_UMAMI_URL="${REACT_APP_UMAMI_URL}" \
-    REACT_APP_UMAMI_WEBSITE_ID="${REACT_APP_UMAMI_WEBSITE_ID}" \
- && npm run build
+ARG VITE_UMAMI_URL=
+ARG VITE_UMAMI_WEBSITE_ID=
+RUN VITE_UMAMI_URL="${VITE_UMAMI_URL}" \
+    VITE_UMAMI_WEBSITE_ID="${VITE_UMAMI_WEBSITE_ID}" \
+    npm run build
 
 # ── Stage 2: serve with nginx ─────────────────────────────────────────────────
 FROM nginx:alpine

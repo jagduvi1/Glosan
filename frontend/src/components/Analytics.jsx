@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 // No-op otherwise — analytics is fully opt-in.
 export default function Analytics() {
   useEffect(() => {
-    const url = process.env.REACT_APP_UMAMI_URL;
-    const websiteId = process.env.REACT_APP_UMAMI_WEBSITE_ID;
+    const url = import.meta.env.VITE_UMAMI_URL;
+    const websiteId = import.meta.env.VITE_UMAMI_WEBSITE_ID;
     if (!url || !websiteId) return;
     if (document.querySelector('script[data-glosan-umami]')) return;
 

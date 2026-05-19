@@ -1,0 +1,13 @@
+# Local development overrides — not used in production (Traefik handles routing there).
+# Docker Compose picks this file up automatically alongside docker-compose.yml.
+# Ports chosen to avoid clashing with Cellarion (80, 5000, 3001) on the same host.
+services:
+  frontend:
+    ports:
+      - "8080:80"
+  backend:
+    ports:
+      - "5001:5000"
+  umami:
+    ports:
+      - "3002:3000"
