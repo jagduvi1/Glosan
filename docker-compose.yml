@@ -1,0 +1,125 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: glosan-mongo
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+    volumes:
+      - mongo-data:/data/db
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: glosan-backend
+    restart: unless-stopped
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/glosan
+      - JWT_SECRET=${JWT_SECRET}
+      - ACCESS_TOKEN_EXPIRES_IN=${ACCESS_TOKEN_EXPIRES_IN:-15m}
+      - PORT=5000
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - NODE_ENV=${NODE_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_UMAMI_URL: ${REACT_APP_UMAMI_URL:-}
+        REACT_APP_UMAMI_WEBSITE_ID: ${REACT_APP_UMAMI_WEBSITE_ID:-}
+    container_name: glosan-frontend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    expose:
+      - "80"
+    networks:
+      - web
+      - default
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "web"
+      traefik.http.routers.glosan.rule: "Host(`glosan.jeklund.dev`)"
+      traefik.http.routers.glosan.entrypoints: "web"
+      traefik.http.services.glosan.loadbalancer.server.port: "80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Umami — privacy-friendly self-hosted analytics. Inert without env vars.
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: glosan-umami
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@umami-db:5432/umami
+      - DATABASE_TYPE=postgresql
+      - APP_SECRET=${UMAMI_APP_SECRET:-replace-with-random-string-in-production}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    expose:
+      - "3000"
+    networks:
+      - web
+      - default
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "web"
+      traefik.http.routers.glosan-umami.rule: "Host(`analytics.glosan.jeklund.dev`)"
+      traefik.http.routers.glosan-umami.entrypoints: "web"
+      traefik.http.services.glosan-umami.loadbalancer.server.port: "3000"
+    depends_on:
+      umami-db:
+        condition: service_healthy
+
+  umami-db:
+    image: postgres:16-alpine
+    container_name: glosan-umami-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=umami
+      - POSTGRES_USER=umami
+      - POSTGRES_PASSWORD=${UMAMI_DB_PASSWORD:-umami}
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
+  umami-db-data:
+
+networks:
+  web:
+    external: true
