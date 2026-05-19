@@ -10,7 +10,7 @@ quiz, och kan låta Anthropic Claude generera glosor / exempelmeningar /
 |-------|-----------|
 | Databas | MongoDB 7 (Mongoose 8) |
 | Backend | Express 4, Node 20 |
-| Frontend | React 19, React Router 6 |
+| Frontend | React 19, React Router 6, Vite 5 |
 | Auth | JWT (15 min access-token + 7d httpOnly refresh-cookie), bcryptjs |
 | AI | `@anthropic-ai/sdk` |
 | Reverse proxy | Traefik (extern `web`-nätverk) |

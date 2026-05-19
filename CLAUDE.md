@@ -45,7 +45,7 @@ Never commit directly to `main`.
 |-------|-----------|
 | Database | MongoDB 7 (Mongoose 8) |
 | Backend | Express 4, Node 20 |
-| Frontend | React 19, React Router 6 |
+| Frontend | React 19, React Router 6, Vite 5 |
 | Auth | JWT (15m access + 7d httpOnly refresh), bcryptjs |
 | AI | `@anthropic-ai/sdk` (default model: `claude-haiku-4-5-20251001`) |
 | Containerisation | Docker Compose |
@@ -67,9 +67,9 @@ Glosan/
 │       ├── routes/{health,auth,lists,glosor,ai}.js
 │       └── services/anthropic.js
 ├── frontend/
-│   ├── Dockerfile, nginx.conf
+│   ├── Dockerfile, nginx.conf, vite.config.js, index.html
 │   └── src/
-│       ├── App.js, index.js, index.css
+│       ├── App.js, main.jsx, index.css
 │       ├── contexts/AuthContext.js
 │       ├── utils/apiFetch.js
 │       ├── components/{Layout,ProtectedRoute,Analytics}.js
@@ -120,12 +120,12 @@ docker compose down -v
 # Backend dev (hot reload, outside Docker)
 cd backend && npm run dev
 
-# Frontend dev (outside Docker)
-cd frontend && npm start
+# Frontend dev (outside Docker) — Vite, ~0.5s startup
+cd frontend && npm install && npm run dev   # http://localhost:3000
 
 # Tests
 cd backend && npm test
-cd frontend && npm test -- --watchAll=false
+# Frontend tests not configured yet — add Vitest when you write the first test.
 ```
 
 ---
@@ -137,6 +137,7 @@ cd frontend && npm test -- --watchAll=false
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
+- **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
 
 ---
 

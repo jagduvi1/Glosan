@@ -45,8 +45,8 @@ services:
     build:
       context: ./frontend
       args:
-        REACT_APP_UMAMI_URL: ${REACT_APP_UMAMI_URL:-}
-        REACT_APP_UMAMI_WEBSITE_ID: ${REACT_APP_UMAMI_WEBSITE_ID:-}
+        VITE_UMAMI_URL: ${VITE_UMAMI_URL:-}
+        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
     container_name: glosan-frontend
     restart: unless-stopped
     deploy:
