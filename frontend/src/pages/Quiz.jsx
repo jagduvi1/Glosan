@@ -114,7 +114,10 @@ export default function Quiz() {
 
   const onPick = (option) => {
     if (!current || feedback) return;
-    const isCorrect = answerVariants(current.target).includes(option.trim().toLowerCase());
+    // Choice mode: exact-match against the literal target on the button.
+    // Slash-leniency is a write-mode affordance (typing one variant of "söt/gullig")
+    // and would incorrectly mark the literal "söt/gullig" option as wrong here.
+    const isCorrect = option.trim().toLowerCase() === current.target.trim().toLowerCase();
     recordAnswer(isCorrect, option);
   };
 
