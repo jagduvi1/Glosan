@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, submitScore } from '../api/lists';
 import { updateGlos } from '../api/glosor';
@@ -37,6 +37,7 @@ function buildDistractors(currentGlos, pool) {
 
 export default function Quiz() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const mode = searchParams.get('mode') === 'choice' ? 'choice' : 'write';
   const { apiFetch } = useAuth();
@@ -50,7 +51,6 @@ export default function Quiz() {
   const [score, setScore] = useState({ correct: 0, wrong: 0 });
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
-  const [newBest, setNewBest] = useState(false);
   const [wrongOnly, setWrongOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,7 +60,6 @@ export default function Quiz() {
     setScore({ correct: 0, wrong: 0 });
     setStreak(0);
     setBestStreak(0);
-    setNewBest(false);
     setFeedback(null);
     setAnswer('');
     try {
@@ -122,27 +121,43 @@ export default function Quiz() {
   };
 
   const onNext = async () => {
-    const wasLast = queue.length === 0;
-    setAnswer('');
-    setFeedback(null);
-    setCurrent(queue[0] || null);
-    setQueue((q) => q.slice(1));
-
-    if (wasLast && !wrongOnly) {
+    if (queue.length === 0) {
       const total = score.correct + score.wrong;
-      if (total > 0) {
+      if (total === 0) {
+        // Shouldn't normally happen — defensive: just clear and let empty-state render.
+        setCurrent(null);
+        setFeedback(null);
+        return;
+      }
+      let updatedList = list;
+      let wasNewBest = false;
+      if (!wrongOnly) {
         try {
-          const { list: updatedList, wasNewBest } = await submitScore(apiFetch, id, {
-            correct: score.correct,
-            total
-          });
-          setList(updatedList);
-          setNewBest(wasNewBest);
+          const r = await submitScore(apiFetch, id, { correct: score.correct, total });
+          updatedList = r.list;
+          wasNewBest = r.wasNewBest;
         } catch (err) {
           console.error('Failed to submit score:', err);
         }
       }
+      navigate(`/lists/${id}/results`, {
+        replace: true,
+        state: {
+          correct: score.correct,
+          wrong: score.wrong,
+          bestStreak,
+          wrongOnly,
+          mode,
+          list: updatedList,
+          wasNewBest
+        }
+      });
+      return;
     }
+    setAnswer('');
+    setFeedback(null);
+    setCurrent(queue[0]);
+    setQueue((q) => q.slice(1));
   };
 
   // Keyboard 1-4 for choice mode (only when not in feedback)
@@ -184,75 +199,24 @@ export default function Quiz() {
     );
   }
 
-  // End screen
+  // Empty state — list has no cards in the chosen pool (e.g. wrong-only with no matches)
   if (!current) {
-    const best = list?.bestScore;
-    const sessionTotal = score.correct + score.wrong;
-
-    if (sessionTotal === 0) {
-      return (
-        <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
-          <GloAvatar size={120} float mood={wrongOnly ? 'wink' : 'default'} style={{ margin: '0 auto 12px' }} />
-          <h2 style={{ marginBottom: 8 }}>
-            {wrongOnly ? 'Inga fel-glosor att öva på' : 'Listan är tom'}
-          </h2>
-          <p className="muted" style={{ marginBottom: 18 }}>
-            {wrongOnly
-              ? 'Du har inte haft fel på några glosor än — eller så har du redan rättat alla.'
-              : 'Lägg till glosor på listan först.'}
-          </p>
-          <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
-            {wrongOnly && (
-              <button className="btn" onClick={() => setWrongOnly(false)}>Öva alla glosor</button>
-            )}
-            <Link to={`/lists/${id}`}><button className="btn btn-primary">Tillbaka till listan</button></Link>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center', position: 'relative' }}>
-        <GloAvatar size={140} float mood="wink" style={{ margin: '0 auto 8px' }} />
-        {newBest && (
-          <img
-            src="/assets/star-sticker.svg"
-            width="56"
-            alt=""
-            style={{ position: 'absolute', top: 18, right: 28, transform: 'rotate(18deg)' }}
-          />
-        )}
-        <h1 style={{ fontSize: 40, margin: '6px 0' }}>
-          {newBest ? <>Klart! <span className="mark-highlight">Nytt rekord.</span></> : <>Klart!</>}
-        </h1>
-        <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 18px' }}>
-          {wrongOnly ? 'En omgång med fel-glosor — bra jobbat.' : 'Glo behöver lägga sig och vila ögonen.'}
+      <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
+        <GloAvatar size={120} float mood={wrongOnly ? 'wink' : 'default'} style={{ margin: '0 auto 12px' }} />
+        <h2 style={{ marginBottom: 8 }}>
+          {wrongOnly ? 'Inga fel-glosor att öva på' : 'Listan är tom'}
+        </h2>
+        <p className="muted" style={{ marginBottom: 18 }}>
+          {wrongOnly
+            ? 'Du har inte haft fel på några glosor än — eller så har du redan rättat alla.'
+            : 'Lägg till glosor på listan först.'}
         </p>
-
-        <div className="row" style={{ justifyContent: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-          <div className="pill" style={{ background: 'var(--leaf-soft)', fontSize: 16 }}>
-            ✓ {score.correct} rätt
-          </div>
-          <div className="pill" style={{ background: 'var(--berry-soft)', fontSize: 16 }}>
-            ✗ {score.wrong} fel
-          </div>
-          {bestStreak >= 2 && (
-            <div className="pill" style={{ background: 'var(--coral-soft)', fontSize: 16 }}>
-              🔥 svit: {bestStreak}
-            </div>
-          )}
-        </div>
-
-        {best?.total > 0 && !wrongOnly && (
-          <p className="t-hand muted" style={{ fontSize: 15, marginBottom: 18 }}>
-            Bästa hittills: {best.correct} / {best.total}
-            {best.achievedAt && ` (${new Date(best.achievedAt).toLocaleDateString('sv-SE')})`}
-          </p>
-        )}
-
         <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
-          <button className="btn btn-primary" onClick={load}>En till runda</button>
-          <Link to={`/lists/${id}`}><button className="btn">Tillbaka till listan</button></Link>
+          {wrongOnly && (
+            <button className="btn" onClick={() => setWrongOnly(false)}>Öva alla glosor</button>
+          )}
+          <Link to={`/lists/${id}`}><button className="btn btn-primary">Tillbaka till listan</button></Link>
         </div>
       </div>
     );

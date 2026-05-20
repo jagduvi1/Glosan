@@ -11,6 +11,7 @@ const Lists      = lazy(() => import('./pages/Lists'));
 const ListDetail = lazy(() => import('./pages/ListDetail'));
 const Quiz       = lazy(() => import('./pages/Quiz'));
 const Flashcards = lazy(() => import('./pages/Flashcards'));
+const Results    = lazy(() => import('./pages/Results'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -56,6 +57,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><Flashcards /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists/:id/results"
+          element={
+            <ProtectedRoute>
+              <Layout><Results /></Layout>
             </ProtectedRoute>
           }
         />
