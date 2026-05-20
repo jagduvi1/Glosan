@@ -9,7 +9,7 @@ import { LANG_TO_FLAG } from '../utils/lang';
 import { shuffle, answerVariants } from '../utils/quiz';
 
 const ROUNDS = 5;
-const LIVES_PER_ROUND = 10;
+const LIVES_PER_ROUND = 6;
 const KEYBOARD_ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'Å'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ö', 'Ä'],
@@ -37,14 +37,14 @@ function pickTargetWord(g, reversed) {
   return variants[0] || expected;
 }
 
-// Classic "hänga gubbe" — the gallows is built piece by piece per miss,
-// then Glo's body fills in. Tenth miss = fully hanged, game over.
-//   1: base           4: rope           7: left arm    10: right leg → död
-//   2: post           5: head (Glo)     8: right arm
-//   3: crossbeam      6: torso          9: left leg
-function HangmanFigure({ misses, dead }) {
+// Classic "hänga gubbe" — only the gallows is drawn piece by piece per miss.
+// Sixth miss = Glo hangs in the noose, game over.
+//   1: base       3: brace (diagonal)   5: rope
+//   2: post       4: crossbeam          6: Glo hängs → död
+function HangmanFigure({ misses }) {
   const stroke = 'var(--ink)';
   const w = 3;
+  const hanged = misses >= 6;
   return (
     <svg
       width="180"
@@ -58,36 +58,25 @@ function HangmanFigure({ misses, dead }) {
         {misses >= 1 && <line x1="14" y1="210" x2="130" y2="210" />}
         {/* 2: post */}
         {misses >= 2 && <line x1="36" y1="210" x2="36" y2="10" />}
-        {/* 3: crossbeam */}
-        {misses >= 3 && <line x1="34" y1="10" x2="122" y2="10" />}
-        {/* 4: rope */}
-        {misses >= 4 && <line x1="122" y1="10" x2="122" y2="38" />}
+        {/* 3: diagonal brace from post up toward the crossbeam */}
+        {misses >= 3 && <line x1="36" y1="50" x2="80" y2="10" />}
+        {/* 4: crossbeam */}
+        {misses >= 4 && <line x1="34" y1="10" x2="122" y2="10" />}
+        {/* 5: rope */}
+        {misses >= 5 && <line x1="122" y1="10" x2="122" y2="38" />}
       </g>
 
-      {/* 5: Glo's head dangles from the rope */}
-      {misses >= 5 && (
+      {/* 6: Glo hängs i snaran (sad mood + lätt tilt) */}
+      {hanged && (
         <image
-          href={dead ? '/assets/glo-sad.svg' : '/assets/glo-mascot.svg'}
+          href="/assets/glo-sad.svg"
           x="98"
           y="38"
           width="48"
           height="48"
-          style={{ transform: dead ? 'rotate(8deg)' : 'rotate(0deg)', transformOrigin: '122px 62px' }}
+          style={{ transform: 'rotate(8deg)', transformOrigin: '122px 62px' }}
         />
       )}
-
-      <g stroke={stroke} strokeWidth={w} strokeLinecap="round">
-        {/* 6: torso */}
-        {misses >= 6 && <line x1="122" y1="86" x2="122" y2="144" />}
-        {/* 7: left arm */}
-        {misses >= 7 && <line x1="122" y1="98" x2="96" y2="124" />}
-        {/* 8: right arm */}
-        {misses >= 8 && <line x1="122" y1="98" x2="148" y2="124" />}
-        {/* 9: left leg */}
-        {misses >= 9 && <line x1="122" y1="144" x2="100" y2="180" />}
-        {/* 10: right leg */}
-        {misses >= 10 && <line x1="122" y1="144" x2="144" y2="180" />}
-      </g>
     </svg>
   );
 }
@@ -317,7 +306,7 @@ export default function Galge() {
               flexWrap: 'wrap'
             }}
           >
-            <HangmanFigure misses={LIVES_PER_ROUND - livesLeft} dead={livesLeft === 0} />
+            <HangmanFigure misses={LIVES_PER_ROUND - livesLeft} />
             <div style={{ minWidth: 260, flex: '1 1 260px', textAlign: 'center' }}>
               <div className="t-hand muted" style={{ fontSize: 16 }}>
                 {promptLang} · översätt och gissa bokstäverna
