@@ -43,6 +43,9 @@ const userSchema = new mongoose.Schema({
     value: { type: String, default: '', maxlength: 16 }
   },
   xp: { type: Number, default: 0, min: 0 },
+  // Per-language XP: { fr: 120, de: 50, ... }. `xp` above stays as the
+  // denormalized total (sum of values here) so avatar unlocks keep working.
+  languageXp: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   streak: {
     current: { type: Number, default: 0, min: 0 },
     longest: { type: Number, default: 0, min: 0 },

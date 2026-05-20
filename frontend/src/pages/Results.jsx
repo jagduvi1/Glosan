@@ -20,13 +20,13 @@ export default function Results() {
     submittedRef.current = true;
     const total = (state.correct ?? 0) + (state.wrong ?? 0);
     if (total === 0) return;
-    postQuizComplete(apiFetch, { correct: state.correct, total })
+    postQuizComplete(apiFetch, { correct: state.correct, total, listId: id })
       .then((result) => {
         setXpInfo(result);
         refresh();
       })
       .catch((err) => console.error('Quiz-complete failed:', err));
-  }, [state, apiFetch, refresh]);
+  }, [state, apiFetch, refresh, id]);
 
   if (!state) {
     return (

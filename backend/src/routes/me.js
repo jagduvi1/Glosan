@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const GlosList = require('../models/GlosList');
@@ -25,6 +26,25 @@ function levelFromXp(xp) {
 
 function xpForLevel(level) {
   return Math.pow(level - 1, 2) * 50;
+}
+
+// Turn the raw per-language XP map into a response-ready breakdown with derived
+// level + this/next level XP markers, so the frontend can draw a progress bar.
+function buildLanguageBreakdown(languageXp) {
+  const map = languageXp && typeof languageXp === 'object' ? languageXp : {};
+  const out = {};
+  for (const [lang, raw] of Object.entries(map)) {
+    const xp = Number(raw) || 0;
+    if (xp < 0) continue;
+    const level = levelFromXp(xp);
+    out[lang] = {
+      xp,
+      level,
+      thisLevelAt: xpForLevel(level),
+      nextLevelAt: xpForLevel(level + 1)
+    };
+  }
+  return out;
 }
 
 // GET /api/me/profile — aggregate profile + gamification stats
@@ -67,6 +87,7 @@ router.get('/profile', async (req, res) => {
       level,
       nextLevelAt,
       thisLevelAt,
+      languageXp: buildLanguageBreakdown(user.languageXp),
       streak: {
         current: user.streak?.current ?? 0,
         longest: user.streak?.longest ?? 0,
@@ -86,25 +107,47 @@ router.get('/profile', async (req, res) => {
 });
 
 // POST /api/me/quiz-complete — award XP, tick streak, bump counters
-// Body: { correct, total }
-// Returns: { xpEarned, xp, level, streak, streakChange, perfectRounds, quizzesCompleted }
+// Body: { correct, total, listId }
+// Returns: { xpEarned, xp, level, languageXp, streak, streakChange, ... }
 router.post('/quiz-complete', async (req, res) => {
   const correct = Number(req.body.correct);
   const total = Number(req.body.total);
+  const listId = req.body.listId;
   if (!Number.isFinite(correct) || !Number.isFinite(total) || total <= 0 || correct < 0 || correct > total) {
     return res.status(400).json({
       error: 'correct and total must be valid numbers with 0 <= correct <= total and total > 0'
     });
+  }
+  if (!listId || !mongoose.Types.ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: 'listId is required' });
   }
 
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    const list = await GlosList.findOne({ _id: listId, user: req.user.id }, 'sourceLang').lean();
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    const sourceLang = list.sourceLang || 'unknown';
+
     const xpEarned = correct * 10 + (correct === total ? 50 : 0);
     user.xp = (user.xp || 0) + xpEarned;
     user.quizzesCompleted = (user.quizzesCompleted || 0) + 1;
     if (correct === total) user.perfectRounds = (user.perfectRounds || 0) + 1;
+
+    // Per-language XP allocation. First-ever per-lang write also absorbs the
+    // legacy `user.xp` total so users from before this change don't lose
+    // their progress on the language they're practicing now.
+    const existingLangXp = user.languageXp && typeof user.languageXp === 'object' ? { ...user.languageXp } : {};
+    const hasAnyLanguageXp = Object.keys(existingLangXp).length > 0;
+    if (!hasAnyLanguageXp) {
+      // user.xp was just incremented by xpEarned above; seed with the full total.
+      existingLangXp[sourceLang] = user.xp;
+    } else {
+      existingLangXp[sourceLang] = (Number(existingLangXp[sourceLang]) || 0) + xpEarned;
+    }
+    user.languageXp = existingLangXp;
+    user.markModified('languageXp');
 
     if (!user.streak) user.streak = { current: 0, longest: 0, lastActiveDay: null };
     const today = startOfDay(new Date());
@@ -135,6 +178,8 @@ router.post('/quiz-complete', async (req, res) => {
       xpEarned,
       xp: user.xp,
       level: levelFromXp(user.xp),
+      sourceLang,
+      languageXp: buildLanguageBreakdown(user.languageXp),
       streak: user.streak,
       streakChange,
       perfectRounds: user.perfectRounds,
