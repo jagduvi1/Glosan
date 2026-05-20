@@ -82,6 +82,38 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// POST /api/lists/:id/score — submit a quiz result; updates bestScore only if
+// the new correct/total ratio is strictly higher than the existing record.
+router.post('/:id/score', async (req, res) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid list id' });
+  }
+  const correct = Number(req.body.correct);
+  const total = Number(req.body.total);
+  if (!Number.isFinite(correct) || !Number.isFinite(total) || total <= 0 || correct < 0 || correct > total) {
+    return res.status(400).json({ error: 'correct and total must be valid numbers with 0 <= correct <= total and total > 0' });
+  }
+  try {
+    const list = await GlosList.findOne({ _id: req.params.id, user: req.user.id });
+    if (!list) return res.status(404).json({ error: 'List not found' });
+
+    const newRatio = correct / total;
+    const oldTotal = list.bestScore?.total || 0;
+    const oldRatio = oldTotal > 0 ? list.bestScore.correct / oldTotal : 0;
+    const wasNewBest = newRatio > oldRatio;
+
+    if (wasNewBest) {
+      list.bestScore = { correct, total, achievedAt: new Date() };
+      await list.save();
+    }
+
+    res.json({ list, wasNewBest });
+  } catch (error) {
+    console.error('List score submit error:', error);
+    res.status(500).json({ error: 'Failed to submit score' });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   if (!isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid list id' });

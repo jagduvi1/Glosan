@@ -33,6 +33,11 @@ const glosListSchema = new mongoose.Schema({
     maxlength: [10, 'Language code too long'],
     default: 'en'
   },
+  bestScore: {
+    correct: { type: Number, default: 0, min: 0 },
+    total: { type: Number, default: 0, min: 0 },
+    achievedAt: { type: Date }
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
