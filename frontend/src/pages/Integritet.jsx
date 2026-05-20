@@ -79,6 +79,22 @@ export default function Integritet() {
       </section>
 
       <section className="card" style={{ marginBottom: 18 }}>
+        <h2 style={{ marginTop: 0 }}>Barn under 13 år</h2>
+        <p>
+          Glosan är avsedd för användare som är minst 13 år. Vid registreringen
+          måste man bekräfta sin ålder, eller att man har en förälders eller
+          vårdnadshavares tillåtelse att skapa kontot.
+        </p>
+        <p>
+          Är du förälder och har frågor om ditt barns konto — eller vill du
+          radera eller exportera ditt barns data å hens vägnar — använd
+          knapparna på barnets profilsida eller hör av dig till oss på
+          adressen längst ned. Vi rekommenderar att läsa igenom den här
+          policyn tillsammans med barnet.
+        </p>
+      </section>
+
+      <section className="card" style={{ marginBottom: 18 }}>
         <h2 style={{ marginTop: 0 }}>Hur länge sparas dina uppgifter?</h2>
         <p>
           Allt sparas tills du själv raderar det. Du kan när som helst radera enstaka glosor, listor och kompisar — eller

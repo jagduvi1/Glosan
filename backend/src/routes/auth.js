@@ -53,10 +53,15 @@ const issueTokens = async (user, res) => {
 
 router.post('/register', authLimiter, async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, ageConsent } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Username, email, and password are required' });
+    }
+    if (ageConsent !== true) {
+      return res.status(400).json({
+        error: 'Du måste bekräfta att du är minst 13 år eller har en förälders tillåtelse.'
+      });
     }
 
     const existingUser = await User.findOne({
@@ -67,7 +72,7 @@ router.post('/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Registration failed. Please check your details and try again.' });
     }
 
-    const user = new User({ username, email, password, roles: ['user'] });
+    const user = new User({ username, email, password, roles: ['user'], ageConsent: true });
     const accessToken = await issueTokens(user, res);
 
     res.status(201).json({ token: accessToken, user: user.toJSON() });

@@ -52,6 +52,11 @@ const userSchema = new mongoose.Schema({
     until: { type: Date, default: null }
   },
   hasUsedTrial: { type: Boolean, default: false },
+  // GDPR-grund: sätts vid registrering när användaren bekräftar att de
+  // är minst 13 år eller har förälders/vårdnadshavares tillåtelse.
+  // Befintliga konton (registrerade innan kravet infördes) har false —
+  // vi kräver bekräftelse bara vid nya registreringar.
+  ageConsent: { type: Boolean, default: false },
   aiUsage: {
     count: { type: Number, default: 0, min: 0 },
     monthKey: { type: String, default: '' }
