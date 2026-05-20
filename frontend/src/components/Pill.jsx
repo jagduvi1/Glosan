@@ -27,3 +27,21 @@ export function LivesPill({ n }) {
     </Pill>
   );
 }
+
+// AI quota status. Hidden for unlimited plans; warns red when almost empty,
+// nudges mustard when over 80 %, otherwise stays plum (Glo's accent colour).
+export function QuotaPill({ used, limit }) {
+  if (limit == null) return null;
+  const left = Math.max(0, limit - used);
+  const pct = limit > 0 ? used / limit : 0;
+  const bg = left === 0
+    ? 'var(--berry-soft)'
+    : pct >= 0.8
+      ? 'var(--mustard-soft)'
+      : 'var(--plum-soft)';
+  return (
+    <Pill bg={bg} title={`${used} av ${limit} AI-anrop använda denna månad`}>
+      <span aria-hidden="true">🤖</span> {left} kvar
+    </Pill>
+  );
+}

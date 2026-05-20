@@ -81,6 +81,12 @@ router.get('/profile', async (req, res) => {
     const nextLevelAt = xpForLevel(level + 1);
     const thisLevelAt = xpForLevel(level);
 
+    // Slim plan summary so the Layout pill can read kvot live via the
+    // gamification context; full plan catalogue stays on /api/me/plan.
+    const plan = effectivePlan(user);
+    const currentMonth = monthKey();
+    const usedThisMonth = user.aiUsage?.monthKey === currentMonth ? (user.aiUsage.count || 0) : 0;
+
     res.json({
       username: user.username,
       email: user.email,
@@ -104,7 +110,17 @@ router.get('/profile', async (req, res) => {
       totalLists: listIds.length,
       totalGlosor,
       totalCorrect,
-      totalWrong
+      totalWrong,
+      plan: {
+        id: plan.id,
+        label: plan.label,
+        color: plan.color
+      },
+      aiUsage: {
+        used: usedThisMonth,
+        limit: plan.aiCallsPerMonth,
+        monthKey: currentMonth
+      }
     });
   } catch (err) {
     console.error('Profile error:', err);

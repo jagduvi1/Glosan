@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { StreakPill, XpPill } from './Pill';
+import { StreakPill, XpPill, QuotaPill } from './Pill';
 import AvatarDisplay from './AvatarDisplay';
 
 export default function Layout({ children }) {
@@ -39,6 +39,11 @@ export default function Layout({ children }) {
             )}
           </div>
           <div className="row" style={{ gap: 10 }}>
+            {profile?.aiUsage && (
+              <Link to="/profile" aria-label="AI-anrop kvar" style={{ textDecoration: 'none' }}>
+                <QuotaPill used={profile.aiUsage.used} limit={profile.aiUsage.limit} />
+              </Link>
+            )}
             {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} />}
             {profile && profile.xp > 0 && <XpPill n={profile.xp} />}
             <button className="btn btn-sm btn-ghost" onClick={handleLogout}>Logga ut</button>
