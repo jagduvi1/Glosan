@@ -20,6 +20,7 @@ export default function Flashcards() {
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [reversed, setReversed] = useState(true);
+  const [wrongOnly, setWrongOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,7 +29,10 @@ export default function Flashcards() {
     try {
       const data = await fetchList(apiFetch, id);
       setList(data.list);
-      setCards(shuffle(data.glosor));
+      const pool = wrongOnly
+        ? data.glosor.filter((g) => (g.stats?.wrong ?? 0) > 0)
+        : data.glosor;
+      setCards(shuffle(pool));
       setIndex(0);
       setShowAnswer(false);
     } catch (e) {
@@ -36,7 +40,7 @@ export default function Flashcards() {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, id]);
+  }, [apiFetch, id, wrongOnly]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -51,6 +55,24 @@ export default function Flashcards() {
   const current = cards[index];
 
   if (!current) {
+    if (cards.length === 0) {
+      return (
+        <div className="stack" style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+          <h2>{wrongOnly ? 'Inga fel-glosor att öva på' : 'Listan är tom'}</h2>
+          <p className="muted">
+            {wrongOnly
+              ? 'Du har inte haft fel på några glosor än.'
+              : 'Lägg till glosor på listan först.'}
+          </p>
+          <div className="row" style={{ justifyContent: 'center' }}>
+            {wrongOnly && (
+              <button onClick={() => setWrongOnly(false)}>Visa alla kort istället</button>
+            )}
+            <Link to={`/lists/${id}`}><button>Tillbaka</button></Link>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="stack" style={{ maxWidth: 480, margin: '0 auto' }}>
         <h2>Klar — alla {cards.length} kort genomgångna</h2>
@@ -81,6 +103,18 @@ export default function Flashcards() {
 
       <div className="row" style={{ justifyContent: 'center' }}>
         <button onClick={onSwap}>Riktning: {frontLang} → {backLang} (byt)</button>
+      </div>
+
+      <div className="row" style={{ justifyContent: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+          <input
+            type="checkbox"
+            checked={wrongOnly}
+            onChange={(e) => setWrongOnly(e.target.checked)}
+            style={{ width: 'auto' }}
+          />
+          Öva bara glosor jag haft fel på
+        </label>
       </div>
 
       <div

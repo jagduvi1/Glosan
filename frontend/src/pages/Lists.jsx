@@ -104,6 +104,7 @@ export default function Lists() {
                 <p className="muted" style={{ margin: '0.25rem 0 0' }}>
                   {list.sourceLang} → {list.targetLang}
                   {list.description ? ` · ${list.description}` : ''}
+                  {list.bestScore?.total > 0 && ` · ⭐ ${list.bestScore.correct}/${list.bestScore.total}`}
                 </p>
               </div>
               <button className="danger" onClick={() => onDelete(list._id)}>Radera</button>
