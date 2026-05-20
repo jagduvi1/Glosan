@@ -150,6 +150,32 @@ router.post('/quiz-complete', async (req, res) => {
 const ALLOWED_KINDS = ['initial', 'glo', 'emoji'];
 const ALLOWED_GLO_MOODS = ['default', 'wink', 'sad'];
 
+// Unlock level table — keep in sync with frontend AVATAR_OPTIONS.
+// Anything not listed defaults to 999 (effectively locked).
+const AVATAR_UNLOCK_LEVELS = {
+  'initial:': 1,
+  'glo:default': 1,
+  'glo:wink': 2,
+  'glo:sad': 3,
+  'emoji:🦊': 1,
+  'emoji:🐱': 1,
+  'emoji:🐰': 1,
+  'emoji:🦉': 2,
+  'emoji:🐧': 2,
+  'emoji:🐙': 2,
+  'emoji:🐢': 3,
+  'emoji:🐸': 3,
+  'emoji:🦔': 3,
+  'emoji:🐼': 4,
+  'emoji:🦦': 4,
+  'emoji:🦄': 5
+};
+
+function unlockLevelFor(kind, value) {
+  const key = `${kind}:${kind === 'initial' ? '' : value}`;
+  return AVATAR_UNLOCK_LEVELS[key] ?? 999;
+}
+
 router.patch('/avatar', async (req, res) => {
   const { kind, value } = req.body;
   if (!ALLOWED_KINDS.includes(kind)) {
@@ -165,7 +191,19 @@ router.patch('/avatar', async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    user.avatar = { kind, value: kind === 'initial' ? '' : value };
+
+    const userLevel = levelFromXp(user.xp || 0);
+    const requiredLevel = unlockLevelFor(kind, value);
+    const cleanValue = kind === 'initial' ? '' : value;
+    const isCurrent = user.avatar?.kind === kind && (user.avatar?.value || '') === cleanValue;
+
+    if (!isCurrent && requiredLevel > userLevel) {
+      return res.status(403).json({
+        error: `Den här profilbilden låses upp på nivå ${requiredLevel}. Du är på nivå ${userLevel}.`
+      });
+    }
+
+    user.avatar = { kind, value: cleanValue };
     await user.save();
     res.json({ avatar: user.avatar });
   } catch (err) {

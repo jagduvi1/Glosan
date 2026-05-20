@@ -220,6 +220,7 @@ export default function Profile() {
         <AvatarPicker
           currentAvatar={profile.avatar}
           username={user.username}
+          userLevel={profile.level}
           onSelect={onSelectAvatar}
           onClose={() => setShowPicker(false)}
         />
