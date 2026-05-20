@@ -1,7 +1,10 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
 const anthropic = require('../services/anthropic');
+const GlosList = require('../models/GlosList');
+const Glos = require('../models/Glos');
 
 const router = express.Router();
 
@@ -46,6 +49,51 @@ router.post('/generate-list', async (req, res) => {
     res.json({ glosor: data.glosor.slice(0, n) });
   } catch (error) {
     console.error('AI generate-list error:', error.message);
+    res.status(502).json({ error: 'AI request failed' });
+  }
+});
+
+// POST /api/ai/extend-list
+// Body: { listId, count? }
+// Returns: { glosor: [{ source, target }] }
+// Uses the list's existing glosor as thematic context — Glo generates more
+// pairs in the same theme without needing the user to type a topic.
+router.post('/extend-list', async (req, res) => {
+  if (!requireEnabled(req, res)) return;
+  const { listId, count } = req.body;
+  if (!listId || !mongoose.Types.ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: 'listId is required' });
+  }
+  const n = Math.min(Math.max(Number(count) || 10, 1), 20);
+
+  try {
+    const list = await GlosList.findOne({ _id: listId, user: req.user.id });
+    if (!list) return res.status(404).json({ error: 'List not found' });
+
+    // Cap context size — 30 most-recent pairs are enough to convey theme.
+    const glosor = await Glos.find({ list: list._id }).sort({ createdAt: -1 }).limit(30).lean();
+    if (glosor.length === 0) {
+      return res.status(400).json({ error: 'Listan måste ha minst en glosa för att Glo ska kunna gissa tema' });
+    }
+
+    const sample = glosor.map((g, i) => `${i + 1}. ${g.source} → ${g.target}`).join('\n');
+    const system = `You extend a learner's vocabulary list with thematically related pairs. Reply with valid JSON only — no prose, no markdown fences. Schema: {"glosor":[{"source":"...","target":"..."}]}. Each entry is a single word or short phrase. Never repeat a pair that already appears in the list.`;
+    const user = `Source language: ${list.sourceLang}\nTarget language: ${list.targetLang}\nList title: ${list.title}\nCount: ${n}\n\nExisting pairs:\n${sample}\n\nReturn ${n} new pairs that share the same theme.`;
+
+    const text = await anthropic.complete({ system, user, maxTokens: 2048 });
+    const data = anthropic.extractJSON(text);
+    if (!data || !Array.isArray(data.glosor)) {
+      return res.status(502).json({ error: 'AI response was not valid JSON' });
+    }
+    res.json({ glosor: data.glosor.slice(0, n) });
+  } catch (error) {
+    console.error('AI extend-list error:', error.message);
+    if (error.status === 529 || error.status === 503) {
+      return res.status(503).json({ error: 'Anthropic is temporarily overloaded — please try again in a moment.' });
+    }
+    if (error.status === 429) {
+      return res.status(429).json({ error: 'Anthropic rate limit hit — please wait a few seconds and retry.' });
+    }
     res.status(502).json({ error: 'AI request failed' });
   }
 });

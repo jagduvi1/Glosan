@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
-import { generateList } from '../api/ai';
+import { generateList, extendList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
 import Flag from '../components/Flag';
@@ -140,6 +140,24 @@ export default function ListDetail() {
       }
       setAiTopic('');
       setAiTopicOpen(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const onExtendFromList = async () => {
+    if (glosor.length === 0) return;
+    setAiBusy(true);
+    setError('');
+    try {
+      const suggestions = await extendList(apiFetch, { listId: id, count: 10 });
+      for (const s of suggestions) {
+        if (!s.source || !s.target) continue;
+        const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target });
+        setGlosor((cur) => [...cur, glos]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -338,6 +356,16 @@ export default function ListDetail() {
                 Generera 10 fler glosor
               </button>
             )}
+            <button
+              className="btn btn-block"
+              style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
+              onClick={onExtendFromList}
+              disabled={aiBusy || glosor.length === 0}
+              title={glosor.length === 0 ? 'Lägg till minst en glosa först så Glo kan gissa tema' : ''}
+            >
+              <Sparkle size={14} color="var(--plum)" />
+              {aiBusy ? 'Glo tänker…' : 'Föreslå fler i samma ämne'}
+            </button>
             <button
               className="btn btn-block"
               style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
