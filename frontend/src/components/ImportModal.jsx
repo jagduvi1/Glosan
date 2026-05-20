@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { parseList } from '../api/ai';
+import GloAvatar from './GloAvatar';
 
 export default function ImportModal({
   mode,
@@ -84,86 +85,120 @@ export default function ImportModal({
     <div className="modal-backdrop">
       <div className="modal">
         <div className="modal-header">
-          <h3 style={{ margin: 0 }}>
-            {mode === 'new' ? 'Importera till ny lista' : 'Importera fler glosor'}
-          </h3>
-          <button onClick={onClose} disabled={busy}>Stäng</button>
+          <div className="row" style={{ gap: 12 }}>
+            <GloAvatar size={40} mood="wink" tilt={-6} />
+            <h3 style={{ margin: 0 }}>
+              {mode === 'new' ? 'Importera till ny lista' : 'Importera fler glosor'}
+            </h3>
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={onClose} disabled={busy}>×</button>
         </div>
 
-        <div className="modal-body stack">
-          {error && <p className="error">{error}</p>}
+        <div className="modal-body">
+          {error && <p className="error" style={{ marginBottom: 14 }}>{error}</p>}
 
           {step === 'input' && (
-            <>
+            <div className="stack">
               {mode === 'new' && (
                 <>
-                  <label>Titel
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="Franska v20" />
+                  <label className="field">
+                    <span className="field-label">Titel</span>
+                    <input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="Franska v20" autoFocus />
                   </label>
-                  <label>Beskrivning (valfri)
-                    <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+                  <label className="field">
+                    <span className="field-label">Beskrivning (valfri)</span>
+                    <input className="inp" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
                   </label>
-                  <div className="row">
-                    <label style={{ flex: 1 }}>Från (lämna tom = AI gissar)
-                      <input value={sourceLang} onChange={(e) => setSourceLang(e.target.value)} maxLength={10} placeholder="auto" />
+                  <div className="row" style={{ gap: 12 }}>
+                    <label className="field" style={{ flex: 1 }}>
+                      <span className="field-label">Från (lämna tomt för auto)</span>
+                      <input className="inp" value={sourceLang} onChange={(e) => setSourceLang(e.target.value)} maxLength={10} placeholder="auto" />
                     </label>
-                    <label style={{ flex: 1 }}>Till (lämna tom = AI gissar)
-                      <input value={targetLang} onChange={(e) => setTargetLang(e.target.value)} maxLength={10} placeholder="auto" />
+                    <label className="field" style={{ flex: 1 }}>
+                      <span className="field-label">Till (lämna tomt för auto)</span>
+                      <input className="inp" value={targetLang} onChange={(e) => setTargetLang(e.target.value)} maxLength={10} placeholder="auto" />
                     </label>
                   </div>
                 </>
               )}
-              <label>Klistra in glosorna (tabbar, mellanslag, streck — AI hanterar formatet)
+              <label className="field">
+                <span className="field-label">Klistra in glosorna — Glo hanterar tabbar, mellanslag, streck</span>
                 <textarea
+                  className="inp"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   rows={12}
-                  style={{ resize: 'vertical', minHeight: '220px', fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}
+                  style={{ minHeight: '220px', fontFamily: 'var(--font-mono)' }}
                   maxLength={8000}
                 />
               </label>
-              <p className="muted">{text.length} / 8000 tecken</p>
-            </>
+              <p className="t-hand muted" style={{ fontSize: 13 }}>{text.length} / 8000 tecken</p>
+            </div>
           )}
 
-          {step === 'loading' && <p>AI tolkar texten…</p>}
+          {step === 'loading' && (
+            <div style={{ textAlign: 'center', padding: 32 }}>
+              <GloAvatar size={100} float />
+              <p className="t-hand muted" style={{ fontSize: 17, marginTop: 12 }}>
+                Glo läser texten…
+              </p>
+            </div>
+          )}
 
           {step === 'review' && (
-            <>
-              <p className="muted">
-                AI hittade {glosor.length} glosor ({sourceLang || '?'} → {targetLang || '?'}). Redigera eller ta bort innan du sparar.
+            <div className="stack">
+              <p className="t-hand muted" style={{ fontSize: 15 }}>
+                Glo hittade {glosor.length} glosor ({sourceLang || '?'} → {targetLang || '?'}). Justera om något blev fel.
               </p>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={th}>{sourceLang || 'Källa'}</th>
-                    <th style={th}>{targetLang || 'Mål'}</th>
-                    <th style={th}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {glosor.map((g) => (
-                    <tr key={g.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                      <td style={td}><input value={g.source} onChange={(e) => updateGlos(g.id, 'source', e.target.value)} /></td>
-                      <td style={td}><input value={g.target} onChange={(e) => updateGlos(g.id, 'target', e.target.value)} /></td>
-                      <td style={{ ...td, width: '5rem' }}><button onClick={() => removeGlos(g.id)}>Ta bort</button></td>
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <table className="glos-table">
+                  <thead>
+                    <tr>
+                      <th>{sourceLang || 'källa'}</th>
+                      <th>{targetLang || 'mål'}</th>
+                      <th style={{ width: 80 }}></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+                  </thead>
+                  <tbody>
+                    {glosor.map((g) => (
+                      <tr key={g.id}>
+                        <td><input className="inp" value={g.source} onChange={(e) => updateGlos(g.id, 'source', e.target.value)} style={{ boxShadow: 'none', padding: '8px 10px' }} /></td>
+                        <td><input className="inp" value={g.target} onChange={(e) => updateGlos(g.id, 'target', e.target.value)} style={{ boxShadow: 'none', padding: '8px 10px' }} /></td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--berry-deep)' }}
+                            onClick={() => removeGlos(g.id)}
+                            type="button"
+                          >
+                            Ta bort
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
-          {step === 'saving' && <p>Sparar {glosor.length} glosor…</p>}
+          {step === 'saving' && (
+            <div style={{ textAlign: 'center', padding: 32 }}>
+              <GloAvatar size={100} float mood="wink" />
+              <p className="t-hand muted" style={{ fontSize: 17, marginTop: 12 }}>
+                Glo skriver in {glosor.length} glosor…
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="modal-actions">
-          <button onClick={onClose} disabled={busy}>Avbryt</button>
+          <button className="btn" onClick={onClose} disabled={busy}>Avbryt</button>
           {step === 'input' && (
-            <button className="primary" onClick={onParse}>Tolka med AI</button>
+            <button className="btn btn-primary" onClick={onParse}>Tolka med Glo →</button>
           )}
           {step === 'review' && (
-            <button className="primary" onClick={onSave} disabled={glosor.length === 0}>
+            <button className="btn btn-primary" onClick={onSave} disabled={glosor.length === 0}>
               Spara {glosor.length} glosor
             </button>
           )}
@@ -172,6 +207,3 @@ export default function ImportModal({
     </div>
   );
 }
-
-const th = { textAlign: 'left', padding: '0.5rem', fontSize: '0.85rem', color: 'var(--color-muted)' };
-const td = { padding: '0.25rem' };

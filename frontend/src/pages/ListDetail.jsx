@@ -5,6 +5,45 @@ import { fetchList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
+import Flag from '../components/Flag';
+import GloAvatar from '../components/GloAvatar';
+import Sparkle from '../components/Sparkle';
+
+const LANG_TO_FLAG = {
+  fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
+};
+
+function masteryOf(glos) {
+  const c = glos.stats?.correct ?? 0;
+  const w = glos.stats?.wrong ?? 0;
+  const total = c + w;
+  if (total === 0) return 'new';
+  const ratio = c / total;
+  if (ratio >= 0.9 && c >= 3) return 'gold';
+  if (ratio >= 0.6) return 'silver';
+  if (ratio >= 0.3) return 'bronze';
+  return 'new';
+}
+
+const MASTERY_COLORS = {
+  gold: 'var(--mustard)',
+  silver: 'var(--sky)',
+  bronze: 'var(--coral)',
+  new: 'var(--paper-deep)'
+};
+
+function MasteryDot({ level }) {
+  return (
+    <span
+      style={{
+        width: 12, height: 12, borderRadius: '50%',
+        background: MASTERY_COLORS[level],
+        border: '1.5px solid var(--ink)',
+        display: 'inline-block'
+      }}
+    />
+  );
+}
 
 export default function ListDetail() {
   const { id } = useParams();
@@ -66,7 +105,7 @@ export default function ListDetail() {
   };
 
   const onAiGenerate = async () => {
-    const topic = window.prompt('Vad ska AI:n generera glosor om? (t.ex. "frukter", "rumsverben i preteritum")');
+    const topic = window.prompt('Vad ska Glo generera glosor om? (t.ex. "frukter", "rumsverben i preteritum")');
     if (!topic) return;
     setAiBusy(true);
     try {
@@ -88,67 +127,174 @@ export default function ListDetail() {
     }
   };
 
-  if (loading) return <p>Laddar…</p>;
-  if (!list) return <p>Lista hittades inte.</p>;
+  if (loading) return <p className="t-hand muted">Glo letar upp listan…</p>;
+  if (!list) return <p>Listan hittades inte.</p>;
+
+  const flag = LANG_TO_FLAG[list.sourceLang];
+  const masteredCount = glosor.filter((g) => masteryOf(g) === 'gold').length;
 
   return (
-    <div className="stack">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>{list.title}</h2>
-          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            {list.sourceLang} → {list.targetLang} · {glosor.length} glosor
-          </p>
-        </div>
-        <div className="row">
-          <Link to={`/lists/${id}/quiz`}><button className="primary">Quiz</button></Link>
-          <Link to={`/lists/${id}/flashcards`}><button>Flashcards</button></Link>
-          <button onClick={() => setShowImport(true)}>Importera från text</button>
-          <button onClick={onAiGenerate} disabled={aiBusy}>
-            {aiBusy ? 'AI tänker…' : 'Föreslå med AI'}
-          </button>
+    <div>
+      <div className="row" style={{ gap: 6, marginBottom: 14, fontSize: 14 }}>
+        <Link to="/lists" className="muted" style={{ textDecoration: 'none', fontWeight: 400 }}>Mina listor</Link>
+        <span className="muted">/</span>
+        <span style={{ fontWeight: 700 }}>{list.title}</span>
+      </div>
+
+      <div className="card card-lg" style={{ marginBottom: 22 }}>
+        <div className="row between" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div className="grow" style={{ minWidth: 280 }}>
+            <div className="row" style={{ gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+              {flag && <Flag code={flag} size="lg" />}
+              <span className="pill" style={{ background: 'var(--coral-soft)' }}>
+                {list.sourceLang} → {list.targetLang}
+              </span>
+              <span className="pill">{glosor.length} glosor</span>
+              {list.bestScore?.total > 0 && (
+                <span className="pill" style={{ background: 'var(--mustard-soft)' }}>
+                  ⭐ bästa: {list.bestScore.correct}/{list.bestScore.total}
+                </span>
+              )}
+            </div>
+            <h1 style={{ marginBottom: 6 }}>{list.title}</h1>
+            {list.description && (
+              <p className="t-hand muted" style={{ fontSize: 17, margin: 0 }}>{list.description}</p>
+            )}
+            {glosor.length > 0 && (
+              <div style={{ marginTop: 18, maxWidth: 520 }}>
+                <div className="row between" style={{ marginBottom: 6, fontSize: 13 }}>
+                  <span className="t-hand muted">mästrade glosor</span>
+                  <span className="t-hand">{masteredCount} / {glosor.length}</span>
+                </div>
+                <div className="bar-shell" style={{ display: 'flex', gap: 2, padding: 0 }}>
+                  {glosor.map((g) => (
+                    <div
+                      key={g._id}
+                      style={{ flex: 1, background: MASTERY_COLORS[masteryOf(g)] }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="row" style={{ gap: 10, flex: 'none' }}>
+            <Link to={`/lists/${id}/flashcards`}><button className="btn">Flashcards</button></Link>
+            <Link to={`/lists/${id}/quiz`}><button className="btn btn-primary btn-lg">Starta quiz →</button></Link>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={onAdd} className="card row" style={{ flexWrap: 'wrap' }}>
-        <label style={{ flex: 1, minWidth: 160 }}>{list.sourceLang}<input name="source" required /></label>
-        <label style={{ flex: 1, minWidth: 160 }}>{list.targetLang}<input name="target" required /></label>
-        <label style={{ flex: 1, minWidth: 200 }}>Anteckning<input name="notes" /></label>
-        <button type="submit" className="primary" style={{ alignSelf: 'flex-end' }}>Lägg till</button>
-      </form>
+      <div className="detail-grid">
+        <div>
+          <h3 style={{ margin: '0 0 10px' }}>Glosor</h3>
 
-      {error && <p className="error">{error}</p>}
+          <div className="card" style={{ padding: 12, marginBottom: 14 }}>
+            <form onSubmit={onAdd} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <input className="inp" name="source" placeholder={list.sourceLang} required style={{ flex: 1, minWidth: 120 }} />
+              <span className="t-hand muted" style={{ fontSize: 18 }}>→</span>
+              <input className="inp" name="target" placeholder={list.targetLang} required style={{ flex: 1, minWidth: 120 }} />
+              <input className="inp" name="notes" placeholder="anteckning (valfri)" style={{ flex: 1.4, minWidth: 140 }} />
+              <button type="submit" className="btn btn-primary">Lägg till</button>
+            </form>
+          </div>
 
-      {glosor.length === 0 ? (
-        <p className="muted">Inga glosor än. Lägg till några ovan eller låt AI:n föreslå.</p>
-      ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--color-bg)' }}>
-                <th style={th}>{list.sourceLang}</th>
-                <th style={th}>{list.targetLang}</th>
-                <th style={th}>Rätt</th>
-                <th style={th}>Fel</th>
-                <th style={th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {glosor.map((g) => (
-                <tr key={g._id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td style={td}>{g.source}</td>
-                  <td style={td}>{g.target}</td>
-                  <td style={td}>{g.stats?.correct ?? 0}</td>
-                  <td style={td}>{g.stats?.wrong ?? 0}</td>
-                  <td style={td}>
-                    <button onClick={() => onDelete(g._id)}>Radera</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
+
+          {glosor.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+              <p className="t-hand muted" style={{ fontSize: 16 }}>
+                Inga glosor än. Lägg till några ovan eller låt Glo föreslå.
+              </p>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table className="glos-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 24 }}></th>
+                    <th>{list.sourceLang}</th>
+                    <th>{list.targetLang}</th>
+                    <th style={{ width: 60, textAlign: 'right' }}>rätt</th>
+                    <th style={{ width: 60, textAlign: 'right' }}>fel</th>
+                    <th style={{ width: 80 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {glosor.map((g) => (
+                    <tr key={g._id}>
+                      <td><MasteryDot level={masteryOf(g)} /></td>
+                      <td style={{ fontWeight: 700 }}>
+                        {g.source}
+                        {g.notes && (
+                          <span className="t-hand muted" style={{ fontSize: 13, marginLeft: 6 }}>· {g.notes}</span>
+                        )}
+                      </td>
+                      <td>{g.target}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="stat-good">{g.stats?.correct ?? 0}</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="stat-bad">{g.stats?.wrong ?? 0}</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
+                          onClick={() => onDelete(g._id)}
+                        >
+                          Radera
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {glosor.length > 0 && (
+            <div className="row" style={{ gap: 14, marginTop: 10, fontSize: 13, flexWrap: 'wrap' }}>
+              <span className="row" style={{ gap: 6 }}><MasteryDot level="gold" /> <span className="muted">mästrad</span></span>
+              <span className="row" style={{ gap: 6 }}><MasteryDot level="silver" /> <span className="muted">säker</span></span>
+              <span className="row" style={{ gap: 6 }}><MasteryDot level="bronze" /> <span className="muted">repetera</span></span>
+              <span className="row" style={{ gap: 6 }}><MasteryDot level="new" /> <span className="muted">ny</span></span>
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="card card-lg" style={{ background: 'var(--plum-soft)', alignSelf: 'flex-start', position: 'sticky', top: 24 }}>
+          <div className="row" style={{ gap: 10, marginBottom: 10 }}>
+            <GloAvatar size={48} mood="wink" tilt={-6} />
+            <div>
+              <h3 style={{ margin: 0, fontSize: 22 }}>Glo hjälper</h3>
+              <span className="t-hand muted" style={{ fontSize: 15 }}>AI · Claude Haiku</span>
+            </div>
+          </div>
+          <p style={{ fontSize: 15, margin: '0 0 14px', color: 'var(--ink-soft)' }}>
+            Be om fler glosor eller importera färdig text.
+          </p>
+
+          <div className="stack" style={{ gap: 10 }}>
+            <button
+              className="btn btn-block"
+              style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
+              onClick={onAiGenerate}
+              disabled={aiBusy}
+            >
+              <Sparkle size={14} color="var(--plum)" />
+              {aiBusy ? 'Glo tänker…' : 'Generera 10 fler glosor'}
+            </button>
+            <button
+              className="btn btn-block"
+              style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
+              onClick={() => setShowImport(true)}
+            >
+              <Sparkle size={14} color="var(--plum)" />
+              Importera fler från text
+            </button>
+          </div>
+        </div>
+      </div>
 
       {showImport && (
         <ImportModal
@@ -163,6 +309,3 @@ export default function ListDetail() {
     </div>
   );
 }
-
-const th = { textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: 'var(--color-muted)' };
-const td = { padding: '0.5rem 0.75rem' };
