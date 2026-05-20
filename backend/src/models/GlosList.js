@@ -37,6 +37,12 @@ const glosListSchema = new mongoose.Schema({
   // (e.g. show "huset" → type "the house"). Default is true since most users
   // study from their native language toward the language they're learning.
   quizReversed: { type: Boolean, default: true },
+  categoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null,
+    index: true
+  },
   bestScore: {
     correct: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },

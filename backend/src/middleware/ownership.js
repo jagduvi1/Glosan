@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
+const Category = require('../models/Category');
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -44,4 +45,20 @@ async function loadOwnedGlos(req, res, next) {
   }
 }
 
-module.exports = { loadOwnedList, loadOwnedGlos };
+// Load a Category by req.params.id and verify req.user owns it.
+async function loadOwnedCategory(req, res, next) {
+  const id = req.params.id;
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ error: 'Invalid category id' });
+  }
+  try {
+    const category = await Category.findOne({ _id: id, user: req.user.id });
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+    req.category = category;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { loadOwnedList, loadOwnedGlos, loadOwnedCategory };

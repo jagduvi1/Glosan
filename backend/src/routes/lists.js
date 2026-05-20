@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, description, sourceLang, targetLang } = req.body;
+    const { title, description, sourceLang, targetLang, categoryId } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
     const list = await GlosList.create({
@@ -28,7 +28,8 @@ router.post('/', async (req, res) => {
       title,
       description,
       sourceLang,
-      targetLang
+      targetLang,
+      categoryId: categoryId || null
     });
     res.status(201).json({ list });
   } catch (error) {
@@ -52,12 +53,13 @@ router.get('/:id', loadOwnedList(), async (req, res) => {
 
 router.put('/:id', loadOwnedList(), async (req, res) => {
   try {
-    const { title, description, sourceLang, targetLang, quizReversed } = req.body;
+    const { title, description, sourceLang, targetLang, quizReversed, categoryId } = req.body;
     if (title !== undefined) req.list.title = title;
     if (description !== undefined) req.list.description = description;
     if (sourceLang !== undefined) req.list.sourceLang = sourceLang;
     if (targetLang !== undefined) req.list.targetLang = targetLang;
     if (typeof quizReversed === 'boolean') req.list.quizReversed = quizReversed;
+    if (categoryId !== undefined) req.list.categoryId = categoryId || null;
     await req.list.save();
 
     res.json({ list: req.list });
