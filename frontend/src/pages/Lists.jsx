@@ -7,16 +7,9 @@ import ImportModal from '../components/ImportModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DeckCard from '../components/DeckCard';
 import GloAvatar from '../components/GloAvatar';
+import { LANG_TO_FLAG } from '../utils/lang';
 
 const ACCENTS = ['coral', 'leaf', 'sky', 'mustard'];
-
-const LANG_TO_FLAG = {
-  fr: 'fr',
-  de: 'de',
-  es: 'es',
-  en: 'uk',
-  sv: 'se'
-};
 
 const dateFmt = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' });
 

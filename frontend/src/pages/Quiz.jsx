@@ -5,10 +5,8 @@ import { fetchList, submitScore } from '../api/lists';
 import { updateGlos } from '../api/glosor';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
-
-const LANG_TO_FLAG = {
-  fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
-};
+import { LANG_TO_FLAG } from '../utils/lang';
+import { shuffle, answerVariants, buildDistractors } from '../utils/quiz';
 
 const REVERSED_KEY = 'glosan:quizReversed';
 
@@ -18,32 +16,6 @@ function readReversed() {
     if (v === null) return true;
     return v === 'true';
   } catch { return true; }
-}
-
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-// Expand slash-separated alternatives in a target into every accepted phrasing.
-function answerVariants(target) {
-  const tokens = target.trim().split(/\s+/);
-  const perToken = tokens.map((t) => t.split('/').map((s) => s.trim()).filter(Boolean));
-  return perToken
-    .reduce((acc, opts) => acc.flatMap((prefix) => opts.map((opt) => [...prefix, opt])), [[]])
-    .map((parts) => parts.join(' ').toLowerCase());
-}
-
-function buildDistractors(currentGlos, pool, expectedField) {
-  const others = pool.filter((g) =>
-    g._id !== currentGlos._id &&
-    (g[expectedField] || '').trim().toLowerCase() !== (currentGlos[expectedField] || '').trim().toLowerCase()
-  );
-  return shuffle(others).slice(0, 3).map((g) => g[expectedField]);
 }
 
 export default function Quiz() {

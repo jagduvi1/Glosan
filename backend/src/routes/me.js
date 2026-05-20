@@ -3,6 +3,7 @@ const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
+const { unlockLevelFor } = require('../config/avatarUnlocks');
 
 const router = express.Router();
 
@@ -149,32 +150,6 @@ router.post('/quiz-complete', async (req, res) => {
 // Body: { kind: 'initial' | 'glo' | 'emoji', value?: string }
 const ALLOWED_KINDS = ['initial', 'glo', 'emoji'];
 const ALLOWED_GLO_MOODS = ['default', 'wink', 'sad'];
-
-// Unlock level table — keep in sync with frontend AVATAR_OPTIONS.
-// Anything not listed defaults to 999 (effectively locked).
-const AVATAR_UNLOCK_LEVELS = {
-  'initial:': 1,
-  'glo:default': 1,
-  'glo:wink': 2,
-  'glo:sad': 3,
-  'emoji:🦊': 1,
-  'emoji:🐱': 1,
-  'emoji:🐰': 1,
-  'emoji:🦉': 2,
-  'emoji:🐧': 2,
-  'emoji:🐙': 2,
-  'emoji:🐢': 3,
-  'emoji:🐸': 3,
-  'emoji:🦔': 3,
-  'emoji:🐼': 4,
-  'emoji:🦦': 4,
-  'emoji:🦄': 5
-};
-
-function unlockLevelFor(kind, value) {
-  const key = `${kind}:${kind === 'initial' ? '' : value}`;
-  return AVATAR_UNLOCK_LEVELS[key] ?? 999;
-}
 
 router.patch('/avatar', async (req, res) => {
   const { kind, value } = req.body;
