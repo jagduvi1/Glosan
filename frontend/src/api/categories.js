@@ -27,6 +27,18 @@ export async function updateCategory(apiFetch, id, body) {
   return data.category;
 }
 
+export async function fetchCategoryPool(apiFetch, id, params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') search.set(k, String(v));
+  });
+  const q = search.toString();
+  const res = await apiFetch(`/api/categories/${id}/pool${q ? `?${q}` : ''}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte hämta repetitionspoolen');
+  return data;
+}
+
 export async function deleteCategory(apiFetch, id) {
   const res = await apiFetch(`/api/categories/${id}`, { method: 'DELETE' });
   if (!res.ok) {

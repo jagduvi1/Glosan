@@ -3,8 +3,12 @@ import { useLocation, useNavigate, Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { postQuizComplete } from '../api/me';
+import { fetchCategoryPool, fetchCategories } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
+
+const REPETITION_THRESHOLD = 0.8;
+const REPETITION_LIMIT = 5;
 
 export default function Results() {
   const { id } = useParams();
@@ -13,6 +17,7 @@ export default function Results() {
   const { apiFetch } = useAuth();
   const { refresh } = useGamification();
   const [xpInfo, setXpInfo] = useState(null);
+  const [repetition, setRepetition] = useState(null); // { categoryName, poolSize } | null
   const submittedRef = useRef(false);
 
   useEffect(() => {
@@ -27,6 +32,53 @@ export default function Results() {
       })
       .catch((err) => console.error('Quiz-complete failed:', err));
   }, [state, apiFetch, refresh, id]);
+
+  // Optionally fetch a repetition pool from the list's category — only if the
+  // user did well (≥ 80%), has a category set, and that category has other
+  // lists with wrong-glosor to revisit. Silently no-op otherwise.
+  useEffect(() => {
+    if (!state || !state.list?.categoryId) return;
+    const total = (state.correct ?? 0) + (state.wrong ?? 0);
+    if (total === 0) return;
+    const ratio = state.correct / total;
+    if (ratio < REPETITION_THRESHOLD) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pool, cats] = await Promise.all([
+          fetchCategoryPool(apiFetch, state.list.categoryId, {
+            mode: 'review',
+            excludeListId: id,
+            limit: REPETITION_LIMIT
+          }),
+          fetchCategories(apiFetch)
+        ]);
+        if (cancelled) return;
+        if (pool.glosor.length > 0) {
+          const cat = cats.find((c) => c._id === state.list.categoryId);
+          setRepetition({
+            categoryId: state.list.categoryId,
+            categoryName: cat?.name || 'kategorin',
+            poolSize: pool.glosor.length
+          });
+        }
+      } catch (err) {
+        console.error('Repetition pool fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [state, apiFetch, id]);
+
+  const onStartRepetition = () => {
+    if (!repetition) return;
+    const params = new URLSearchParams({
+      mode: 'review',
+      excludeListId: id,
+      limit: String(REPETITION_LIMIT)
+    });
+    navigate(`/categories/${repetition.categoryId}/quiz?${params.toString()}`);
+  };
 
   if (!state) {
     return (
@@ -174,6 +226,24 @@ export default function Results() {
                 +1 rekord
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {repetition && (
+        <div className="card card-lg" style={{ background: 'var(--plum-soft)', marginBottom: 24, textAlign: 'left' }}>
+          <div className="row" style={{ gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <GloAvatar size={56} mood="wink" />
+            <div className="grow" style={{ minWidth: 200 }}>
+              <h3 style={{ margin: 0 }}>Glo har lite gammalt i bakfickan</h3>
+              <p className="t-hand muted" style={{ fontSize: 15, margin: '4px 0 12px' }}>
+                {repetition.poolSize} {repetition.poolSize === 1 ? 'ord' : 'ord'} från andra listor i <strong>{repetition.categoryName}</strong> som du har snubblat på tidigare. Vill du repetera?
+              </p>
+              <div className="row" style={{ gap: 10 }}>
+                <button className="btn btn-primary" onClick={onStartRepetition}>Ja, kör!</button>
+                <button className="btn btn-ghost" onClick={() => setRepetition(null)}>Nej tack</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
