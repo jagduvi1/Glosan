@@ -20,12 +20,16 @@ function daysBetween(a, b) {
   return Math.round((startOfDay(b) - startOfDay(a)) / (24 * 60 * 60 * 1000));
 }
 
+// XP curve: level N requires (N-1)² × 100 XP.
+// So L2=100, L3=400, L5=1600, L7=3600, L10=8100, L15=19600, L20=36100, L30=84100.
+// The multiplier was 50 originally; doubling it stretches the late game so the
+// new high-level avatar unlocks (L7+) feel earned.
 function levelFromXp(xp) {
-  return Math.floor(Math.sqrt(xp / 50)) + 1;
+  return Math.floor(Math.sqrt(xp / 100)) + 1;
 }
 
 function xpForLevel(level) {
-  return Math.pow(level - 1, 2) * 50;
+  return Math.pow(level - 1, 2) * 100;
 }
 
 // Turn the raw per-language XP map into a response-ready breakdown with derived
