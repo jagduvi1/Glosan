@@ -111,7 +111,11 @@ export default function Results() {
   const extraTotal = extraCorrect + extraWrong;
   const hasExtras = extraTotal > 0;
   const best = list?.bestScore;
-  const playAgain = () => navigate(`/lists/${id}/quiz${mode === 'choice' ? '?mode=choice' : ''}`);
+  const playAgain = () => {
+    if (mode === 'galge') navigate(`/lists/${id}/galge`);
+    else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
+    else navigate(`/lists/${id}/quiz${mode === 'choice' ? '?mode=choice' : ''}`);
+  };
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center', position: 'relative' }}>

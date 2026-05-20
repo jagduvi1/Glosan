@@ -19,6 +19,8 @@ const Dictionary = lazy(() => import('./pages/Dictionary'));
 const CategoryQuiz = lazy(() => import('./pages/CategoryQuiz'));
 const Friends   = lazy(() => import('./pages/Friends'));
 const Admin     = lazy(() => import('./pages/Admin'));
+const Galge     = lazy(() => import('./pages/Galge'));
+const Ordfall   = lazy(() => import('./pages/Ordfall'));
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -121,6 +123,22 @@ function AppRoutes() {
             <AdminRoute>
               <Layout><Admin /></Layout>
             </AdminRoute>
+          }
+        />
+        <Route
+          path="/lists/:id/galge"
+          element={
+            <ProtectedRoute>
+              <Layout><Galge /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists/:id/ordfall"
+          element={
+            <ProtectedRoute>
+              <Layout><Ordfall /></Layout>
+            </ProtectedRoute>
           }
         />
 
