@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" fill="none">
+  <defs>
+    <filter id="logoRough" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="2"></feTurbulence>
+      <feDisplacementMap in="SourceGraphic" scale="1.2"></feDisplacementMap>
+    </filter>
+  </defs>
+  <g filter="url(#logoRough)">
+    
+    <rect x="14" y="46" width="320" height="48" rx="6" fill="#FFC93C"></rect>
+    
+    <text x="20" y="84" font-family="&#39;Lilita One&#39;, &#39;Arial Rounded MT Bold&#39;, sans-serif" font-size="64" fill="#1F1B16" letter-spacing="-1">Glosan</text>
+    
+    <circle cx="120" cy="36" r="9" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3"></circle>
+    <circle cx="123" cy="38" r="4" fill="#1F1B16"></circle>
+  </g>
+</svg>
