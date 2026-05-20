@@ -116,6 +116,8 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 @keyframes gl-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 @keyframes gl-pop-in { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .pop-in { animation: gl-pop-in 320ms var(--ease-snap); }
+@keyframes gl-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.shake-once { animation: gl-shake 220ms ease-in-out; }
 
 /* glos-table */
 table.glos-table { width: 100%; border-collapse: collapse; }

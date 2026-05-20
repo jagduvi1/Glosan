@@ -24,6 +24,22 @@ const MODES = [
     bg: 'var(--mustard-soft)',
     iconBg: 'var(--mustard)',
     icon: '◉'
+  },
+  {
+    id: 'galge',
+    label: 'Glos-galge',
+    description: 'Hangman med Glo. Gissa bokstäverna i översättningen — 5 ord.',
+    bg: 'var(--berry-soft)',
+    iconBg: 'var(--berry)',
+    icon: '🪢'
+  },
+  {
+    id: 'ordfall',
+    label: 'Ordfall',
+    description: 'Orden faller, du skriver översättningen innan de landar. Tre liv.',
+    bg: 'var(--sky-soft)',
+    iconBg: 'var(--sky)',
+    icon: '⬇'
   }
 ];
 

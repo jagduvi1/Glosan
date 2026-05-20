@@ -67,6 +67,8 @@ export default function ListDetail() {
     setShowModePicker(false);
     if (mode === 'flashcard') navigate(`/lists/${id}/flashcards`);
     else if (mode === 'choice') navigate(`/lists/${id}/quiz?mode=choice`);
+    else if (mode === 'galge') navigate(`/lists/${id}/galge`);
+    else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
     else navigate(`/lists/${id}/quiz`);
   };
 
