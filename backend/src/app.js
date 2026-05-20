@@ -11,6 +11,7 @@ const listsRoute = require('./routes/lists');
 const glosorRoute = require('./routes/glosor');
 const aiRoute = require('./routes/ai');
 const meRoute = require('./routes/me');
+const categoriesRoute = require('./routes/categories');
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/lists', listsRoute);
 app.use('/api', glosorRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/me', meRoute);
+app.use('/api/categories', categoriesRoute);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });

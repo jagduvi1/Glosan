@@ -1,15 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchLists, createList, deleteList } from '../api/lists';
+import { fetchLists, createList, deleteList, updateList } from '../api/lists';
 import { createGlos } from '../api/glosor';
+import {
+  fetchCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory
+} from '../api/categories';
 import ImportModal from '../components/ImportModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import CategoryManagerModal from '../components/CategoryManagerModal';
 import DeckCard from '../components/DeckCard';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
 
 const ACCENTS = ['coral', 'leaf', 'sky', 'mustard'];
+
+const COLOR_VARS = {
+  coral: 'var(--coral)',
+  leaf: 'var(--leaf)',
+  sky: 'var(--sky)',
+  mustard: 'var(--mustard)',
+  plum: 'var(--plum)',
+  berry: 'var(--berry)'
+};
 
 const dateFmt = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -17,16 +33,23 @@ export default function Lists() {
   const { user, apiFetch } = useAuth();
   const navigate = useNavigate();
   const [lists, setLists] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setLists(await fetchLists(apiFetch));
+      const [listsData, categoriesData] = await Promise.all([
+        fetchLists(apiFetch),
+        fetchCategories(apiFetch)
+      ]);
+      setLists(listsData);
+      setCategories(categoriesData);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -45,7 +68,8 @@ export default function Lists() {
         title: fd.get('title'),
         description: fd.get('description'),
         sourceLang: fd.get('sourceLang') || 'sv',
-        targetLang: fd.get('targetLang') || 'en'
+        targetLang: fd.get('targetLang') || 'en',
+        categoryId: fd.get('categoryId') || null
       });
       setShowForm(false);
       form.reset();
@@ -76,6 +100,117 @@ export default function Lists() {
     load();
   };
 
+  const onAssignCategory = async (listId, categoryId) => {
+    try {
+      const updated = await updateList(apiFetch, listId, { categoryId: categoryId || null });
+      setLists((cur) => cur.map((l) => (l._id === listId ? updated : l)));
+      // Refresh categories so the listCount stays in sync
+      setCategories(await fetchCategories(apiFetch));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const onCreateCategory = async (body) => {
+    await createCategory(apiFetch, body);
+    setCategories(await fetchCategories(apiFetch));
+  };
+
+  const onRenameCategory = async (id, name) => {
+    await updateCategory(apiFetch, id, { name });
+    setCategories(await fetchCategories(apiFetch));
+  };
+
+  const onSetCategoryColor = async (id, color) => {
+    await updateCategory(apiFetch, id, { color });
+    setCategories(await fetchCategories(apiFetch));
+  };
+
+  const onDeleteCategory = async (id) => {
+    await deleteCategory(apiFetch, id);
+    setCategories(await fetchCategories(apiFetch));
+    // Lists in that category had their categoryId cleared server-side; refresh.
+    setLists(await fetchLists(apiFetch));
+  };
+
+  // Group lists by category, with Uncategorised last.
+  const groupedLists = (() => {
+    const buckets = new Map();
+    categories.forEach((c) => buckets.set(c._id, { category: c, lists: [] }));
+    const uncategorised = [];
+    lists.forEach((l) => {
+      const cid = l.categoryId;
+      if (cid && buckets.has(cid)) {
+        buckets.get(cid).lists.push(l);
+      } else {
+        uncategorised.push(l);
+      }
+    });
+    const sections = [];
+    buckets.forEach(({ category, lists: catLists }) => {
+      if (catLists.length > 0) sections.push({ category, lists: catLists });
+    });
+    if (uncategorised.length > 0) {
+      sections.push({ category: null, lists: uncategorised });
+    }
+    return sections;
+  })();
+
+  const renderDeckCard = (list, i) => {
+    const accent = ACCENTS[i % ACCENTS.length];
+    const flag = LANG_TO_FLAG[list.sourceLang];
+    const subtitle = [list.description, `${list.sourceLang} → ${list.targetLang}`].filter(Boolean).join(' · ');
+    const progress = list.bestScore?.correct ?? 0;
+    const total = list.bestScore?.total ?? 0;
+    return (
+      <DeckCard
+        key={list._id}
+        flag={flag}
+        lang={list.title}
+        subtitle={subtitle}
+        progress={progress}
+        total={total}
+        accent={accent}
+        onClick={() => navigate(`/lists/${list._id}`)}
+      >
+        <div className="row between" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+          {total > 0 ? (
+            <span className="t-hand muted" style={{ fontSize: 13 }}>bästa: {progress} / {total}</span>
+          ) : (
+            <span className="t-hand muted" style={{ fontSize: 13 }}>inga rekord än</span>
+          )}
+          <div className="row" style={{ gap: 6 }}>
+            <select
+              value={list.categoryId || ''}
+              onChange={(e) => onAssignCategory(list._id, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                border: '2px solid var(--ink)',
+                borderRadius: 8,
+                padding: '4px 6px',
+                background: 'var(--bg-elev)',
+                fontSize: 12,
+                maxWidth: 160
+              }}
+            >
+              <option value="">— ingen kategori</option>
+              {categories.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
+              onClick={(e) => { e.stopPropagation(); setPendingDelete(list); }}
+            >
+              Radera
+            </button>
+          </div>
+        </div>
+      </DeckCard>
+    );
+  };
+
   return (
     <div>
       <div className="row between" style={{ marginBottom: 24, alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
@@ -92,7 +227,10 @@ export default function Lists() {
 
       <div className="row between" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0 }}>Mina glos-listor</h2>
-        <div className="row" style={{ gap: 10 }}>
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-sm" onClick={() => setShowCategoryManager(true)}>
+            Hantera kategorier ({categories.length})
+          </button>
           <button className="btn btn-sm" onClick={() => setShowImport(true)}>Importera från text</button>
           <button className="btn btn-sm btn-primary" onClick={() => setShowForm((s) => !s)}>
             {showForm ? '× Avbryt' : '+ Ny lista'}
@@ -120,6 +258,17 @@ export default function Lists() {
               <input className="inp" name="targetLang" defaultValue="en" maxLength={10} />
             </label>
           </div>
+          {categories.length > 0 && (
+            <label className="field">
+              <span className="field-label">Kategori (valfri)</span>
+              <select className="inp" name="categoryId" defaultValue="">
+                <option value="">— ingen kategori</option>
+                {categories.map((c) => (
+                  <option key={c._id} value={c._id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="submit" className="btn btn-primary">Skapa lista</button>
         </form>
       )}
@@ -137,41 +286,32 @@ export default function Lists() {
           <p className="muted">Skapa din första lista eller importera från en text.</p>
         </div>
       ) : (
-        <div className="deck-grid">
-          {lists.map((list, i) => {
-            const accent = ACCENTS[i % ACCENTS.length];
-            const flag = LANG_TO_FLAG[list.sourceLang];
-            const subtitle = [list.description, `${list.sourceLang} → ${list.targetLang}`].filter(Boolean).join(' · ');
-            const progress = list.bestScore?.correct ?? 0;
-            const total = list.bestScore?.total ?? 0;
-            return (
-              <DeckCard
-                key={list._id}
-                flag={flag}
-                lang={list.title}
-                subtitle={subtitle}
-                progress={progress}
-                total={total}
-                accent={accent}
-                onClick={() => navigate(`/lists/${list._id}`)}
-              >
-                <div className="row between" style={{ marginTop: 10 }}>
-                  {total > 0 ? (
-                    <span className="t-hand muted" style={{ fontSize: 13 }}>bästa: {progress} / {total}</span>
-                  ) : (
-                    <span className="t-hand muted" style={{ fontSize: 13 }}>inga rekord än</span>
-                  )}
-                  <button
-                    className="btn btn-sm btn-ghost"
-                    style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
-                    onClick={(e) => { e.stopPropagation(); setPendingDelete(list); }}
-                  >
-                    Radera
-                  </button>
-                </div>
-              </DeckCard>
-            );
-          })}
+        <div className="stack" style={{ gap: 26 }}>
+          {groupedLists.map(({ category, lists: catLists }, sectionIdx) => (
+            <section key={category?._id || 'uncategorised'}>
+              <div className="row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                {category?.color && (
+                  <span
+                    style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      background: COLOR_VARS[category.color] || 'var(--paper-deep)',
+                      border: '2px solid var(--ink)',
+                      display: 'inline-block'
+                    }}
+                  />
+                )}
+                <h3 style={{ margin: 0 }}>
+                  {category ? category.name : <span className="muted">Okategoriserade</span>}
+                </h3>
+                <span className="t-hand muted" style={{ fontSize: 14 }}>
+                  {catLists.length} {catLists.length === 1 ? 'lista' : 'listor'}
+                </span>
+              </div>
+              <div className="deck-grid">
+                {catLists.map((list, i) => renderDeckCard(list, sectionIdx * 100 + i))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
 
@@ -192,6 +332,17 @@ export default function Lists() {
           destructive
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {showCategoryManager && (
+        <CategoryManagerModal
+          categories={categories}
+          onCreate={onCreateCategory}
+          onRename={onRenameCategory}
+          onSetColor={onSetCategoryColor}
+          onDelete={onDeleteCategory}
+          onClose={() => setShowCategoryManager(false)}
         />
       )}
     </div>
