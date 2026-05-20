@@ -6,7 +6,7 @@ import { updateGlos } from '../api/glosor';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
-import { shuffle, answerVariants, buildDistractors } from '../utils/quiz';
+import { shuffle, answerVariants, buildDistractors, isVoiceMatch } from '../utils/quiz';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
 const VOICE_MODE_KEY = 'glosan:quizVoiceMode';
@@ -210,23 +210,27 @@ export default function Quiz() {
     recognitionRef.current = rec;
     setListening(true);
     rec.onresult = (e) => {
-      const txt = e.results?.[0]?.[0]?.transcript || '';
-      setTranscript(txt);
-      const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
-      if (isCorrect) {
+      const alternatives = Array.from(e.results?.[0] || [])
+        .map((r) => (r.transcript || '').trim())
+        .filter(Boolean);
+      const best = alternatives[0] || '';
+      setTranscript(best);
+      // Accept if ANY alternative is a close-enough match — handles homophones
+      // like "read"/"red" where STT picks the more common spelling.
+      const matched = alternatives.find((alt) => isVoiceMatch(alt, expectedWord));
+      if (matched) {
         voiceAttemptsRef.current = 0;
         setVoiceAttempts(0);
-        recordAnswer(true, txt.trim());
+        recordAnswer(true, matched);
         return;
       }
-      // Wrong this attempt — let the user retry up to MAX_VOICE_ATTEMPTS
-      // total times before scoring it wrong. STT can mis-hear similar-
-      // sounding words (red/read, hus/hose, ...).
+      // Wrong this attempt — let the user retry up to MAX_VOICE_ATTEMPTS total
+      // times before scoring it wrong.
       const next = voiceAttemptsRef.current + 1;
       voiceAttemptsRef.current = next;
       setVoiceAttempts(next);
       if (next >= MAX_VOICE_ATTEMPTS) {
-        recordAnswer(false, txt.trim());
+        recordAnswer(false, best);
       }
     };
     rec.onerror = (e) => {

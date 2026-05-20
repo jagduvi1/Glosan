@@ -8,7 +8,7 @@ import { postQuizComplete } from '../api/me';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
-import { shuffle, answerVariants } from '../utils/quiz';
+import { shuffle, answerVariants, isVoiceMatch } from '../utils/quiz';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
@@ -170,20 +170,23 @@ export default function CategoryQuiz() {
     recognitionRef.current = rec;
     setListening(true);
     rec.onresult = (e) => {
-      const txt = e.results?.[0]?.[0]?.transcript || '';
-      setTranscript(txt);
-      const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
-      if (isCorrect) {
+      const alternatives = Array.from(e.results?.[0] || [])
+        .map((r) => (r.transcript || '').trim())
+        .filter(Boolean);
+      const best = alternatives[0] || '';
+      setTranscript(best);
+      const matched = alternatives.find((alt) => isVoiceMatch(alt, expectedWord));
+      if (matched) {
         voiceAttemptsRef.current = 0;
         setVoiceAttempts(0);
-        recordAnswer(true, txt.trim(), expectedWord);
+        recordAnswer(true, matched, expectedWord);
         return;
       }
       const next = voiceAttemptsRef.current + 1;
       voiceAttemptsRef.current = next;
       setVoiceAttempts(next);
       if (next >= MAX_VOICE_ATTEMPTS) {
-        recordAnswer(false, txt.trim(), expectedWord);
+        recordAnswer(false, best, expectedWord);
       }
     };
     rec.onerror = (e) => {
