@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList } from '../api/ai';
+import ImportModal from '../components/ImportModal';
 
 export default function ListDetail() {
   const { id } = useParams();
@@ -13,6 +14,7 @@ export default function ListDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +57,14 @@ export default function ListDetail() {
     }
   };
 
+  const onImportConfirm = async ({ glosor: incoming }) => {
+    for (const g of incoming) {
+      const glos = await createGlos(apiFetch, id, g);
+      setGlosor((cur) => [...cur, glos]);
+    }
+    setShowImport(false);
+  };
+
   const onAiGenerate = async () => {
     const topic = window.prompt('Vad ska AI:n generera glosor om? (t.ex. "frukter", "rumsverben i preteritum")');
     if (!topic) return;
@@ -92,6 +102,8 @@ export default function ListDetail() {
         </div>
         <div className="row">
           <Link to={`/lists/${id}/quiz`}><button className="primary">Quiz</button></Link>
+          <Link to={`/lists/${id}/flashcards`}><button>Flashcards</button></Link>
+          <button onClick={() => setShowImport(true)}>Importera från text</button>
           <button onClick={onAiGenerate} disabled={aiBusy}>
             {aiBusy ? 'AI tänker…' : 'Föreslå med AI'}
           </button>
@@ -136,6 +148,17 @@ export default function ListDetail() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {showImport && (
+        <ImportModal
+          mode="existing"
+          defaultSourceLang={list.sourceLang}
+          defaultTargetLang={list.targetLang}
+          apiFetch={apiFetch}
+          onClose={() => setShowImport(false)}
+          onConfirm={onImportConfirm}
+        />
       )}
     </div>
   );

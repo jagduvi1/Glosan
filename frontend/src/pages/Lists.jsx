@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLists, createList, deleteList } from '../api/lists';
+import { createGlos } from '../api/glosor';
+import ImportModal from '../components/ImportModal';
 
 export default function Lists() {
   const { apiFetch } = useAuth();
@@ -9,6 +11,7 @@ export default function Lists() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,13 +54,25 @@ export default function Lists() {
     }
   };
 
+  const onImportConfirm = async ({ title, description, sourceLang, targetLang, glosor }) => {
+    const list = await createList(apiFetch, { title, description, sourceLang, targetLang });
+    for (const g of glosor) {
+      await createGlos(apiFetch, list._id, g);
+    }
+    setShowImport(false);
+    load();
+  };
+
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>Mina glos-listor</h2>
-        <button className="primary" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? 'Avbryt' : 'Ny lista'}
-        </button>
+        <div className="row">
+          <button onClick={() => setShowImport(true)}>Importera från text</button>
+          <button className="primary" onClick={() => setShowForm((s) => !s)}>
+            {showForm ? 'Avbryt' : 'Ny lista'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -95,6 +110,15 @@ export default function Lists() {
             </div>
           ))}
         </div>
+      )}
+
+      {showImport && (
+        <ImportModal
+          mode="new"
+          apiFetch={apiFetch}
+          onClose={() => setShowImport(false)}
+          onConfirm={onImportConfirm}
+        />
       )}
     </div>
   );

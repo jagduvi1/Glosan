@@ -13,6 +13,17 @@ function shuffle(arr) {
   return a;
 }
 
+// Expand slash-separated alternatives in a target into every accepted phrasing.
+// "mycket söt/gullig" → ["mycket söt", "mycket gullig"]
+// "den/det är/var" → ["den är", "den var", "det är", "det var"]
+function answerVariants(target) {
+  const tokens = target.trim().split(/\s+/);
+  const perToken = tokens.map((t) => t.split('/').map((s) => s.trim()).filter(Boolean));
+  return perToken
+    .reduce((acc, opts) => acc.flatMap((prefix) => opts.map((opt) => [...prefix, opt])), [[]])
+    .map((parts) => parts.join(' ').toLowerCase());
+}
+
 export default function Quiz() {
   const { id } = useParams();
   const { apiFetch } = useAuth();
@@ -45,7 +56,7 @@ export default function Quiz() {
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!current) return;
-    const isCorrect = answer.trim().toLowerCase() === current.target.trim().toLowerCase();
+    const isCorrect = answerVariants(current.target).includes(answer.trim().toLowerCase());
 
     setFeedback({ isCorrect, expected: current.target });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });

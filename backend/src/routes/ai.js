@@ -50,6 +50,49 @@ router.post('/generate-list', async (req, res) => {
   }
 });
 
+// POST /api/ai/parse-list
+// Body: { text, sourceLang?, targetLang? }
+// Returns: { glosor: [{source, target}], sourceLang, targetLang }
+router.post('/parse-list', async (req, res) => {
+  if (!requireEnabled(req, res)) return;
+  const { text, sourceLang, targetLang } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  if (text.length > 8000) {
+    return res.status(400).json({ error: 'text is too long (max 8000 characters)' });
+  }
+
+  const langHint = sourceLang && targetLang
+    ? `The source language is "${sourceLang}" and the target language is "${targetLang}".`
+    : 'Detect the source and target languages yourself based on the content.';
+
+  try {
+    const system = `You parse pasted vocabulary lists into structured source/target pairs. Input may be tab-separated, multi-space-aligned, dash-separated, comma-separated, table-format, or any other layout a teacher might produce. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs that actually appear in the input — never invent. Skip headings, dates, page numbers, and instructions.`;
+    const user = `${langHint}\n\nText:\n<<<\n${text}\n>>>`;
+
+    const aiText = await anthropic.complete({ system, user, maxTokens: 4096 });
+    const data = anthropic.extractJSON(aiText);
+    if (!data || !Array.isArray(data.glosor)) {
+      return res.status(502).json({ error: 'AI response was not valid JSON' });
+    }
+    res.json({
+      glosor: data.glosor.filter((g) => g && g.source && g.target),
+      sourceLang: data.sourceLang || sourceLang || '',
+      targetLang: data.targetLang || targetLang || ''
+    });
+  } catch (error) {
+    console.error('AI parse-list error:', error.message);
+    if (error.status === 529 || error.status === 503) {
+      return res.status(503).json({ error: 'Anthropic is temporarily overloaded — please try again in a moment.' });
+    }
+    if (error.status === 429) {
+      return res.status(429).json({ error: 'Anthropic rate limit hit — please wait a few seconds and retry.' });
+    }
+    res.status(502).json({ error: 'AI request failed' });
+  }
+});
+
 // POST /api/ai/example-sentence
 // Body: { word, lang }
 // Returns: { sentence }
