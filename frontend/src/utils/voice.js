@@ -56,6 +56,8 @@ export function createRecognition(lang) {
   recognition.lang = bcp47(lang);
   recognition.continuous = false;
   recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
+  // Ask for several alternatives so the consumer can match against homophones
+  // like English "read" (past, spelled like "red" phonetically) vs "read" (inf.).
+  recognition.maxAlternatives = 5;
   return recognition;
 }
