@@ -33,6 +33,17 @@ export async function updateList(apiFetch, id, body) {
   return data.list;
 }
 
+export async function submitScore(apiFetch, id, body) {
+  const res = await apiFetch(`/api/lists/${id}/score`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte spara resultat');
+  return data;
+}
+
 export async function deleteList(apiFetch, id) {
   const res = await apiFetch(`/api/lists/${id}`, { method: 'DELETE' });
   if (!res.ok) {
