@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  // 6-char shareable identity code for the friends feature. Lazy-generated on
+  // first /api/me/friend-code request for users who registered before this
+  // field existed. Unique across all users.
+  friendCode: { type: String, default: null, unique: true, sparse: true, index: true },
   avatar: {
     kind: { type: String, enum: ['initial', 'glo', 'emoji'], default: 'initial' },
     value: { type: String, default: '', maxlength: 16 }

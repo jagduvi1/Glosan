@@ -17,6 +17,7 @@ const Results    = lazy(() => import('./pages/Results'));
 const Profile    = lazy(() => import('./pages/Profile'));
 const Dictionary = lazy(() => import('./pages/Dictionary'));
 const CategoryQuiz = lazy(() => import('./pages/CategoryQuiz'));
+const Friends   = lazy(() => import('./pages/Friends'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -94,6 +95,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><CategoryQuiz /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/kompisar"
+          element={
+            <ProtectedRoute>
+              <Layout><Friends /></Layout>
             </ProtectedRoute>
           }
         />
