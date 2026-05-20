@@ -1,4 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, Link, useParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
+import { postQuizComplete } from '../api/me';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 
@@ -6,6 +10,23 @@ export default function Results() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { state } = useLocation();
+  const { apiFetch } = useAuth();
+  const { refresh } = useGamification();
+  const [xpInfo, setXpInfo] = useState(null);
+  const submittedRef = useRef(false);
+
+  useEffect(() => {
+    if (!state || submittedRef.current) return;
+    submittedRef.current = true;
+    const total = (state.correct ?? 0) + (state.wrong ?? 0);
+    if (total === 0) return;
+    postQuizComplete(apiFetch, { correct: state.correct, total })
+      .then((result) => {
+        setXpInfo(result);
+        refresh();
+      })
+      .catch((err) => console.error('Quiz-complete failed:', err));
+  }, [state, apiFetch, refresh]);
 
   if (!state) {
     return (
@@ -67,16 +88,39 @@ export default function Results() {
       <div className="row" style={{ gap: 14, marginBottom: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
         <StatTile value={correct} label="rätt" color="var(--leaf-soft)" icon="/assets/star-sticker.svg" />
         <StatTile value={wrong} label="att öva på" color="var(--berry-soft)" />
-        <StatTile value={`${pct}%`} label="rätt-procent" color="var(--coral-soft)" />
+        <StatTile
+          value={xpInfo ? `+${xpInfo.xpEarned}` : '…'}
+          label="XP tjänat"
+          color="var(--mustard-soft)"
+          icon="/assets/sparkle.svg"
+        />
         {bestStreak >= 2 ? (
-          <StatTile value={bestStreak} label="längsta svit" color="var(--mustard-soft)" icon="/assets/flame-streak.svg" />
+          <StatTile value={bestStreak} label="längsta svit i rundan" color="var(--coral-soft)" icon="/assets/flame-streak.svg" />
         ) : (
-          <StatTile value={total} label="glosor totalt" color="var(--mustard-soft)" />
+          <StatTile value={`${pct}%`} label="rätt-procent" color="var(--coral-soft)" />
         )}
       </div>
 
+      {xpInfo && (xpInfo.streakChange === 'started' || xpInfo.streakChange === 'continued') && (
+        <div className="card card-lg" style={{ background: 'var(--sky-soft)', marginBottom: 18, textAlign: 'left' }}>
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+            <img src="/assets/flame-streak.svg" width="28" alt="" />
+            <div className="grow" style={{ minWidth: 200 }}>
+              <h3 style={{ margin: 0 }}>
+                {xpInfo.streak.current} {xpInfo.streak.current === 1 ? 'dag' : 'dagar'} i rad
+              </h3>
+              <p className="t-hand muted" style={{ fontSize: 15, margin: '4px 0 0' }}>
+                {xpInfo.streakChange === 'started'
+                  ? 'Första dagen på din streak. Kom tillbaka imorgon.'
+                  : 'Bibehåll imorgon så håller serien.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {best?.total > 0 && !wrongOnly && (
-        <div className="card card-lg" style={{ background: 'var(--sky-soft)', marginBottom: 24, textAlign: 'left' }}>
+        <div className="card card-lg" style={{ background: 'var(--mustard-soft)', marginBottom: 24, textAlign: 'left' }}>
           <div className="row between" style={{ flexWrap: 'wrap', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <h3 style={{ margin: 0 }}>

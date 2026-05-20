@@ -38,6 +38,14 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  xp: { type: Number, default: 0, min: 0 },
+  streak: {
+    current: { type: Number, default: 0, min: 0 },
+    longest: { type: Number, default: 0, min: 0 },
+    lastActiveDay: { type: Date, default: null }
+  },
+  quizzesCompleted: { type: Number, default: 0, min: 0 },
+  perfectRounds: { type: Number, default: 0, min: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 

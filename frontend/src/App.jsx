@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { GamificationProvider } from './contexts/GamificationContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Analytics from './components/Analytics';
@@ -12,6 +13,7 @@ const ListDetail = lazy(() => import('./pages/ListDetail'));
 const Quiz       = lazy(() => import('./pages/Quiz'));
 const Flashcards = lazy(() => import('./pages/Flashcards'));
 const Results    = lazy(() => import('./pages/Results'));
+const Profile    = lazy(() => import('./pages/Profile'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -68,6 +70,14 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Layout><Profile /></Layout>
+            </ProtectedRoute>
+          }
+        />
 
         <Route path="*" element={<Navigate to={user ? '/lists' : '/login'} replace />} />
       </Routes>
@@ -79,8 +89,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Analytics />
-        <AppRoutes />
+        <GamificationProvider>
+          <Analytics />
+          <AppRoutes />
+        </GamificationProvider>
       </AuthProvider>
     </BrowserRouter>
   );
