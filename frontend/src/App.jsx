@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Analytics from './components/Analytics';
 
+const Landing    = lazy(() => import('./pages/Landing'));
 const Login      = lazy(() => import('./pages/Login'));
 const Register   = lazy(() => import('./pages/Register'));
 const Lists      = lazy(() => import('./pages/Lists'));
@@ -28,7 +29,7 @@ function AppRoutes() {
         <Route path="/login"    element={user ? <Navigate to="/lists" replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
 
-        <Route path="/" element={<Navigate to={user ? '/lists' : '/login'} replace />} />
+        <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 
         <Route
           path="/lists"
