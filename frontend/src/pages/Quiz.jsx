@@ -10,6 +10,16 @@ const LANG_TO_FLAG = {
   fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
 };
 
+const REVERSED_KEY = 'glosan:quizReversed';
+
+function readReversed() {
+  try {
+    const v = localStorage.getItem(REVERSED_KEY);
+    if (v === null) return true;
+    return v === 'true';
+  } catch { return true; }
+}
+
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -28,11 +38,12 @@ function answerVariants(target) {
     .map((parts) => parts.join(' ').toLowerCase());
 }
 
-function buildDistractors(currentGlos, pool) {
+function buildDistractors(currentGlos, pool, expectedField) {
   const others = pool.filter((g) =>
-    g._id !== currentGlos._id && g.target.trim().toLowerCase() !== currentGlos.target.trim().toLowerCase()
+    g._id !== currentGlos._id &&
+    (g[expectedField] || '').trim().toLowerCase() !== (currentGlos[expectedField] || '').trim().toLowerCase()
   );
-  return shuffle(others).slice(0, 3).map((g) => g.target);
+  return shuffle(others).slice(0, 3).map((g) => g[expectedField]);
 }
 
 export default function Quiz() {
@@ -52,8 +63,18 @@ export default function Quiz() {
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [wrongOnly, setWrongOnly] = useState(false);
+  const [reversed, setReversed] = useState(readReversed);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    try { localStorage.setItem(REVERSED_KEY, String(reversed)); } catch { /* ignore */ }
+  }, [reversed]);
+
+  const promptField = reversed ? 'target' : 'source';
+  const expectedField = reversed ? 'source' : 'target';
+  const promptLang = list ? (reversed ? list.targetLang : list.sourceLang) : '';
+  const expectedLang = list ? (reversed ? list.sourceLang : list.targetLang) : '';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,12 +105,13 @@ export default function Quiz() {
 
   const options = useMemo(() => {
     if (mode !== 'choice' || !current || allGlosor.length === 0) return [];
-    const distractors = buildDistractors(current, allGlosor);
-    return shuffle([current.target, ...distractors]);
-  }, [current, allGlosor, mode]);
+    const distractors = buildDistractors(current, allGlosor, expectedField);
+    return shuffle([current[expectedField], ...distractors]);
+  }, [current, allGlosor, mode, expectedField]);
 
   const recordAnswer = async (isCorrect, given) => {
-    setFeedback({ isCorrect, expected: current.target, given });
+    const expectedWord = current[expectedField];
+    setFeedback({ isCorrect, expected: expectedWord, given });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     const newStreak = isCorrect ? streak + 1 : 0;
     setStreak(newStreak);
@@ -107,16 +129,16 @@ export default function Quiz() {
   const onSubmit = (e) => {
     e.preventDefault();
     if (!current) return;
-    const isCorrect = answerVariants(current.target).includes(answer.trim().toLowerCase());
+    const expectedWord = current[expectedField];
+    const isCorrect = answerVariants(expectedWord).includes(answer.trim().toLowerCase());
     recordAnswer(isCorrect, answer.trim());
   };
 
   const onPick = (option) => {
     if (!current || feedback) return;
-    // Choice mode: exact-match against the literal target on the button.
-    // Slash-leniency is a write-mode affordance (typing one variant of "söt/gullig")
-    // and would incorrectly mark the literal "söt/gullig" option as wrong here.
-    const isCorrect = option.trim().toLowerCase() === current.target.trim().toLowerCase();
+    const expectedWord = current[expectedField];
+    // Choice mode: exact-match against the literal expected on the button.
+    const isCorrect = option.trim().toLowerCase() === expectedWord.trim().toLowerCase();
     recordAnswer(isCorrect, option);
   };
 
@@ -124,7 +146,6 @@ export default function Quiz() {
     if (queue.length === 0) {
       const total = score.correct + score.wrong;
       if (total === 0) {
-        // Shouldn't normally happen — defensive: just clear and let empty-state render.
         setCurrent(null);
         setFeedback(null);
         return;
@@ -160,18 +181,22 @@ export default function Quiz() {
     setQueue((q) => q.slice(1));
   };
 
-  // Keyboard 1-4 for choice mode (only when not in feedback)
   useEffect(() => {
     if (mode !== 'choice' || feedback || options.length === 0) return undefined;
     const onKey = (e) => {
       const idx = parseInt(e.key, 10) - 1;
       if (idx >= 0 && idx < options.length) onPick(options[idx]);
-      else if (e.key === 'Enter' && feedback) onNext();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, feedback, options]);
+
+  const onToggleReversed = () => {
+    setReversed((r) => !r);
+    setAnswer('');
+    setFeedback(null);
+  };
 
   if (loading) return <p className="t-hand muted">Glo blandar korten…</p>;
   if (error) return <p className="error">{error}</p>;
@@ -182,7 +207,6 @@ export default function Quiz() {
   const modeLabel = mode === 'choice' ? '4 val' : 'skriv';
   const modeBg = mode === 'choice' ? 'var(--mustard-soft)' : 'var(--leaf-soft)';
 
-  // Choice mode needs at least 4 glosor for distractors
   if (mode === 'choice' && allGlosor.length > 0 && allGlosor.length < 4) {
     return (
       <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
@@ -199,7 +223,6 @@ export default function Quiz() {
     );
   }
 
-  // Empty state — list has no cards in the chosen pool (e.g. wrong-only with no matches)
   if (!current) {
     return (
       <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
@@ -222,7 +245,9 @@ export default function Quiz() {
     );
   }
 
-  // In-quiz
+  const promptWord = current[promptField];
+  const expectedWord = current[expectedField];
+
   return (
     <div style={{ marginTop: -28 }}>
       <div className="row between" style={{ padding: '14px 0', borderBottom: '2px solid var(--ink)', marginBottom: 28 }}>
@@ -246,6 +271,15 @@ export default function Quiz() {
             <span className="pill" style={{ background: modeBg }}>läge: {modeLabel}</span>
             <button
               className="pill"
+              type="button"
+              onClick={onToggleReversed}
+              style={{ background: 'transparent', border: '2px solid var(--ink)', cursor: 'pointer', font: 'inherit' }}
+              title="Byt riktning"
+            >
+              {promptLang} → {expectedLang}
+            </button>
+            <button
+              className="pill"
               style={{
                 background: wrongOnly ? 'var(--berry-soft)' : 'transparent',
                 border: '2px solid var(--ink)',
@@ -261,12 +295,12 @@ export default function Quiz() {
         </div>
 
         <div className="t-hand muted" style={{ fontSize: 18, marginBottom: 8 }}>
-          {mode === 'choice' ? `Vilken översättning?` : `Översätt till ${list?.targetLang}`}
+          {mode === 'choice' ? `Vilken översättning?` : `Översätt till ${expectedLang}`}
         </div>
 
         <div className="card card-lg" style={{ padding: 36, textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: mode === 'choice' ? 80 : 96, lineHeight: 1 }}>
-            {current.source}
+            {promptWord}
           </div>
           {current.notes && (
             <div className="t-hand muted" style={{ fontSize: 16, marginTop: 6 }}>· {current.notes}</div>
@@ -308,7 +342,7 @@ export default function Quiz() {
                 className="inp inp-lg"
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
-                placeholder={`skriv ${list?.targetLang}…`}
+                placeholder={`skriv ${expectedLang}…`}
                 autoFocus
                 required
                 autoComplete="off"
