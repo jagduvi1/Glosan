@@ -9,7 +9,7 @@ import { LANG_TO_FLAG } from '../utils/lang';
 import { shuffle, answerVariants } from '../utils/quiz';
 
 const ROUNDS = 5;
-const LIVES_PER_ROUND = 6;
+const LIVES_PER_ROUND = 10;
 const KEYBOARD_ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'Å'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ö', 'Ä'],
@@ -35,6 +35,61 @@ function pickTargetWord(g, reversed) {
   // For galge, pick the first (usually canonical) variant — multi-variant
   // targets like "söt/gullig" don't translate cleanly to a letter game.
   return variants[0] || expected;
+}
+
+// Classic "hänga gubbe" — the gallows is built piece by piece per miss,
+// then Glo's body fills in. Tenth miss = fully hanged, game over.
+//   1: base           4: rope           7: left arm    10: right leg → död
+//   2: post           5: head (Glo)     8: right arm
+//   3: crossbeam      6: torso          9: left leg
+function HangmanFigure({ misses, dead }) {
+  const stroke = 'var(--ink)';
+  const w = 3;
+  return (
+    <svg
+      width="180"
+      height="220"
+      viewBox="0 0 180 220"
+      aria-hidden="true"
+      style={{ flex: 'none', overflow: 'visible' }}
+    >
+      <g stroke={stroke} strokeWidth={w} strokeLinecap="round" fill="none">
+        {/* 1: base */}
+        {misses >= 1 && <line x1="14" y1="210" x2="130" y2="210" />}
+        {/* 2: post */}
+        {misses >= 2 && <line x1="36" y1="210" x2="36" y2="10" />}
+        {/* 3: crossbeam */}
+        {misses >= 3 && <line x1="34" y1="10" x2="122" y2="10" />}
+        {/* 4: rope */}
+        {misses >= 4 && <line x1="122" y1="10" x2="122" y2="38" />}
+      </g>
+
+      {/* 5: Glo's head dangles from the rope */}
+      {misses >= 5 && (
+        <image
+          href={dead ? '/assets/glo-sad.svg' : '/assets/glo-mascot.svg'}
+          x="98"
+          y="38"
+          width="48"
+          height="48"
+          style={{ transform: dead ? 'rotate(8deg)' : 'rotate(0deg)', transformOrigin: '122px 62px' }}
+        />
+      )}
+
+      <g stroke={stroke} strokeWidth={w} strokeLinecap="round">
+        {/* 6: torso */}
+        {misses >= 6 && <line x1="122" y1="86" x2="122" y2="144" />}
+        {/* 7: left arm */}
+        {misses >= 7 && <line x1="122" y1="98" x2="96" y2="124" />}
+        {/* 8: right arm */}
+        {misses >= 8 && <line x1="122" y1="98" x2="148" y2="124" />}
+        {/* 9: left leg */}
+        {misses >= 9 && <line x1="122" y1="144" x2="100" y2="180" />}
+        {/* 10: right leg */}
+        {misses >= 10 && <line x1="122" y1="144" x2="144" y2="180" />}
+      </g>
+    </svg>
+  );
 }
 
 export default function Galge() {
@@ -215,7 +270,6 @@ export default function Galge() {
   const answered = score.correct + score.wrong;
   const totalRounds = answered + (roundEnded ? 0 : 1) + queue.length;
   const progress = totalRounds > 0 ? Math.round((answered / totalRounds) * 100) : 0;
-  const mood = livesLeft === 0 ? 'sad' : livesLeft <= 2 ? 'sad' : livesLeft <= 4 ? 'wink' : 'default';
 
   return (
     <div style={{ marginTop: -28 }}>
@@ -240,73 +294,75 @@ export default function Galge() {
             <span className="pill" style={{ background: 'var(--berry-soft)' }}>läge: galge</span>
             <span className="pill">{promptLang} → {expectedLang}</span>
           </div>
-          <div className="row" style={{ gap: 4 }} aria-label={`${livesLeft} liv kvar`}>
-            {Array.from({ length: LIVES_PER_ROUND }).map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  fontSize: 22,
-                  lineHeight: 1,
-                  opacity: i < livesLeft ? 1 : 0.25,
-                  filter: i < livesLeft ? 'none' : 'grayscale(1)'
-                }}
-                aria-hidden="true"
-              >
-                {i < livesLeft ? '❤' : '✕'}
-              </span>
-            ))}
-          </div>
+          <span
+            className="pill"
+            style={{
+              background: livesLeft <= 2 ? 'var(--berry-soft)' : 'var(--bg-elev)',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 700
+            }}
+            aria-label={`${livesLeft} fel kvar`}
+          >
+            {livesLeft} fel kvar
+          </span>
         </div>
 
-        <div
-          className="card card-lg"
-          style={{ padding: 28, textAlign: 'center', position: 'relative' }}
-        >
-          <div style={{ position: 'absolute', top: 14, left: 18 }}>
-            <GloAvatar size={64} mood={mood} tilt={livesLeft <= 2 ? -8 : 0} />
-          </div>
-          <div className="t-hand muted" style={{ fontSize: 16 }}>
-            {promptLang} · översätt och gissa bokstäverna
-          </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 44, lineHeight: 1.1, margin: '8px 0 4px' }}>
-            {promptWord}
-          </div>
-          {current.notes && (
-            <div className="t-hand muted" style={{ fontSize: 15 }}>· {current.notes}</div>
-          )}
-
+        <div className="card card-lg" style={{ padding: 28 }}>
           <div
+            className="row"
             style={{
-              display: 'flex',
-              gap: 10,
+              gap: 28,
+              alignItems: 'center',
               justifyContent: 'center',
-              flexWrap: 'wrap',
-              marginTop: 22,
-              minHeight: 56
+              flexWrap: 'wrap'
             }}
           >
-            {[...targetWord].map((ch, i) => {
-              const guess = isGuessable(ch);
-              const revealed = !guess || guessed.has(normLetter(ch));
-              const showOnLoss = roundEnded === 'lost' && !revealed;
-              return (
-                <span
-                  key={i}
-                  style={{
-                    minWidth: guess ? 32 : 12,
-                    borderBottom: guess ? '3px solid var(--ink)' : 'none',
-                    padding: '6px 4px',
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 36,
-                    lineHeight: 1,
-                    color: showOnLoss ? 'var(--berry-deep)' : 'var(--ink)',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {revealed ? ch : showOnLoss ? ch : ' '}
-                </span>
-              );
-            })}
+            <HangmanFigure misses={LIVES_PER_ROUND - livesLeft} dead={livesLeft === 0} />
+            <div style={{ minWidth: 260, flex: '1 1 260px', textAlign: 'center' }}>
+              <div className="t-hand muted" style={{ fontSize: 16 }}>
+                {promptLang} · översätt och gissa bokstäverna
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 44, lineHeight: 1.1, margin: '8px 0 4px' }}>
+                {promptWord}
+              </div>
+              {current.notes && (
+                <div className="t-hand muted" style={{ fontSize: 15 }}>· {current.notes}</div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                  marginTop: 22,
+                  minHeight: 56
+                }}
+              >
+                {[...targetWord].map((ch, i) => {
+                  const guess = isGuessable(ch);
+                  const revealed = !guess || guessed.has(normLetter(ch));
+                  const showOnLoss = roundEnded === 'lost' && !revealed;
+                  return (
+                    <span
+                      key={i}
+                      style={{
+                        minWidth: guess ? 32 : 12,
+                        borderBottom: guess ? '3px solid var(--ink)' : 'none',
+                        padding: '6px 4px',
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 36,
+                        lineHeight: 1,
+                        color: showOnLoss ? 'var(--berry-deep)' : 'var(--ink)',
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      {revealed ? ch : showOnLoss ? ch : ' '}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
