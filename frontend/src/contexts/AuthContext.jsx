@@ -89,13 +89,13 @@ export function AuthProvider({ children }) {
     })();
   }, [handleRefresh, fetchUserProfile]);
 
-  const register = async (username, email, password) => {
+  const register = async (username, email, password, ageConsent) => {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ username, email, password })
+        body: JSON.stringify({ username, email, password, ageConsent })
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error || 'Registrering misslyckades' };

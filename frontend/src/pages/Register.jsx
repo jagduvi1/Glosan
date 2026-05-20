@@ -28,14 +28,16 @@ export default function Register() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [ageConsent, setAgeConsent] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (!ageConsent) return;
     setError('');
     setBusy(true);
-    const result = await register(username, email, password);
+    const result = await register(username, email, password, ageConsent);
     setBusy(false);
     if (result.success) navigate('/lists');
     else setError(result.error);
@@ -123,15 +125,42 @@ export default function Register() {
             Minst 10 tecken — gärna stor + liten + siffra.
           </p>
 
+          <label
+            className="row"
+            style={{
+              gap: 10,
+              alignItems: 'flex-start',
+              marginBottom: 16,
+              padding: 12,
+              background: 'var(--paper-edge)',
+              border: '2px solid var(--ink)',
+              borderRadius: 12,
+              cursor: 'pointer'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={ageConsent}
+              onChange={(e) => setAgeConsent(e.target.checked)}
+              required
+              style={{ marginTop: 3, width: 18, height: 18, flex: 'none' }}
+            />
+            <span className="t-hand" style={{ fontSize: 14, lineHeight: 1.4 }}>
+              Jag är minst 13 år gammal eller har min förälders / vårdnadshavares
+              tillåtelse att skapa konto, och jag godkänner{' '}
+              <Link to="/integritet" style={{ color: 'var(--coral-deep)' }}>integritetspolicyn</Link>.
+            </span>
+          </label>
+
           {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
-          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+          <button
+            type="submit"
+            className="btn btn-primary btn-lg btn-block"
+            disabled={busy || !ageConsent}
+          >
             {busy ? 'Skapar konto…' : 'Skapa konto →'}
           </button>
-
-          <p className="t-hand muted" style={{ marginTop: 14, fontSize: 14, textAlign: 'center', lineHeight: 1.4 }}>
-            Genom att skapa konto godkänner du våra villkor.
-          </p>
         </form>
       </div>
     </div>

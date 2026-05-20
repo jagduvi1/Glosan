@@ -55,6 +55,22 @@ export default function Layout({ children }) {
         </div>
       </nav>
       <main style={{ maxWidth: 960, margin: '0 auto', padding: '28px 24px 60px' }}>{children}</main>
+      <footer
+        style={{
+          maxWidth: 960,
+          margin: '0 auto',
+          padding: '16px 24px 32px',
+          borderTop: '1.5px dashed var(--paper-edge)',
+          fontFamily: 'var(--font-hand)',
+          fontSize: 14,
+          color: 'var(--ink-soft)',
+          display: 'flex',
+          gap: 16,
+          flexWrap: 'wrap'
+        }}
+      >
+        <Link to="/integritet" style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>Integritetspolicy</Link>
+      </footer>
     </div>
   );
 }

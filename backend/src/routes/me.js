@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
+const Friendship = require('../models/Friendship');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -311,6 +312,75 @@ router.post('/trial', async (req, res) => {
   } catch (err) {
     console.error('Start trial error:', err);
     res.status(500).json({ error: 'Failed to start trial' });
+  }
+});
+
+// GET /api/me/export — GDPR Art. 20: portabel kopia av all användardata.
+// Returnerar en JSON-blob som frontend skickar vidare till browsern som
+// nedladdning. Inkluderar profil, listor, glosor och kompis-kopplingar.
+router.get('/export', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const lists = await GlosList.find({ user: req.user.id }).lean();
+    const listIds = lists.map((l) => l._id);
+    const glosor = listIds.length > 0
+      ? await Glos.find({ list: { $in: listIds } }).lean()
+      : [];
+    const friendships = await Friendship.find({ user: req.user.id })
+      .populate('friend', 'username friendCode')
+      .lean();
+
+    // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
+    // ens till användaren själv.
+    const { password, refreshTokenHash, ...safeUser } = user;
+
+    res.setHeader('Content-Disposition', `attachment; filename="glosan-export-${user.username}-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json({
+      exportedAt: new Date().toISOString(),
+      schema: 'glosan-export-v1',
+      user: safeUser,
+      lists,
+      glosor,
+      friendships: friendships.map((f) => ({
+        friendUsername: f.friend?.username,
+        friendCode: f.friend?.friendCode,
+        addedAt: f.addedAt
+      }))
+    });
+  } catch (err) {
+    console.error('Export error:', err.message);
+    res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
+// DELETE /api/me — GDPR Art. 17: rätt att raderas. Tar bort kontot, alla
+// listor + glosor och båda hållen av vänskapsrelationerna. Refresh-cookien
+// rensas. Hård delete — vi behåller inget för "soft delete" eftersom appen
+// inte har någon legal grund för det.
+router.delete('/', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userLists = await GlosList.find({ user: userId }, '_id').lean();
+    const listIds = userLists.map((l) => l._id);
+
+    if (listIds.length > 0) {
+      await Glos.deleteMany({ list: { $in: listIds } });
+      await GlosList.deleteMany({ _id: { $in: listIds } });
+    }
+    await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] });
+    await User.deleteOne({ _id: userId });
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    res.json({ message: 'Konto raderat' });
+  } catch (err) {
+    console.error('Account delete error:', err.message);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 
