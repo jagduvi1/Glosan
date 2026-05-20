@@ -53,6 +53,8 @@ export default function ListDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiTopicOpen, setAiTopicOpen] = useState(false);
+  const [aiTopic, setAiTopic] = useState('');
   const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
@@ -104,10 +106,12 @@ export default function ListDetail() {
     setShowImport(false);
   };
 
-  const onAiGenerate = async () => {
-    const topic = window.prompt('Vad ska Glo generera glosor om? (t.ex. "frukter", "rumsverben i preteritum")');
+  const onAiGenerate = async (e) => {
+    e.preventDefault();
+    const topic = aiTopic.trim();
     if (!topic) return;
     setAiBusy(true);
+    setError('');
     try {
       const suggestions = await generateList(apiFetch, {
         topic,
@@ -120,6 +124,8 @@ export default function ListDetail() {
         const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target });
         setGlosor((cur) => [...cur, glos]);
       }
+      setAiTopic('');
+      setAiTopicOpen(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -275,15 +281,44 @@ export default function ListDetail() {
           </p>
 
           <div className="stack" style={{ gap: 10 }}>
-            <button
-              className="btn btn-block"
-              style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
-              onClick={onAiGenerate}
-              disabled={aiBusy}
-            >
-              <Sparkle size={14} color="var(--plum)" />
-              {aiBusy ? 'Glo tänker…' : 'Generera 10 fler glosor'}
-            </button>
+            {aiTopicOpen ? (
+              <form onSubmit={onAiGenerate} className="stack" style={{ gap: 8 }}>
+                <label className="field">
+                  <span className="field-label">Vad ska Glo generera glosor om?</span>
+                  <input
+                    className="inp"
+                    value={aiTopic}
+                    onChange={(e) => setAiTopic(e.target.value)}
+                    placeholder='t.ex. "frukter", "rumsverb i preteritum"'
+                    autoFocus
+                    disabled={aiBusy}
+                    style={{ boxShadow: 'none', padding: '10px 14px' }}
+                  />
+                </label>
+                <div className="row" style={{ gap: 8 }}>
+                  <button type="submit" className="btn btn-sm btn-primary" disabled={aiBusy || !aiTopic.trim()}>
+                    {aiBusy ? 'Glo tänker…' : 'Generera →'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => { setAiTopicOpen(false); setAiTopic(''); }}
+                    disabled={aiBusy}
+                  >
+                    Avbryt
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                className="btn btn-block"
+                style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
+                onClick={() => setAiTopicOpen(true)}
+              >
+                <Sparkle size={14} color="var(--plum)" />
+                Generera 10 fler glosor
+              </button>
+            )}
             <button
               className="btn btn-block"
               style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
