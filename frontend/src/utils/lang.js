@@ -9,6 +9,18 @@ export const LANG_TO_FLAG = {
   sv: 'se'
 };
 
+export const LANG_NAMES = {
+  fr: 'Franska',
+  de: 'Tyska',
+  es: 'Spanska',
+  en: 'Engelska',
+  sv: 'Svenska'
+};
+
 export function flagFor(lang) {
   return LANG_TO_FLAG[lang];
+}
+
+export function nameForLang(lang) {
+  return LANG_NAMES[lang] || lang;
 }

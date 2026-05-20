@@ -7,6 +7,8 @@ import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
+import Flag from '../components/Flag';
+import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
 
 const BADGES = [
   {
@@ -167,7 +169,10 @@ export default function Profile() {
 
       <div className="card">
         <div className="row between" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-          <h3 style={{ margin: 0 }}>nivå {profile.level}</h3>
+          <div className="row" style={{ gap: 10 }}>
+            <h3 style={{ margin: 0 }}>Totalt — nivå {profile.level}</h3>
+            <span className="t-hand muted" style={{ fontSize: 14 }}>låser upp profilbilder</span>
+          </div>
           <span className="t-hand muted">
             {xpInLevel} / {xpToNext} XP till nivå {profile.level + 1}
           </span>
@@ -176,6 +181,45 @@ export default function Profile() {
           <div className="bar-fill bar-fill-mustard" style={{ width: `${levelPct}%` }} />
         </div>
       </div>
+
+      {Object.keys(profile.languageXp || {}).length > 0 && (
+        <div>
+          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>Per språk</h2>
+            <span className="t-hand muted">
+              {Object.keys(profile.languageXp).length} {Object.keys(profile.languageXp).length === 1 ? 'språk' : 'språk'} aktiva
+            </span>
+          </div>
+          <div className="stack" style={{ gap: 10 }}>
+            {Object.entries(profile.languageXp)
+              .sort(([, a], [, b]) => b.xp - a.xp)
+              .map(([lang, info]) => {
+                const flag = LANG_TO_FLAG[lang];
+                const langXpInLevel = info.xp - info.thisLevelAt;
+                const langXpToNext = info.nextLevelAt - info.thisLevelAt;
+                const langPct = langXpToNext > 0 ? Math.min(100, Math.round((langXpInLevel / langXpToNext) * 100)) : 100;
+                return (
+                  <div key={lang} className="card" style={{ padding: 16 }}>
+                    <div className="row between" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                      <div className="row" style={{ gap: 10 }}>
+                        {flag && <Flag code={flag} size="lg" />}
+                        <h3 style={{ margin: 0 }}>{nameForLang(lang)}</h3>
+                        <span className="pill" style={{ background: 'var(--mustard-soft)' }}>nivå {info.level}</span>
+                        <span className="pill" style={{ background: 'var(--leaf-soft)' }}>{info.xp} XP</span>
+                      </div>
+                      <span className="t-hand muted">
+                        {langXpInLevel} / {langXpToNext} XP till nivå {info.level + 1}
+                      </span>
+                    </div>
+                    <div className="bar-shell">
+                      <div className="bar-fill bar-fill-coral" style={{ width: `${langPct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
