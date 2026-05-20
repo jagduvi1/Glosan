@@ -18,7 +18,16 @@ const AVATAR_UNLOCK_LEVELS = {
   'emoji:🦔': 3,
   'emoji:🐼': 4,
   'emoji:🦦': 4,
-  'emoji:🦄': 5
+  'emoji:🦄': 5,
+  // Endgame mascots — one per unlock tier (2–4 levels apart).
+  'emoji:🦁': 7,
+  'emoji:🐳': 9,
+  'emoji:🦋': 12,
+  'emoji:🦒': 15,
+  'emoji:🦅': 18,
+  'emoji:🦩': 22,
+  'emoji:🦚': 26,
+  'emoji:🐉': 30
 };
 
 function unlockLevelFor(kind, value) {
