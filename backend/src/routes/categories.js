@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { loadOwnedCategory } = require('../middleware/ownership');
 const Category = require('../models/Category');
 const GlosList = require('../models/GlosList');
+const Glos = require('../models/Glos');
 
 const router = express.Router();
 
@@ -89,6 +90,55 @@ router.delete('/:id', loadOwnedCategory, async (req, res) => {
   } catch (error) {
     console.error('Category delete error:', error);
     res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// GET /api/categories/:id/pool
+// Query params:
+//   mode         — 'all' (default) or 'review'
+//   excludeListId — optional list to skip (used by post-quiz repetition)
+//   limit        — default 100, max 200
+// Returns: { glosor: [...with .list populated], lists: [...meta] }
+router.get('/:id/pool', loadOwnedCategory, async (req, res) => {
+  const mode = req.query.mode === 'review' ? 'review' : 'all';
+  const rawLimit = Number(req.query.limit) || 100;
+  const limit = Math.min(Math.max(rawLimit, 1), 200);
+  const excludeListId = req.query.excludeListId;
+
+  try {
+    const listFilter = { user: req.user.id, categoryId: req.category._id };
+    if (excludeListId && mongoose.Types.ObjectId.isValid(excludeListId)) {
+      listFilter._id = { $ne: excludeListId };
+    }
+    const lists = await GlosList.find(listFilter).lean();
+    const listIds = lists.map((l) => l._id);
+    if (listIds.length === 0) {
+      return res.json({ glosor: [], lists: [] });
+    }
+
+    let glosor;
+    if (mode === 'review') {
+      glosor = await Glos.find({
+        list: { $in: listIds },
+        'stats.wrong': { $gt: 0 }
+      }).sort({ 'stats.wrong': -1, 'stats.correct': 1 }).limit(limit).lean();
+    } else {
+      glosor = await Glos.find({ list: { $in: listIds } }).limit(limit).lean();
+    }
+
+    res.json({
+      glosor,
+      lists: lists.map((l) => ({
+        _id: l._id,
+        title: l.title,
+        sourceLang: l.sourceLang,
+        targetLang: l.targetLang,
+        quizReversed: l.quizReversed
+      }))
+    });
+  } catch (err) {
+    console.error('Category pool error:', err);
+    res.status(500).json({ error: 'Failed to fetch pool' });
   }
 });
 

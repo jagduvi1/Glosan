@@ -16,6 +16,7 @@ const Flashcards = lazy(() => import('./pages/Flashcards'));
 const Results    = lazy(() => import('./pages/Results'));
 const Profile    = lazy(() => import('./pages/Profile'));
 const Dictionary = lazy(() => import('./pages/Dictionary'));
+const CategoryQuiz = lazy(() => import('./pages/CategoryQuiz'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -85,6 +86,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><Dictionary /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/categories/:catId/quiz"
+          element={
+            <ProtectedRoute>
+              <Layout><CategoryQuiz /></Layout>
             </ProtectedRoute>
           }
         />

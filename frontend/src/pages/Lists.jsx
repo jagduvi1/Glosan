@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchLists, createList, deleteList, updateList } from '../api/lists';
 import { createGlos } from '../api/glosor';
@@ -289,23 +289,39 @@ export default function Lists() {
         <div className="stack" style={{ gap: 26 }}>
           {groupedLists.map(({ category, lists: catLists }, sectionIdx) => (
             <section key={category?._id || 'uncategorised'}>
-              <div className="row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-                {category?.color && (
-                  <span
-                    style={{
-                      width: 16, height: 16, borderRadius: '50%',
-                      background: COLOR_VARS[category.color] || 'var(--paper-deep)',
-                      border: '2px solid var(--ink)',
-                      display: 'inline-block'
-                    }}
-                  />
+              <div className="row between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+                <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                  {category?.color && (
+                    <span
+                      style={{
+                        width: 16, height: 16, borderRadius: '50%',
+                        background: COLOR_VARS[category.color] || 'var(--paper-deep)',
+                        border: '2px solid var(--ink)',
+                        display: 'inline-block'
+                      }}
+                    />
+                  )}
+                  <h3 style={{ margin: 0 }}>
+                    {category ? category.name : <span className="muted">Okategoriserade</span>}
+                  </h3>
+                  <span className="t-hand muted" style={{ fontSize: 14 }}>
+                    {catLists.length} {catLists.length === 1 ? 'lista' : 'listor'}
+                  </span>
+                </div>
+                {category && (
+                  <div className="row" style={{ gap: 8 }}>
+                    <Link to={`/categories/${category._id}/quiz?mode=review`}>
+                      <button className="btn btn-sm" style={{ background: 'var(--coral-soft)' }}>
+                        Repetera allt
+                      </button>
+                    </Link>
+                    <Link to={`/categories/${category._id}/quiz?mode=all`}>
+                      <button className="btn btn-sm" style={{ background: 'var(--leaf-soft)' }}>
+                        Öva allt
+                      </button>
+                    </Link>
+                  </div>
                 )}
-                <h3 style={{ margin: 0 }}>
-                  {category ? category.name : <span className="muted">Okategoriserade</span>}
-                </h3>
-                <span className="t-hand muted" style={{ fontSize: 14 }}>
-                  {catLists.length} {catLists.length === 1 ? 'lista' : 'listor'}
-                </span>
               </div>
               <div className="deck-grid">
                 {catLists.map((list, i) => renderDeckCard(list, sectionIdx * 100 + i))}
