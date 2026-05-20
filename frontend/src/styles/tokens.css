@@ -1,0 +1,149 @@
+/* ==========================================================================
+   GLOSAN — Foundation tokens
+   colors, type, spacing, radii, shadows, motion
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Lilita+One&family=Nunito:wght@400;600;700;800;900&family=Patrick+Hand&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+  /* paper & ink */
+  --paper:        #FBF5E6;
+  --paper-deep:   #F4EAD0;
+  --paper-edge:   #E8DCB8;
+  --ink:          #1F1B16;
+  --ink-soft:     #5A5147;
+  --ink-mute:     #8C8273;
+
+  /* marker palette */
+  --coral:        #FF6B6B;
+  --coral-deep:   #E54B4B;
+  --coral-soft:   #FFD3D0;
+
+  --mustard:      #FFC93C;
+  --mustard-deep: #E8B020;
+  --mustard-soft: #FFEFC2;
+
+  --leaf:         #2DB57A;
+  --leaf-deep:    #1F8F60;
+  --leaf-soft:    #C5EBD8;
+
+  --sky:          #4DABF7;
+  --sky-deep:     #2F8DD9;
+  --sky-soft:     #CFE6FB;
+
+  --plum:         #845EC2;
+  --plum-deep:    #6841A8;
+  --plum-soft:    #DDD0F0;
+
+  --berry:        #E84A8C;
+  --berry-deep:   #C42E6E;
+  --berry-soft:   #FBD0E1;
+
+  /* semantic aliases */
+  --bg:           var(--paper);
+  --bg-elev:      #FFFCF2;
+  --bg-sunken:    var(--paper-deep);
+  --fg:           var(--ink);
+  --fg-soft:      var(--ink-soft);
+  --fg-mute:      var(--ink-mute);
+  --border:       var(--ink);
+  --border-soft:  var(--paper-edge);
+
+  --brand:        var(--coral);
+  --brand-deep:   var(--coral-deep);
+  --brand-soft:   var(--coral-soft);
+
+  --success:      var(--leaf);
+  --warning:      var(--mustard-deep);
+  --danger:       var(--berry);
+  --info:         var(--sky);
+
+  /* type families */
+  --font-display: 'Caveat Brush', 'Bradley Hand', cursive;
+  --font-headline:'Lilita One', 'Arial Rounded MT Bold', sans-serif;
+  --font-hand:    'Patrick Hand', 'Comic Sans MS', cursive;
+  --font-body:    'Nunito', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  /* type scale */
+  --t-display:    72px;
+  --t-h1:         44px;
+  --t-h2:         32px;
+  --t-h3:         24px;
+  --t-h4:         20px;
+  --t-body:       17px;
+  --t-small:      15px;
+  --t-micro:      13px;
+
+  --lh-tight:     1.05;
+  --lh-snug:      1.2;
+  --lh-normal:    1.5;
+  --lh-loose:     1.7;
+
+  /* spacing */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px;
+  --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px;
+
+  /* radii */
+  --r-1: 6px; --r-2: 10px; --r-3: 14px; --r-4: 20px; --r-5: 28px;
+  --r-pill: 999px;
+
+  /* borders */
+  --bw-hair: 1px; --bw-line: 2px; --bw-bold: 3px;
+
+  /* shadows — marker drop */
+  --sh-pop-sm: 2px 2px 0 0 var(--ink);
+  --sh-pop:    4px 4px 0 0 var(--ink);
+  --sh-pop-lg: 6px 6px 0 0 var(--ink);
+  --sh-pop-xl: 8px 8px 0 0 var(--ink);
+  --sh-soft:   0 6px 18px -8px rgba(31, 27, 22, 0.25);
+  --sh-soft-lg:0 12px 30px -10px rgba(31, 27, 22, 0.3);
+
+  /* motion */
+  --ease-snap:   cubic-bezier(.34,1.56,.64,1);
+  --ease-out:    cubic-bezier(.2,.7,.2,1);
+  --dur-fast:    120ms;
+  --dur-base:    220ms;
+  --dur-slow:    420ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.paper-texture {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(rgba(31,27,22,0.025) 1px, transparent 1px),
+    radial-gradient(rgba(31,27,22,0.018) 1px, transparent 1px);
+  background-size: 4px 4px, 11px 11px;
+  background-position: 0 0, 2px 2px;
+}
+
+.t-display { font-family: var(--font-display); font-size: var(--t-display); line-height: var(--lh-tight); letter-spacing: 0.5px; font-weight: 400; }
+h1, .t-h1 { font-family: var(--font-headline); font-size: var(--t-h1); line-height: var(--lh-tight); font-weight: 400; letter-spacing: -0.5px; margin: 0; }
+h2, .t-h2 { font-family: var(--font-headline); font-size: var(--t-h2); line-height: var(--lh-snug); font-weight: 400; margin: 0; }
+h3, .t-h3 { font-family: var(--font-headline); font-size: var(--t-h3); line-height: var(--lh-snug); font-weight: 400; margin: 0; }
+h4, .t-h4 { font-family: var(--font-body); font-size: var(--t-h4); line-height: var(--lh-snug); font-weight: 800; margin: 0; }
+p, .t-body { font-family: var(--font-body); font-size: var(--t-body); line-height: var(--lh-normal); font-weight: 400; }
+.t-hand { font-family: var(--font-hand); font-weight: 400; }
+.t-small  { font-size: var(--t-small);  }
+.t-micro  { font-size: var(--t-micro); letter-spacing: 0.4px; }
+code, .t-mono { font-family: var(--font-mono); font-size: 0.92em; }
+
+.mark-underline { background-image: linear-gradient(transparent 70%, var(--mustard) 70%, var(--mustard) 95%, transparent 95%); background-repeat: no-repeat; background-size: 100% 100%; padding: 0 2px; }
+.mark-highlight { background: var(--mustard); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 4px; border-radius: 3px; }
+.tilt-l { transform: rotate(-2deg); }
+.tilt-r { transform: rotate(2deg); }
+.tilt-lg{ transform: rotate(-4deg); }
+.tilt-rg{ transform: rotate(4deg); }

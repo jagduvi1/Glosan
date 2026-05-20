@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <filter id="markRough" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="11"></feTurbulence>
+      <feDisplacementMap in="SourceGraphic" scale="1.4"></feDisplacementMap>
+    </filter>
+  </defs>
+  <g filter="url(#markRough)">
+    <rect x="8" y="8" width="104" height="104" rx="22" fill="#FF6B6B" stroke="#1F1B16" stroke-width="4"></rect>
+    <text x="60" y="78" font-family="&#39;Lilita One&#39;, &#39;Arial Rounded MT Bold&#39;, sans-serif" font-size="60" fill="#FFFCF2" text-anchor="middle" letter-spacing="-1">G</text>
+    
+    <circle cx="86" cy="34" r="11" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3"></circle>
+    <circle cx="90" cy="37" r="5" fill="#1F1B16"></circle>
+  </g>
+</svg>
