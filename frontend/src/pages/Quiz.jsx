@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, submitScore } from '../api/lists';
 import { updateGlos } from '../api/glosor';
@@ -28,13 +28,23 @@ function answerVariants(target) {
     .map((parts) => parts.join(' ').toLowerCase());
 }
 
+function buildDistractors(currentGlos, pool) {
+  const others = pool.filter((g) =>
+    g._id !== currentGlos._id && g.target.trim().toLowerCase() !== currentGlos.target.trim().toLowerCase()
+  );
+  return shuffle(others).slice(0, 3).map((g) => g.target);
+}
+
 export default function Quiz() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const mode = searchParams.get('mode') === 'choice' ? 'choice' : 'write';
   const { apiFetch } = useAuth();
   const [list, setList] = useState(null);
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
   const [totalCards, setTotalCards] = useState(0);
+  const [allGlosor, setAllGlosor] = useState([]);
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [score, setScore] = useState({ correct: 0, wrong: 0 });
@@ -56,6 +66,7 @@ export default function Quiz() {
     try {
       const data = await fetchList(apiFetch, id);
       setList(data.list);
+      setAllGlosor(data.glosor);
       const pool = wrongOnly
         ? data.glosor.filter((g) => (g.stats?.wrong ?? 0) > 0)
         : data.glosor;
@@ -72,17 +83,18 @@ export default function Quiz() {
 
   useEffect(() => { load(); }, [load]);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!current) return;
-    const isCorrect = answerVariants(current.target).includes(answer.trim().toLowerCase());
+  const options = useMemo(() => {
+    if (mode !== 'choice' || !current || allGlosor.length === 0) return [];
+    const distractors = buildDistractors(current, allGlosor);
+    return shuffle([current.target, ...distractors]);
+  }, [current, allGlosor, mode]);
 
-    setFeedback({ isCorrect, expected: current.target, given: answer.trim() });
+  const recordAnswer = async (isCorrect, given) => {
+    setFeedback({ isCorrect, expected: current.target, given });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     const newStreak = isCorrect ? streak + 1 : 0;
     setStreak(newStreak);
     setBestStreak((b) => Math.max(b, newStreak));
-
     try {
       await updateGlos(apiFetch, current._id, {
         stats: {
@@ -90,7 +102,20 @@ export default function Quiz() {
           wrong: (current.stats?.wrong ?? 0) + (isCorrect ? 0 : 1)
         }
       });
-    } catch { /* swallow — quiz proceeds even if stats update fails */ }
+    } catch { /* swallow */ }
+  };
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    if (!current) return;
+    const isCorrect = answerVariants(current.target).includes(answer.trim().toLowerCase());
+    recordAnswer(isCorrect, answer.trim());
+  };
+
+  const onPick = (option) => {
+    if (!current || feedback) return;
+    const isCorrect = answerVariants(current.target).includes(option.trim().toLowerCase());
+    recordAnswer(isCorrect, option);
   };
 
   const onNext = async () => {
@@ -117,12 +142,44 @@ export default function Quiz() {
     }
   };
 
+  // Keyboard 1-4 for choice mode (only when not in feedback)
+  useEffect(() => {
+    if (mode !== 'choice' || feedback || options.length === 0) return undefined;
+    const onKey = (e) => {
+      const idx = parseInt(e.key, 10) - 1;
+      if (idx >= 0 && idx < options.length) onPick(options[idx]);
+      else if (e.key === 'Enter' && feedback) onNext();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, feedback, options]);
+
   if (loading) return <p className="t-hand muted">Glo blandar korten…</p>;
   if (error) return <p className="error">{error}</p>;
 
   const flag = LANG_TO_FLAG[list?.sourceLang];
   const answered = score.correct + score.wrong;
   const progress = totalCards > 0 ? (answered / totalCards) * 100 : 0;
+  const modeLabel = mode === 'choice' ? '4 val' : 'skriv';
+  const modeBg = mode === 'choice' ? 'var(--mustard-soft)' : 'var(--leaf-soft)';
+
+  // Choice mode needs at least 4 glosor for distractors
+  if (mode === 'choice' && allGlosor.length > 0 && allGlosor.length < 4) {
+    return (
+      <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
+        <GloAvatar size={120} float mood="sad" style={{ margin: '0 auto 12px' }} />
+        <h2 style={{ marginBottom: 8 }}>För få glosor för 4 val</h2>
+        <p className="muted" style={{ marginBottom: 18 }}>
+          4-val behöver minst 4 glosor i listan för att kunna bygga distraktorer. Lägg till några till — eller välj ett annat läge.
+        </p>
+        <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
+          <Link to={`/lists/${id}/quiz`}><button className="btn">Skriv-läge istället</button></Link>
+          <Link to={`/lists/${id}`}><button className="btn btn-primary">Tillbaka till listan</button></Link>
+        </div>
+      </div>
+    );
+  }
 
   // End screen
   if (!current) {
@@ -201,7 +258,6 @@ export default function Quiz() {
   // In-quiz
   return (
     <div style={{ marginTop: -28 }}>
-      {/* Top bar */}
       <div className="row between" style={{ padding: '14px 0', borderBottom: '2px solid var(--ink)', marginBottom: 28 }}>
         <Link to={`/lists/${id}`}>
           <button className="btn btn-ghost btn-sm" aria-label="Avbryt quiz">× Avbryt</button>
@@ -220,7 +276,7 @@ export default function Quiz() {
                 <Flag code={flag} size="sm" /> {list?.sourceLang}
               </span>
             )}
-            <span className="pill" style={{ background: 'var(--leaf-soft)' }}>läge: skriv</span>
+            <span className="pill" style={{ background: modeBg }}>läge: {modeLabel}</span>
             <button
               className="pill"
               style={{
@@ -238,11 +294,11 @@ export default function Quiz() {
         </div>
 
         <div className="t-hand muted" style={{ fontSize: 18, marginBottom: 8 }}>
-          Översätt till {list?.targetLang}
+          {mode === 'choice' ? `Vilken översättning?` : `Översätt till ${list?.targetLang}`}
         </div>
 
         <div className="card card-lg" style={{ padding: 36, textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 96, lineHeight: 1 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: mode === 'choice' ? 80 : 96, lineHeight: 1 }}>
             {current.source}
           </div>
           {current.notes && (
@@ -251,28 +307,58 @@ export default function Quiz() {
         </div>
 
         {!feedback ? (
-          <form onSubmit={onSubmit} style={{ marginTop: 24 }}>
-            <input
-              className="inp inp-lg"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder={`skriv ${list?.targetLang}…`}
-              autoFocus
-              required
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-            />
-            <div className="row between" style={{ marginTop: 16 }}>
-              <span className="t-hand muted" style={{ fontSize: 14 }}>
-                tryck <code>enter</code> för att svara
-              </span>
-              <button type="submit" className="btn btn-primary">Svara</button>
-            </div>
-          </form>
+          mode === 'choice' ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 22 }}>
+                {options.map((opt, i) => (
+                  <button
+                    key={`${opt}-${i}`}
+                    className="btn"
+                    onClick={() => onPick(opt)}
+                    style={{ justifyContent: 'flex-start', padding: '16px 20px', fontSize: 18 }}
+                  >
+                    <span
+                      style={{
+                        width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 6,
+                        fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 800,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'var(--paper-deep)', flex: 'none'
+                      }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span style={{ textAlign: 'left' }}>{opt}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="t-hand muted" style={{ textAlign: 'center', fontSize: 13, marginTop: 14 }}>
+                tryck <code>1–4</code> för att svara snabbt
+              </p>
+            </>
+          ) : (
+            <form onSubmit={onSubmit} style={{ marginTop: 24 }}>
+              <input
+                className="inp inp-lg"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder={`skriv ${list?.targetLang}…`}
+                autoFocus
+                required
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <div className="row between" style={{ marginTop: 16 }}>
+                <span className="t-hand muted" style={{ fontSize: 14 }}>
+                  tryck <code>enter</code> för att svara
+                </span>
+                <button type="submit" className="btn btn-primary">Svara</button>
+              </div>
+            </form>
+          )
         ) : (
           <div
-            className={`card pop-in${feedback.isCorrect ? '' : ''}`}
+            className="card pop-in"
             style={{
               marginTop: 24,
               background: feedback.isCorrect ? 'var(--leaf-soft)' : 'var(--berry-soft)',
@@ -283,14 +369,18 @@ export default function Quiz() {
               <GloAvatar mood={feedback.isCorrect ? 'wink' : 'sad'} size={56} />
               <div className="grow">
                 <h3 style={{ margin: 0 }}>
-                  {feedback.isCorrect ? 'Snyggt! Glo tappar hakan.' : `Nära! Det stavas ${feedback.expected}.`}
+                  {feedback.isCorrect
+                    ? 'Snyggt! Glo tappar hakan.'
+                    : mode === 'choice'
+                      ? `Nära! Rätt svar: ${feedback.expected}.`
+                      : `Nära! Det stavas ${feedback.expected}.`}
                 </h3>
                 {feedback.isCorrect && streak >= 2 && (
                   <p style={{ margin: '4px 0 0', fontFamily: 'var(--font-headline)', fontSize: 22, color: 'var(--coral-deep)' }}>
                     🔥 {streak} i rad!
                   </p>
                 )}
-                {!feedback.isCorrect && feedback.given && (
+                {!feedback.isCorrect && feedback.given && mode === 'write' && (
                   <p className="t-hand muted" style={{ margin: '4px 0 0', fontSize: 14 }}>
                     Du skrev: {feedback.given}
                   </p>

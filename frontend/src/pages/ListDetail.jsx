@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
+import ModePicker from '../components/ModePicker';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
+
+const LAST_MODE_KEY = 'glosan:lastMode';
 
 const LANG_TO_FLAG = {
   fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
@@ -47,6 +50,7 @@ function MasteryDot({ level }) {
 
 export default function ListDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { apiFetch } = useAuth();
   const [list, setList] = useState(null);
   const [glosor, setGlosor] = useState([]);
@@ -56,6 +60,19 @@ export default function ListDetail() {
   const [aiTopicOpen, setAiTopicOpen] = useState(false);
   const [aiTopic, setAiTopic] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [showModePicker, setShowModePicker] = useState(false);
+
+  const onPickMode = (mode) => {
+    try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
+    setShowModePicker(false);
+    if (mode === 'flashcard') navigate(`/lists/${id}/flashcards`);
+    else if (mode === 'choice') navigate(`/lists/${id}/quiz?mode=choice`);
+    else navigate(`/lists/${id}/quiz`);
+  };
+
+  const lastMode = (() => {
+    try { return localStorage.getItem(LAST_MODE_KEY); } catch { return null; }
+  })();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,8 +201,13 @@ export default function ListDetail() {
             )}
           </div>
           <div className="row" style={{ gap: 10, flex: 'none' }}>
-            <Link to={`/lists/${id}/flashcards`}><button className="btn">Flashcards</button></Link>
-            <Link to={`/lists/${id}/quiz`}><button className="btn btn-primary btn-lg">Starta quiz →</button></Link>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={() => setShowModePicker(true)}
+              disabled={glosor.length === 0}
+            >
+              Starta öva →
+            </button>
           </div>
         </div>
       </div>
@@ -339,6 +361,14 @@ export default function ListDetail() {
           apiFetch={apiFetch}
           onClose={() => setShowImport(false)}
           onConfirm={onImportConfirm}
+        />
+      )}
+
+      {showModePicker && (
+        <ModePicker
+          lastMode={lastMode}
+          onClose={() => setShowModePicker(false)}
+          onSelect={onPickMode}
         />
       )}
     </div>
