@@ -17,6 +17,7 @@ export default function Layout({ children }) {
 
   const isOnLists = location.pathname.startsWith('/lists');
   const isOnProfile = location.pathname.startsWith('/profile');
+  const isOnDictionary = location.pathname.startsWith('/ordbok');
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
@@ -27,6 +28,7 @@ export default function Layout({ children }) {
           </Link>
           <div className="nav-links">
             <Link to="/lists" className={`nav-link ${isOnLists ? 'active' : ''}`}>Mina listor</Link>
+            <Link to="/ordbok" className={`nav-link ${isOnDictionary ? 'active' : ''}`}>Ordbok</Link>
             <Link to="/profile" className={`nav-link ${isOnProfile ? 'active' : ''}`}>Profil</Link>
           </div>
           <div className="row" style={{ gap: 10 }}>
