@@ -155,7 +155,7 @@ export default function ListDetail() {
       const suggestions = await extendList(apiFetch, { listId: id, count: 10 });
       for (const s of suggestions) {
         if (!s.source || !s.target) continue;
-        const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target });
+        const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target, extra: true });
         setGlosor((cur) => [...cur, glos]);
       }
     } catch (err) {
@@ -264,9 +264,19 @@ export default function ListDetail() {
                 </thead>
                 <tbody>
                   {glosor.map((g) => (
-                    <tr key={g._id}>
+                    <tr key={g._id} style={g.extra ? { background: 'var(--mustard-soft)' } : undefined}>
                       <td><MasteryDot level={masteryOf(g)} /></td>
                       <td style={{ fontWeight: 700 }}>
+                        {g.extra && (
+                          <img
+                            src="/assets/star-sticker.svg"
+                            width="14"
+                            height="14"
+                            alt=""
+                            title="Extra-glosa — inte läxa"
+                            style={{ verticalAlign: 'middle', marginRight: 6 }}
+                          />
+                        )}
                         {g.source}
                         {g.notes && (
                           <span className="t-hand muted" style={{ fontSize: 13, marginLeft: 6 }}>· {g.notes}</span>

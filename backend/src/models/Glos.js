@@ -31,6 +31,9 @@ const glosSchema = new mongoose.Schema({
     maxlength: [500, 'Example sentence too long'],
     default: ''
   },
+  // True for glosor the user added as "extras" (e.g. AI suggestions on the
+  // same theme as the homework) — not part of what they need to memorise.
+  extra: { type: Boolean, default: false },
   stats: {
     correct: { type: Number, default: 0 },
     wrong: { type: Number, default: 0 },

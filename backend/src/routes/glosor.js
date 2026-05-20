@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.post('/lists/:listId/glosor', loadOwnedList('listId'), async (req, res) => {
   try {
-    const { source, target, notes, exampleSentence } = req.body;
+    const { source, target, notes, exampleSentence, extra } = req.body;
     if (!source || !target) {
       return res.status(400).json({ error: 'source and target are required' });
     }
@@ -19,7 +19,8 @@ router.post('/lists/:listId/glosor', loadOwnedList('listId'), async (req, res) =
       source,
       target,
       notes: notes || '',
-      exampleSentence: exampleSentence || ''
+      exampleSentence: exampleSentence || '',
+      extra: extra === true
     });
     res.status(201).json({ glos });
   } catch (error) {
@@ -33,11 +34,12 @@ router.post('/lists/:listId/glosor', loadOwnedList('listId'), async (req, res) =
 
 router.put('/glosor/:id', loadOwnedGlos, async (req, res) => {
   try {
-    const { source, target, notes, exampleSentence, stats } = req.body;
+    const { source, target, notes, exampleSentence, stats, extra } = req.body;
     if (source !== undefined) req.glos.source = source;
     if (target !== undefined) req.glos.target = target;
     if (notes !== undefined) req.glos.notes = notes;
     if (exampleSentence !== undefined) req.glos.exampleSentence = exampleSentence;
+    if (typeof extra === 'boolean') req.glos.extra = extra;
 
     if (stats && typeof stats === 'object') {
       if (typeof stats.correct === 'number') req.glos.stats.correct = stats.correct;
