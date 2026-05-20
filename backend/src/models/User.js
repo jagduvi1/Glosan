@@ -42,6 +42,20 @@ const userSchema = new mongoose.Schema({
   // first /api/me/friend-code request for users who registered before this
   // field existed. Unique across all users.
   friendCode: { type: String, default: null, unique: true, sparse: true, index: true },
+  plan: {
+    type: String,
+    enum: ['free', 'basic', 'premium'],
+    default: 'free'
+  },
+  trial: {
+    plan: { type: String, enum: ['free', 'basic', 'premium', null], default: null },
+    until: { type: Date, default: null }
+  },
+  hasUsedTrial: { type: Boolean, default: false },
+  aiUsage: {
+    count: { type: Number, default: 0, min: 0 },
+    monthKey: { type: String, default: '' }
+  },
   avatar: {
     kind: { type: String, enum: ['initial', 'glo', 'emoji'], default: 'initial' },
     value: { type: String, default: '', maxlength: 16 }

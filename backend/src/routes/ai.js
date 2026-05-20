@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
+const { enforceAiQuota, incrementAiUsage } = require('../middleware/aiQuota');
 const anthropic = require('../services/anthropic');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
@@ -16,7 +17,7 @@ const aiLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: 'AI rate limit exceeded — please slow down' })
 });
 
-router.use(requireAuth, aiLimiter);
+router.use(requireAuth, aiLimiter, enforceAiQuota);
 
 function requireEnabled(req, res) {
   if (!anthropic.isEnabled()) {
@@ -46,6 +47,7 @@ router.post('/generate-list', async (req, res) => {
     if (!data || !Array.isArray(data.glosor)) {
       return res.status(502).json({ error: 'AI response was not valid JSON' });
     }
+    await incrementAiUsage(req.user.id);
     res.json({ glosor: data.glosor.slice(0, n) });
   } catch (error) {
     console.error('AI generate-list error:', error.message);
@@ -85,6 +87,7 @@ router.post('/extend-list', async (req, res) => {
     if (!data || !Array.isArray(data.glosor)) {
       return res.status(502).json({ error: 'AI response was not valid JSON' });
     }
+    await incrementAiUsage(req.user.id);
     res.json({ glosor: data.glosor.slice(0, n) });
   } catch (error) {
     console.error('AI extend-list error:', error.message);
@@ -124,6 +127,7 @@ router.post('/parse-list', async (req, res) => {
     if (!data || !Array.isArray(data.glosor)) {
       return res.status(502).json({ error: 'AI response was not valid JSON' });
     }
+    await incrementAiUsage(req.user.id);
     res.json({
       glosor: data.glosor.filter((g) => g && g.source && g.target),
       sourceLang: data.sourceLang || sourceLang || '',
@@ -158,6 +162,7 @@ router.post('/example-sentence', async (req, res) => {
     if (!data || typeof data.sentence !== 'string') {
       return res.status(502).json({ error: 'AI response was not valid JSON' });
     }
+    await incrementAiUsage(req.user.id);
     res.json({ sentence: data.sentence });
   } catch (error) {
     console.error('AI example-sentence error:', error.message);
@@ -184,6 +189,7 @@ router.post('/translate', async (req, res) => {
     if (!data || typeof data.translation !== 'string') {
       return res.status(502).json({ error: 'AI response was not valid JSON' });
     }
+    await incrementAiUsage(req.user.id);
     res.json({ translation: data.translation });
   } catch (error) {
     console.error('AI translate error:', error.message);

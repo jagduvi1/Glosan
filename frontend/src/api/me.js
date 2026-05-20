@@ -26,3 +26,17 @@ export async function postQuizComplete(apiFetch, body) {
   if (!res.ok) throw new Error(data.error || 'Kunde inte spara resultatet');
   return data;
 }
+
+export async function getMyPlan(apiFetch) {
+  const res = await apiFetch('/api/me/plan');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte hämta plan');
+  return data;
+}
+
+export async function startMyTrial(apiFetch) {
+  const res = await apiFetch('/api/me/trial', { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte starta trial');
+  return data;
+}

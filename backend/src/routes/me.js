@@ -5,6 +5,7 @@ const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
+const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
 const router = express.Router();
 
@@ -233,6 +234,83 @@ router.patch('/avatar', async (req, res) => {
   } catch (err) {
     console.error('Avatar update error:', err);
     res.status(500).json({ error: 'Failed to update avatar' });
+  }
+});
+
+// GET /api/me/plan — current plan, effective plan, trial status, and this
+// month's AI usage. Powers the plan card on the Profile page.
+router.get('/plan', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id, 'plan trial hasUsedTrial aiUsage');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const plan = effectivePlan(user);
+    const currentMonth = monthKey();
+    const usedThisMonth = user.aiUsage?.monthKey === currentMonth ? (user.aiUsage.count || 0) : 0;
+    const trialActive = !!(user.trial?.plan && user.trial.until && new Date(user.trial.until) > new Date());
+
+    res.json({
+      plan: user.plan,
+      effectivePlan: {
+        id: plan.id,
+        label: plan.label,
+        aiCallsPerMonth: plan.aiCallsPerMonth,
+        color: plan.color
+      },
+      trial: {
+        plan: user.trial?.plan || null,
+        until: user.trial?.until || null,
+        active: trialActive
+      },
+      hasUsedTrial: !!user.hasUsedTrial,
+      aiUsage: {
+        used: usedThisMonth,
+        limit: plan.aiCallsPerMonth,
+        monthKey: currentMonth
+      },
+      plans: Object.values(PLANS).map((p) => ({
+        id: p.id,
+        label: p.label,
+        aiCallsPerMonth: p.aiCallsPerMonth,
+        color: p.color
+      }))
+    });
+  } catch (err) {
+    console.error('Get plan error:', err);
+    res.status(500).json({ error: 'Failed to load plan' });
+  }
+});
+
+// POST /api/me/trial — one-shot self-service trial of premium for 7 days.
+// `hasUsedTrial` is set so the user can't trigger it twice. Admin-granted
+// trials don't burn this flag, so support can still gift one later.
+router.post('/trial', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.hasUsedTrial) {
+      return res.status(400).json({ error: 'Du har redan använt din gratis trial. Kontakta Johan om du vill prova igen.' });
+    }
+    const trialActive = !!(user.trial?.plan && user.trial.until && new Date(user.trial.until) > new Date());
+    if (trialActive) {
+      return res.status(400).json({ error: 'Du har redan en aktiv trial.' });
+    }
+
+    const until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    user.trial = { plan: 'premium', until };
+    user.hasUsedTrial = true;
+    await user.save();
+
+    const plan = effectivePlan(user);
+    res.json({
+      trial: { plan: user.trial.plan, until: user.trial.until, active: true },
+      effectivePlan: { id: plan.id, label: plan.label, aiCallsPerMonth: plan.aiCallsPerMonth, color: plan.color },
+      hasUsedTrial: true
+    });
+  } catch (err) {
+    console.error('Start trial error:', err);
+    res.status(500).json({ error: 'Failed to start trial' });
   }
 });
 
