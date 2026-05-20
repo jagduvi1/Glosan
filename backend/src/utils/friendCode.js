@@ -3,12 +3,16 @@
 // no lowercase. 32^6 ≈ 1 billion combinations: easy to share, very hard to
 // brute-force at our request rate limits.
 
+const crypto = require('crypto');
+
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function randomCode() {
   let s = '';
   for (let i = 0; i < 6; i++) {
-    s += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    // crypto.randomInt är CSPRNG-säker; Math.random är en förutsägbar PRNG
+    // som kan rekonstrueras om processminne läcker.
+    s += ALPHABET[crypto.randomInt(0, ALPHABET.length)];
   }
   return s;
 }

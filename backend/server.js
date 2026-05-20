@@ -7,6 +7,19 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
+// JWT_SECRET måste vara tillräckligt långt + inte vara placeholdern från
+// .env.example. HS256 signering med en svag eller läckt nyckel = trivial
+// auth-bypass via förfalskade tokens.
+const jwtSecret = process.env.JWT_SECRET;
+if (jwtSecret.length < 32) {
+  console.error('FATAL: JWT_SECRET must be at least 32 characters long.');
+  process.exit(1);
+}
+if (/change[-_]?me|placeholder|example|secret|please[-_]?change/i.test(jwtSecret)) {
+  console.error('FATAL: JWT_SECRET looks like an example placeholder. Generate a real random secret (e.g. `openssl rand -base64 48`).');
+  process.exit(1);
+}
+
 if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('Warning: ANTHROPIC_API_KEY not set — /api/ai/* routes will return 503.');
 }

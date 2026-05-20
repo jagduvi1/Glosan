@@ -19,12 +19,20 @@ const app = express();
 
 app.set('trust proxy', 2);
 
+// API:t returnerar bara JSON, så CSP-headern har ingen praktisk effekt här —
+// SPA:s CSP sätts av nginx (se frontend/nginx.conf). Vi behåller HSTS,
+// frameguard, content-type-sniffning och en strikt CSP som extra lager för
+// browsers som av misstag hamnar på en API-URL.
 app.use(helmet({
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   frameguard: { action: 'deny' },
+  noSniff: true,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   contentSecurityPolicy: {
-    directives: { defaultSrc: ["'none'"] }
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"]
+    }
   }
 }));
 
