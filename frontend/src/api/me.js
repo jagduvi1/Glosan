@@ -40,3 +40,23 @@ export async function startMyTrial(apiFetch) {
   if (!res.ok) throw new Error(data.error || 'Kunde inte starta trial');
   return data;
 }
+
+// Returnerar hela export-bloben som JSON så Profile-sidan kan triggera
+// en nedladdning via Blob + objectURL.
+export async function exportMyData(apiFetch) {
+  const res = await apiFetch('/api/me/export');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Kunde inte exportera data');
+  }
+  return res.json();
+}
+
+export async function deleteMyAccount(apiFetch) {
+  const res = await apiFetch('/api/me', { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Kunde inte radera kontot');
+  }
+  return res.json();
+}

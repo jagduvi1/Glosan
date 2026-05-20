@@ -78,8 +78,18 @@ app.use((req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err);
+  // Log only what we control — namn, meddelande, stack och request-vägen.
+  // Hela err-objektet kan släpa med req.body / headers (lösenord, tokens,
+  // mail), vilket är personuppgifter vi inte vill ha i loggarna.
   const status = err.status || err.statusCode || 500;
+  console.error('[error]', {
+    method: req.method,
+    path: req.path,
+    status,
+    name: err.name,
+    message: err.message,
+    stack: err.stack
+  });
   const message = process.env.NODE_ENV === 'production' && status >= 500
     ? 'Internal server error'
     : (err.message || 'Internal server error');

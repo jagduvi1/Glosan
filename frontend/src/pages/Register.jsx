@@ -130,7 +130,8 @@ export default function Register() {
           </button>
 
           <p className="t-hand muted" style={{ marginTop: 14, fontSize: 14, textAlign: 'center', lineHeight: 1.4 }}>
-            Genom att skapa konto godkänner du våra villkor.
+            Genom att skapa konto godkänner du vår{' '}
+            <Link to="/integritet" style={{ color: 'var(--coral-deep)' }}>integritetspolicy</Link>.
           </p>
         </form>
       </div>

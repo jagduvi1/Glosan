@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { updateAvatar, getMyPlan, startMyTrial } from '../api/me';
+import { updateAvatar, getMyPlan, startMyTrial, exportMyData, deleteMyAccount } from '../api/me';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
@@ -63,13 +63,19 @@ const BADGES = [
 ];
 
 export default function Profile() {
-  const { user, apiFetch } = useAuth();
+  const { user, apiFetch, logout } = useAuth();
   const { profile, loading, error, refresh } = useGamification();
+  const navigate = useNavigate();
   const [showPicker, setShowPicker] = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [plan, setPlan] = useState(null);
   const [planError, setPlanError] = useState('');
   const [trialBusy, setTrialBusy] = useState(false);
+  const [rightsError, setRightsError] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const loadPlan = useCallback(async () => {
     try {
@@ -102,6 +108,41 @@ export default function Profile() {
       setPlanError(e.message);
     } finally {
       setTrialBusy(false);
+    }
+  };
+
+  const onExport = async () => {
+    setRightsError('');
+    setExportBusy(true);
+    try {
+      const data = await exportMyData(apiFetch);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `glosan-export-${user.username}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setRightsError(e.message);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (deleteConfirmText !== user.username) return;
+    setRightsError('');
+    setDeleteBusy(true);
+    try {
+      await deleteMyAccount(apiFetch);
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (e) {
+      setRightsError(e.message);
+      setDeleteBusy(false);
     }
   };
 
@@ -346,9 +387,85 @@ export default function Profile() {
         </div>
       </div>
 
+      <div className="card" style={{ background: 'var(--paper-edge)' }}>
+        <h2 style={{ marginTop: 0 }}>Mina rättigheter</h2>
+        <p className="t-hand muted" style={{ fontSize: 15, marginTop: 0 }}>
+          Du kan när som helst ladda ner din data eller radera kontot. Läs mer i vår{' '}
+          <Link to="/integritet">integritetspolicy</Link>.
+        </p>
+        {rightsError && <p className="error">{rightsError}</p>}
+        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={onExport} disabled={exportBusy}>
+            {exportBusy ? 'Hämtar…' : 'Ladda ner min data (JSON)'}
+          </button>
+          <button
+            className="btn"
+            style={{ background: 'var(--berry-soft)', color: 'var(--berry-deep)' }}
+            onClick={() => { setShowDeleteConfirm(true); setDeleteConfirmText(''); }}
+          >
+            Radera mitt konto
+          </button>
+        </div>
+      </div>
+
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <Link to="/lists"><button className="btn btn-primary">Tillbaka till listorna →</button></Link>
       </div>
+
+      {showDeleteConfirm && (
+        <div className="modal-backdrop" onClick={() => !deleteBusy && setShowDeleteConfirm(false)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0 }}>Radera kontot?</h3>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteBusy}
+                aria-label="Stäng"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body stack">
+              <p>
+                Allt försvinner direkt: dina <strong>listor</strong>, <strong>glosor</strong>,
+                <strong> kompis-kopplingar</strong>, <strong>XP</strong> och <strong>profil</strong>.
+                Detta går inte att ångra.
+              </p>
+              <label className="field">
+                <span className="field-label">
+                  Skriv ditt användarnamn <strong>{user.username}</strong> för att bekräfta
+                </span>
+                <input
+                  className="inp"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                  disabled={deleteBusy}
+                />
+              </label>
+              <div className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleteBusy}
+                >
+                  Avbryt
+                </button>
+                <button
+                  className="btn"
+                  style={{ background: 'var(--berry)', color: 'var(--paper)' }}
+                  onClick={onDelete}
+                  disabled={deleteBusy || deleteConfirmText !== user.username}
+                >
+                  {deleteBusy ? 'Raderar…' : 'Radera permanent'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPicker && (
         <AvatarPicker

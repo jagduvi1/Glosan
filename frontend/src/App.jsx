@@ -21,6 +21,7 @@ const Friends   = lazy(() => import('./pages/Friends'));
 const Admin     = lazy(() => import('./pages/Admin'));
 const Galge     = lazy(() => import('./pages/Galge'));
 const Ordfall   = lazy(() => import('./pages/Ordfall'));
+const Integritet = lazy(() => import('./pages/Integritet'));
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -42,6 +43,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login"    element={user ? <Navigate to="/lists" replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
+        <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
 
         <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 
