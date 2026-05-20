@@ -19,6 +19,8 @@ export default function Layout({ children }) {
   const isOnProfile = location.pathname.startsWith('/profile');
   const isOnDictionary = location.pathname.startsWith('/ordbok');
   const isOnFriends = location.pathname.startsWith('/kompisar');
+  const isOnAdmin = location.pathname.startsWith('/admin');
+  const isAdmin = user?.roles?.includes('admin');
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
@@ -32,6 +34,9 @@ export default function Layout({ children }) {
             <Link to="/ordbok" className={`nav-link ${isOnDictionary ? 'active' : ''}`}>Ordbok</Link>
             <Link to="/kompisar" className={`nav-link ${isOnFriends ? 'active' : ''}`}>Kompisar</Link>
             <Link to="/profile" className={`nav-link ${isOnProfile ? 'active' : ''}`}>Profil</Link>
+            {isAdmin && (
+              <Link to="/admin" className={`nav-link ${isOnAdmin ? 'active' : ''}`}>Admin</Link>
+            )}
           </div>
           <div className="row" style={{ gap: 10 }}>
             {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} />}

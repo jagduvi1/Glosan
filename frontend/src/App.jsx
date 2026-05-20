@@ -18,6 +18,15 @@ const Profile    = lazy(() => import('./pages/Profile'));
 const Dictionary = lazy(() => import('./pages/Dictionary'));
 const CategoryQuiz = lazy(() => import('./pages/CategoryQuiz'));
 const Friends   = lazy(() => import('./pages/Friends'));
+const Admin     = lazy(() => import('./pages/Admin'));
+
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="container"><p>Laddar…</p></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.roles?.includes('admin')) return <Navigate to="/lists" replace />;
+  return children;
+}
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -104,6 +113,14 @@ function AppRoutes() {
             <ProtectedRoute>
               <Layout><Friends /></Layout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Layout><Admin /></Layout>
+            </AdminRoute>
           }
         />
 

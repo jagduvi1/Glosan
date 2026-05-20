@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { updateAvatar } from '../api/me';
+import { updateAvatar, getMyPlan, startMyTrial } from '../api/me';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
+
+function daysUntil(iso) {
+  if (!iso) return 0;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
 
 const BADGES = [
   {
@@ -60,6 +67,20 @@ export default function Profile() {
   const { profile, loading, error, refresh } = useGamification();
   const [showPicker, setShowPicker] = useState(false);
   const [avatarError, setAvatarError] = useState('');
+  const [plan, setPlan] = useState(null);
+  const [planError, setPlanError] = useState('');
+  const [trialBusy, setTrialBusy] = useState(false);
+
+  const loadPlan = useCallback(async () => {
+    try {
+      const data = await getMyPlan(apiFetch);
+      setPlan(data);
+    } catch (e) {
+      setPlanError(e.message);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => { loadPlan(); }, [loadPlan]);
 
   const onSelectAvatar = async (next) => {
     setAvatarError('');
@@ -68,6 +89,19 @@ export default function Profile() {
       refresh();
     } catch (e) {
       setAvatarError(e.message);
+    }
+  };
+
+  const onStartTrial = async () => {
+    setPlanError('');
+    setTrialBusy(true);
+    try {
+      await startMyTrial(apiFetch);
+      await loadPlan();
+    } catch (e) {
+      setPlanError(e.message);
+    } finally {
+      setTrialBusy(false);
     }
   };
 
@@ -141,6 +175,62 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {plan && (
+        <div className="card" style={{ background: `var(--${plan.effectivePlan.color}-soft, var(--paper-edge))` }}>
+          <div className="row between" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+            <div>
+              <div className="t-hand muted" style={{ fontSize: 15 }}>Din plan</div>
+              <h3 style={{ margin: '2px 0 4px', fontSize: 22 }}>
+                {plan.effectivePlan.label}
+                {plan.trial.active && (
+                  <span className="pill" style={{ background: 'var(--mustard-soft)', marginLeft: 10, fontSize: 13 }}>
+                    trial · {daysUntil(plan.trial.until)} {daysUntil(plan.trial.until) === 1 ? 'dag' : 'dagar'} kvar
+                  </span>
+                )}
+              </h3>
+              <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>
+                {plan.effectivePlan.aiCallsPerMonth === null
+                  ? 'Obegränsade AI-anrop varje månad.'
+                  : `${plan.effectivePlan.aiCallsPerMonth} AI-anrop per månad.`}
+              </p>
+            </div>
+            {!plan.trial.active && !plan.hasUsedTrial && plan.effectivePlan.id !== 'premium' && (
+              <button
+                className="btn btn-primary"
+                onClick={onStartTrial}
+                disabled={trialBusy}
+              >
+                {trialBusy ? 'Startar…' : 'Prova premium gratis i 7 dagar'}
+              </button>
+            )}
+            {!plan.trial.active && plan.hasUsedTrial && plan.effectivePlan.id !== 'premium' && (
+              <span className="t-hand muted" style={{ fontSize: 13 }}>
+                Trial använd. Kontakta Johan för uppgradering.
+              </span>
+            )}
+          </div>
+          {plan.aiUsage.limit !== null && (
+            <div style={{ marginTop: 12 }}>
+              <div className="row between" style={{ marginBottom: 4 }}>
+                <span className="t-hand muted" style={{ fontSize: 13 }}>AI-anrop denna månad</span>
+                <span className="t-hand muted" style={{ fontSize: 13 }}>
+                  {plan.aiUsage.used} / {plan.aiUsage.limit}
+                </span>
+              </div>
+              <div className="bar-shell">
+                <div
+                  className="bar-fill bar-fill-coral"
+                  style={{
+                    width: `${Math.min(100, Math.round((plan.aiUsage.used / plan.aiUsage.limit) * 100))}%`
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {planError && <p className="error" style={{ marginTop: 10 }}>{planError}</p>}
+        </div>
+      )}
 
       <div className="row" style={{ gap: 14, flexWrap: 'wrap' }}>
         <StatTile
