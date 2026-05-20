@@ -21,7 +21,16 @@ export const EMOJIS = [
   { value: '🦔', label: 'Igelkott', unlockLevel: 3 },
   { value: '🐼', label: 'Panda', unlockLevel: 4 },
   { value: '🦦', label: 'Utter', unlockLevel: 4 },
-  { value: '🦄', label: 'Enhörning', unlockLevel: 5 }
+  { value: '🦄', label: 'Enhörning', unlockLevel: 5 },
+  // Endgame mascots — one per unlock tier, 2–4 levels apart
+  { value: '🦁', label: 'Lejon', unlockLevel: 7 },
+  { value: '🐳', label: 'Val', unlockLevel: 9 },
+  { value: '🦋', label: 'Fjäril', unlockLevel: 12 },
+  { value: '🦒', label: 'Giraff', unlockLevel: 15 },
+  { value: '🦅', label: 'Örn', unlockLevel: 18 },
+  { value: '🦩', label: 'Flamingo', unlockLevel: 22 },
+  { value: '🦚', label: 'Påfågel', unlockLevel: 26 },
+  { value: '🐉', label: 'Drake', unlockLevel: 30 }
 ];
 
 export const TOTAL_AVATAR_COUNT = 1 /* Initial */ + GLO_MOODS.length + EMOJIS.length;
