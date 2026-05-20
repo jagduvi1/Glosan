@@ -102,6 +102,7 @@ export default function ListDetail() {
         </div>
         <div className="row">
           <Link to={`/lists/${id}/quiz`}><button className="primary">Quiz</button></Link>
+          <Link to={`/lists/${id}/flashcards`}><button>Flashcards</button></Link>
           <button onClick={() => setShowImport(true)}>Importera från text</button>
           <button onClick={onAiGenerate} disabled={aiBusy}>
             {aiBusy ? 'AI tänker…' : 'Föreslå med AI'}

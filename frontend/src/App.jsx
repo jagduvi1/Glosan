@@ -10,6 +10,7 @@ const Register   = lazy(() => import('./pages/Register'));
 const Lists      = lazy(() => import('./pages/Lists'));
 const ListDetail = lazy(() => import('./pages/ListDetail'));
 const Quiz       = lazy(() => import('./pages/Quiz'));
+const Flashcards = lazy(() => import('./pages/Flashcards'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -47,6 +48,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><Quiz /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists/:id/flashcards"
+          element={
+            <ProtectedRoute>
+              <Layout><Flashcards /></Layout>
             </ProtectedRoute>
           }
         />
