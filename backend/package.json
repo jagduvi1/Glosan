@@ -2,6 +2,7 @@
   "name": "glosan-backend",
   "version": "0.1.0",
   "description": "Glosan backend — MERN vocab app with AI helpers",
+  "license": "AGPL-3.0-or-later",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

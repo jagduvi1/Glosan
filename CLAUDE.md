@@ -172,3 +172,12 @@ https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching.
 - Keep commits focused — one logical change per commit.
 - Subject line under 70 characters, imperative mood (`add quiz mode`, not
   `added quiz mode`).
+
+---
+
+## License
+
+Glosan is licensed under **GNU Affero General Public License v3.0 or later**
+(AGPL-3.0-or-later). Full text in [LICENSE](LICENSE). Both `backend/package.json`
+and `frontend/package.json` carry the SPDX identifier; new source files don't
+need an additional header.
