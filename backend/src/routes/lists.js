@@ -96,6 +96,36 @@ router.post('/:id/score', loadOwnedList(), async (req, res) => {
   }
 });
 
+// POST /api/lists/:id/swap-direction — flip the list's source/target languages,
+// swap the source/target on every glos in the list, and flip quizReversed so
+// the quiz experience stays identical. Useful when a list was created with the
+// "wrong" orientation and the user wants the add-glos form swapped.
+router.post('/:id/swap-direction', loadOwnedList(), async (req, res) => {
+  try {
+    const { sourceLang, targetLang } = req.list;
+    req.list.sourceLang = targetLang;
+    req.list.targetLang = sourceLang;
+    req.list.quizReversed = !req.list.quizReversed;
+    await req.list.save();
+
+    const glosor = await Glos.find({ list: req.list._id }, '_id source target').lean();
+    if (glosor.length > 0) {
+      const ops = glosor.map((g) => ({
+        updateOne: {
+          filter: { _id: g._id },
+          update: { $set: { source: g.target, target: g.source } }
+        }
+      }));
+      await Glos.bulkWrite(ops);
+    }
+
+    res.json({ list: req.list, glosorSwapped: glosor.length });
+  } catch (error) {
+    console.error('List swap-direction error:', error);
+    res.status(500).json({ error: 'Failed to swap direction' });
+  }
+});
+
 router.delete('/:id', loadOwnedList(), async (req, res) => {
   try {
     await Glos.deleteMany({ list: req.list._id });

@@ -44,6 +44,13 @@ export async function submitScore(apiFetch, id, body) {
   return data;
 }
 
+export async function swapListDirection(apiFetch, id) {
+  const res = await apiFetch(`/api/lists/${id}/swap-direction`, { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte byta riktning');
+  return data;
+}
+
 export async function deleteList(apiFetch, id) {
   const res = await apiFetch(`/api/lists/${id}`, { method: 'DELETE' });
   if (!res.ok) {

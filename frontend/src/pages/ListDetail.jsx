@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchList } from '../api/lists';
+import { fetchList, swapListDirection } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
+import ConfirmDialog from '../components/ConfirmDialog';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
@@ -58,6 +59,8 @@ export default function ListDetail() {
   const [aiTopic, setAiTopic] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [showModePicker, setShowModePicker] = useState(false);
+  const [showSwapConfirm, setShowSwapConfirm] = useState(false);
+  const [swapBusy, setSwapBusy] = useState(false);
 
   const onPickMode = (mode) => {
     try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
@@ -109,6 +112,23 @@ export default function ListDetail() {
       setGlosor((cur) => cur.filter((g) => g._id !== glosId));
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const confirmSwapDirection = async () => {
+    setSwapBusy(true);
+    setError('');
+    try {
+      const result = await swapListDirection(apiFetch, id);
+      setList(result.list);
+      // Reload glosor (they were swapped on the server)
+      const fresh = await fetchList(apiFetch, id);
+      setGlosor(fresh.glosor);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSwapBusy(false);
+      setShowSwapConfirm(false);
     }
   };
 
@@ -164,11 +184,19 @@ export default function ListDetail() {
       <div className="card card-lg" style={{ marginBottom: 22 }}>
         <div className="row between" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div className="grow" style={{ minWidth: 280 }}>
-            <div className="row" style={{ gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div className="row" style={{ gap: 10, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {flag && <Flag code={flag} size="lg" />}
               <span className="pill" style={{ background: 'var(--coral-soft)' }}>
                 {list.sourceLang} → {list.targetLang}
               </span>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setShowSwapConfirm(true)}
+                style={{ fontSize: 13, padding: '4px 8px' }}
+                title="Byt källspråk och målspråk; alla glosor vänds också"
+              >
+                ↔ byt riktning
+              </button>
               <span className="pill">{glosor.length} glosor</span>
               {list.bestScore?.total > 0 && (
                 <span className="pill" style={{ background: 'var(--mustard-soft)' }}>
@@ -366,6 +394,16 @@ export default function ListDetail() {
           lastMode={lastMode}
           onClose={() => setShowModePicker(false)}
           onSelect={onPickMode}
+        />
+      )}
+
+      {showSwapConfirm && (
+        <ConfirmDialog
+          title="Byt riktning på listan?"
+          message={`Källspråk och målspråk byter plats (${list.sourceLang} ↔ ${list.targetLang}), och alla ${glosor.length} glosor vänds. Quizen fortsätter visa samma språk som tidigare.`}
+          confirmLabel={swapBusy ? 'Vänder…' : 'Byt riktning'}
+          onConfirm={confirmSwapDirection}
+          onCancel={() => !swapBusy && setShowSwapConfirm(false)}
         />
       )}
     </div>
