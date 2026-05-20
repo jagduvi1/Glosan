@@ -22,6 +22,7 @@ export default function Quiz() {
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [score, setScore] = useState({ correct: 0, wrong: 0 });
+  const [extraStats, setExtraStats] = useState({ correct: 0, wrong: 0 });
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [wrongOnly, setWrongOnly] = useState(false);
@@ -37,6 +38,7 @@ export default function Quiz() {
   const load = useCallback(async () => {
     setLoading(true);
     setScore({ correct: 0, wrong: 0 });
+    setExtraStats({ correct: 0, wrong: 0 });
     setStreak(0);
     setBestStreak(0);
     setFeedback(null);
@@ -72,6 +74,9 @@ export default function Quiz() {
     const expectedWord = current[expectedField];
     setFeedback({ isCorrect, expected: expectedWord, given });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
+    if (current.extra) {
+      setExtraStats((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
+    }
     const newStreak = isCorrect ? streak + 1 : 0;
     setStreak(newStreak);
     setBestStreak((b) => Math.max(b, newStreak));
@@ -125,6 +130,8 @@ export default function Quiz() {
         state: {
           correct: score.correct,
           wrong: score.wrong,
+          extraCorrect: extraStats.correct,
+          extraWrong: extraStats.wrong,
           bestStreak,
           wrongOnly,
           mode,

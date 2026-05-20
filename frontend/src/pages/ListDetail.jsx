@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, swapListDirection } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
-import { generateList } from '../api/ai';
+import { generateList, extendList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -167,6 +167,24 @@ export default function ListDetail() {
     }
   };
 
+  const onExtendFromList = async () => {
+    if (glosor.length === 0) return;
+    setAiBusy(true);
+    setError('');
+    try {
+      const suggestions = await extendList(apiFetch, { listId: id, count: 10 });
+      for (const s of suggestions) {
+        if (!s.source || !s.target) continue;
+        const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target, extra: true });
+        setGlosor((cur) => [...cur, glos]);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   if (loading) return <p className="t-hand muted">Glo letar upp listan…</p>;
   if (!list) return <p>Listan hittades inte.</p>;
 
@@ -274,9 +292,19 @@ export default function ListDetail() {
                 </thead>
                 <tbody>
                   {glosor.map((g) => (
-                    <tr key={g._id}>
+                    <tr key={g._id} style={g.extra ? { background: 'var(--mustard-soft)' } : undefined}>
                       <td><MasteryDot level={masteryOf(g)} /></td>
                       <td style={{ fontWeight: 700 }}>
+                        {g.extra && (
+                          <img
+                            src="/assets/star-sticker.svg"
+                            width="14"
+                            height="14"
+                            alt=""
+                            title="Extra-glosa — inte läxa"
+                            style={{ verticalAlign: 'middle', marginRight: 6 }}
+                          />
+                        )}
                         {g.source}
                         {g.notes && (
                           <span className="t-hand muted" style={{ fontSize: 13, marginLeft: 6 }}>· {g.notes}</span>
@@ -366,6 +394,16 @@ export default function ListDetail() {
                 Generera 10 fler glosor
               </button>
             )}
+            <button
+              className="btn btn-block"
+              style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}
+              onClick={onExtendFromList}
+              disabled={aiBusy || glosor.length === 0}
+              title={glosor.length === 0 ? 'Lägg till minst en glosa först så Glo kan gissa tema' : ''}
+            >
+              <Sparkle size={14} color="var(--plum)" />
+              {aiBusy ? 'Glo tänker…' : 'Föreslå fler i samma ämne'}
+            </button>
             <button
               className="btn btn-block"
               style={{ background: 'var(--bg-elev)', justifyContent: 'flex-start' }}

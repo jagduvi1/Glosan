@@ -9,6 +9,17 @@ export async function generateList(apiFetch, body) {
   return data.glosor;
 }
 
+export async function extendList(apiFetch, body) {
+  const res = await apiFetch('/api/ai/extend-list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'AI-anrop misslyckades');
+  return data.glosor;
+}
+
 export async function parseList(apiFetch, body) {
   const res = await apiFetch('/api/ai/parse-list', {
     method: 'POST',

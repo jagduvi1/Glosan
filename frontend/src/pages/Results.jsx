@@ -42,6 +42,8 @@ export default function Results() {
   const {
     correct = 0,
     wrong = 0,
+    extraCorrect = 0,
+    extraWrong = 0,
     bestStreak = 0,
     wrongOnly = false,
     mode = 'write',
@@ -51,6 +53,11 @@ export default function Results() {
 
   const total = correct + wrong;
   const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const homeworkCorrect = correct - extraCorrect;
+  const homeworkWrong = wrong - extraWrong;
+  const homeworkTotal = homeworkCorrect + homeworkWrong;
+  const extraTotal = extraCorrect + extraWrong;
+  const hasExtras = extraTotal > 0;
   const best = list?.bestScore;
   const playAgain = () => navigate(`/lists/${id}/quiz${mode === 'choice' ? '?mode=choice' : ''}`);
 
@@ -85,21 +92,46 @@ export default function Results() {
           : 'Glo behöver lägga sig och vila ögonen.'}
       </p>
 
-      <div className="row" style={{ gap: 14, marginBottom: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <StatTile value={correct} label="rätt" color="var(--leaf-soft)" icon="/assets/star-sticker.svg" />
-        <StatTile value={wrong} label="att öva på" color="var(--berry-soft)" />
-        <StatTile
-          value={xpInfo ? `+${xpInfo.xpEarned}` : '…'}
-          label="XP tjänat"
-          color="var(--mustard-soft)"
-          icon="/assets/sparkle.svg"
-        />
-        {bestStreak >= 2 ? (
-          <StatTile value={bestStreak} label="längsta svit i rundan" color="var(--coral-soft)" icon="/assets/flame-streak.svg" />
-        ) : (
-          <StatTile value={`${pct}%`} label="rätt-procent" color="var(--coral-soft)" />
-        )}
-      </div>
+      {hasExtras ? (
+        <div className="row" style={{ gap: 14, marginBottom: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <StatTile
+            value={`${homeworkCorrect} / ${homeworkTotal}`}
+            label="läxa rätt"
+            color="var(--leaf-soft)"
+          />
+          <StatTile
+            value={`${extraCorrect} / ${extraTotal}`}
+            label="extra rätt"
+            color="var(--mustard-soft)"
+            icon="/assets/star-sticker.svg"
+          />
+          <StatTile
+            value={xpInfo ? `+${xpInfo.xpEarned}` : '…'}
+            label="XP tjänat"
+            color="var(--coral-soft)"
+            icon="/assets/sparkle.svg"
+          />
+          {bestStreak >= 2 && (
+            <StatTile value={bestStreak} label="längsta svit i rundan" color="var(--sky-soft)" icon="/assets/flame-streak.svg" />
+          )}
+        </div>
+      ) : (
+        <div className="row" style={{ gap: 14, marginBottom: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <StatTile value={correct} label="rätt" color="var(--leaf-soft)" icon="/assets/star-sticker.svg" />
+          <StatTile value={wrong} label="att öva på" color="var(--berry-soft)" />
+          <StatTile
+            value={xpInfo ? `+${xpInfo.xpEarned}` : '…'}
+            label="XP tjänat"
+            color="var(--mustard-soft)"
+            icon="/assets/sparkle.svg"
+          />
+          {bestStreak >= 2 ? (
+            <StatTile value={bestStreak} label="längsta svit i rundan" color="var(--coral-soft)" icon="/assets/flame-streak.svg" />
+          ) : (
+            <StatTile value={`${pct}%`} label="rätt-procent" color="var(--coral-soft)" />
+          )}
+        </div>
+      )}
 
       {xpInfo && (xpInfo.streakChange === 'started' || xpInfo.streakChange === 'continued') && (
         <div className="card card-lg" style={{ background: 'var(--sky-soft)', marginBottom: 18, textAlign: 'left' }}>
