@@ -38,10 +38,16 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  // Familje-ID för refresh-token. Lagras separat så vi kan slå upp användaren
+  // utan att exponera tokenens hemliga del. Vid en presentation av (familyId,
+  // secret) där familjet hittas men hashen inte matchar → någon kör replay
+  // av en stulen historisk token; hela familjen revokeras (force re-login).
+  refreshTokenFamily: { type: String, default: null, index: true, sparse: true },
   // 6-char shareable identity code for the friends feature. Lazy-generated on
-  // first /api/me/friend-code request for users who registered before this
-  // field existed. Unique across all users.
-  friendCode: { type: String, default: null, unique: true, sparse: true, index: true },
+  // first /api/me/friend-code request. Unique across all users. INGEN default
+  // — sparse-index på MongoDB inkluderar `null`-värden i indexet vilket gör
+  // att flera dokument med null kolliderar; en odefinierad fält hoppas över.
+  friendCode: { type: String, unique: true, sparse: true, index: true },
   plan: {
     type: String,
     enum: ['free', 'basic', 'premium'],
@@ -94,14 +100,11 @@ userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-userSchema.methods.setRefreshToken = function (token) {
-  this.refreshTokenHash = crypto.createHash('sha256').update(token).digest('hex');
-};
-
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.refreshTokenHash;
+  delete obj.refreshTokenFamily;
   return obj;
 };
 

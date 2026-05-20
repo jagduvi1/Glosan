@@ -42,6 +42,24 @@ router.put('/glosor/:id', loadOwnedGlos, async (req, res) => {
     if (typeof extra === 'boolean') req.glos.extra = extra;
 
     if (stats && typeof stats === 'object') {
+      // Stats är monotont ökande per quiz-svar — exakt +0 eller +1. Validera
+      // delta så en manipulerad klient inte kan trissa upp värden eller
+      // backdatera dem. Quiz/Galge/Ordfall skickar alltid current+0 eller +1.
+      const validDelta = (next, current) =>
+        typeof next === 'number' &&
+        Number.isInteger(next) &&
+        next >= 0 &&
+        (next === current || next === current + 1);
+
+      const curCorrect = req.glos.stats?.correct ?? 0;
+      const curWrong = req.glos.stats?.wrong ?? 0;
+
+      if (stats.correct !== undefined && !validDelta(stats.correct, curCorrect)) {
+        return res.status(400).json({ error: 'stats.correct delta must be 0 or +1' });
+      }
+      if (stats.wrong !== undefined && !validDelta(stats.wrong, curWrong)) {
+        return res.status(400).json({ error: 'stats.wrong delta must be 0 or +1' });
+      }
       if (typeof stats.correct === 'number') req.glos.stats.correct = stats.correct;
       if (typeof stats.wrong === 'number') req.glos.stats.wrong = stats.wrong;
       req.glos.stats.lastReviewedAt = new Date();

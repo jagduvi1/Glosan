@@ -1,11 +1,26 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const { generateUniqueFriendCode } = require('../utils/friendCode');
 
 const router = express.Router();
+
+// Strikt limiter på "lägg till med kod" — alfabetet är 32 tecken över 6
+// positioner (~1G koder), men en angripare som kan testa 1000 per timme
+// hittar en giltig kod inom hanterbar tid om vi inte begränsar. 20/timme
+// per IP är gott och väl för en legitim användare.
+const byCodeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({
+    error: 'För många försök att lägga till kompis. Försök igen om en stund.'
+  })
+});
 
 router.use(requireAuth);
 
@@ -52,7 +67,7 @@ router.get('/friends', async (req, res) => {
 // POST /api/me/friends/by-code — body: { code }. Looks up the code, creates
 // the mutual friendship pair, returns the new friend. Idempotent — adding
 // someone already in the friend list is a no-op.
-router.post('/friends/by-code', async (req, res) => {
+router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
   const code = (req.body.code || '').trim().toUpperCase();
   if (!code || code.length < 4) {
     return res.status(400).json({ error: 'Skriv in en kod på minst 4 tecken.' });
