@@ -33,6 +33,10 @@ const glosListSchema = new mongoose.Schema({
     maxlength: [10, 'Language code too long'],
     default: 'en'
   },
+  // When true, the practice modes show the target word and ask for the source
+  // (e.g. show "huset" → type "the house"). Default is true since most users
+  // study from their native language toward the language they're learning.
+  quizReversed: { type: Boolean, default: true },
   bestScore: {
     correct: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },

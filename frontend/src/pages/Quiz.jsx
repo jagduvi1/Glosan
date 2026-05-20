@@ -1,22 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchList, submitScore } from '../api/lists';
+import { fetchList, submitScore, updateList } from '../api/lists';
 import { updateGlos } from '../api/glosor';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { shuffle, answerVariants, buildDistractors } from '../utils/quiz';
-
-const REVERSED_KEY = 'glosan:quizReversed';
-
-function readReversed() {
-  try {
-    const v = localStorage.getItem(REVERSED_KEY);
-    if (v === null) return true;
-    return v === 'true';
-  } catch { return true; }
-}
 
 export default function Quiz() {
   const { id } = useParams();
@@ -35,13 +25,9 @@ export default function Quiz() {
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [wrongOnly, setWrongOnly] = useState(false);
-  const [reversed, setReversed] = useState(readReversed);
+  const [reversed, setReversed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    try { localStorage.setItem(REVERSED_KEY, String(reversed)); } catch { /* ignore */ }
-  }, [reversed]);
 
   const promptField = reversed ? 'target' : 'source';
   const expectedField = reversed ? 'source' : 'target';
@@ -58,6 +44,7 @@ export default function Quiz() {
     try {
       const data = await fetchList(apiFetch, id);
       setList(data.list);
+      setReversed(data.list.quizReversed ?? true);
       setAllGlosor(data.glosor);
       const pool = wrongOnly
         ? data.glosor.filter((g) => (g.stats?.wrong ?? 0) > 0)
@@ -164,10 +151,19 @@ export default function Quiz() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, feedback, options]);
 
-  const onToggleReversed = () => {
-    setReversed((r) => !r);
+  const onToggleReversed = async () => {
+    const next = !reversed;
+    setReversed(next);
     setAnswer('');
     setFeedback(null);
+    try {
+      const updated = await updateList(apiFetch, id, { quizReversed: next });
+      setList(updated);
+    } catch (err) {
+      // Roll back local state if save failed.
+      setReversed(!next);
+      setError(err.message);
+    }
   };
 
   if (loading) return <p className="t-hand muted">Glo blandar korten…</p>;

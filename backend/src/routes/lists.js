@@ -52,11 +52,12 @@ router.get('/:id', loadOwnedList(), async (req, res) => {
 
 router.put('/:id', loadOwnedList(), async (req, res) => {
   try {
-    const { title, description, sourceLang, targetLang } = req.body;
+    const { title, description, sourceLang, targetLang, quizReversed } = req.body;
     if (title !== undefined) req.list.title = title;
     if (description !== undefined) req.list.description = description;
     if (sourceLang !== undefined) req.list.sourceLang = sourceLang;
     if (targetLang !== undefined) req.list.targetLang = targetLang;
+    if (typeof quizReversed === 'boolean') req.list.quizReversed = quizReversed;
     await req.list.save();
 
     res.json({ list: req.list });
