@@ -38,7 +38,11 @@ export default function Quiz() {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
+  const [voiceAttempts, setVoiceAttempts] = useState(0);
+  const voiceAttemptsRef = useRef(0);
   const recognitionRef = useRef(null);
+
+  const MAX_VOICE_ATTEMPTS = 3;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -174,6 +178,8 @@ export default function Quiz() {
     setFeedback(null);
     setTranscript('');
     setVoiceError('');
+    setVoiceAttempts(0);
+    voiceAttemptsRef.current = 0;
     setCurrent(queue[0]);
     setQueue((q) => q.slice(1));
   };
@@ -207,7 +213,21 @@ export default function Quiz() {
       const txt = e.results?.[0]?.[0]?.transcript || '';
       setTranscript(txt);
       const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
-      recordAnswer(isCorrect, txt.trim());
+      if (isCorrect) {
+        voiceAttemptsRef.current = 0;
+        setVoiceAttempts(0);
+        recordAnswer(true, txt.trim());
+        return;
+      }
+      // Wrong this attempt — let the user retry up to MAX_VOICE_ATTEMPTS
+      // total times before scoring it wrong. STT can mis-hear similar-
+      // sounding words (red/read, hus/hose, ...).
+      const next = voiceAttemptsRef.current + 1;
+      voiceAttemptsRef.current = next;
+      setVoiceAttempts(next);
+      if (next >= MAX_VOICE_ATTEMPTS) {
+        recordAnswer(false, txt.trim());
+      }
     };
     rec.onerror = (e) => {
       setListening(false);
@@ -431,16 +451,25 @@ export default function Quiz() {
                 onClick={listening ? stopListening : startListening}
                 style={listening ? { background: 'var(--berry-soft)', borderColor: 'var(--berry-deep)' } : undefined}
               >
-                {listening ? '🎤 Lyssnar… klicka för att stoppa' : '🎤 Tala in svaret'}
+                {listening
+                  ? '🎤 Lyssnar… klicka för att stoppa'
+                  : voiceAttempts > 0
+                    ? '🎤 Försök igen'
+                    : '🎤 Tala in svaret'}
               </button>
-              {transcript && !listening && (
+              {transcript && !listening && voiceAttempts > 0 && voiceAttempts < MAX_VOICE_ATTEMPTS && (
+                <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
+                  Glo hörde: <strong>{transcript}</strong> — det stämmer inte. Försök igen, du har {MAX_VOICE_ATTEMPTS - voiceAttempts} {MAX_VOICE_ATTEMPTS - voiceAttempts === 1 ? 'försök' : 'försök'} kvar.
+                </p>
+              )}
+              {transcript && !listening && voiceAttempts === 0 && (
                 <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
                   Glo hörde: <strong>{transcript}</strong>
                 </p>
               )}
               {voiceError && <p className="error" style={{ marginTop: 10 }}>{voiceError}</p>}
               <p className="t-hand muted" style={{ marginTop: 14, fontSize: 13 }}>
-                tala på {expectedLang}. Glo jämför mot rätt svar.
+                tala på {expectedLang}. Du har upp till {MAX_VOICE_ATTEMPTS} försök per glosa.
               </p>
             </div>
           ) : (

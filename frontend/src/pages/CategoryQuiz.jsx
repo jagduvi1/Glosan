@@ -42,7 +42,11 @@ export default function CategoryQuiz() {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
+  const [voiceAttempts, setVoiceAttempts] = useState(0);
+  const voiceAttemptsRef = useRef(0);
   const recognitionRef = useRef(null);
+
+  const MAX_VOICE_ATTEMPTS = 3;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -169,7 +173,18 @@ export default function CategoryQuiz() {
       const txt = e.results?.[0]?.[0]?.transcript || '';
       setTranscript(txt);
       const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
-      recordAnswer(isCorrect, txt.trim(), expectedWord);
+      if (isCorrect) {
+        voiceAttemptsRef.current = 0;
+        setVoiceAttempts(0);
+        recordAnswer(true, txt.trim(), expectedWord);
+        return;
+      }
+      const next = voiceAttemptsRef.current + 1;
+      voiceAttemptsRef.current = next;
+      setVoiceAttempts(next);
+      if (next >= MAX_VOICE_ATTEMPTS) {
+        recordAnswer(false, txt.trim(), expectedWord);
+      }
     };
     rec.onerror = (e) => {
       setListening(false);
@@ -199,6 +214,8 @@ export default function CategoryQuiz() {
     setFeedback(null);
     setTranscript('');
     setVoiceError('');
+    setVoiceAttempts(0);
+    voiceAttemptsRef.current = 0;
     if (queue.length === 0) {
       // Finished — attribute XP to the first list in the pool so the user's
       // language progression / streak still ticks for this practice session.
@@ -355,16 +372,25 @@ export default function CategoryQuiz() {
                 onClick={listening ? stopListening : startListening}
                 style={listening ? { background: 'var(--berry-soft)', borderColor: 'var(--berry-deep)' } : undefined}
               >
-                {listening ? '🎤 Lyssnar… klicka för att stoppa' : '🎤 Tala in svaret'}
+                {listening
+                  ? '🎤 Lyssnar… klicka för att stoppa'
+                  : voiceAttempts > 0
+                    ? '🎤 Försök igen'
+                    : '🎤 Tala in svaret'}
               </button>
-              {transcript && !listening && (
+              {transcript && !listening && voiceAttempts > 0 && voiceAttempts < MAX_VOICE_ATTEMPTS && (
+                <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
+                  Glo hörde: <strong>{transcript}</strong> — det stämmer inte. Försök igen, du har {MAX_VOICE_ATTEMPTS - voiceAttempts} försök kvar.
+                </p>
+              )}
+              {transcript && !listening && voiceAttempts === 0 && (
                 <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
                   Glo hörde: <strong>{transcript}</strong>
                 </p>
               )}
               {voiceError && <p className="error" style={{ marginTop: 10 }}>{voiceError}</p>}
               <p className="t-hand muted" style={{ marginTop: 14, fontSize: 13 }}>
-                tala på {info.expectedLang}. Glo jämför mot rätt svar.
+                tala på {info.expectedLang}. Du har upp till {MAX_VOICE_ATTEMPTS} försök per glosa.
               </p>
             </div>
           ) : (
