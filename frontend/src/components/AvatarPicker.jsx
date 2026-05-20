@@ -1,27 +1,6 @@
 import { useEffect } from 'react';
 import GloAvatar from './GloAvatar';
-
-// Keep these unlock levels in sync with AVATAR_UNLOCK_LEVELS on the backend (routes/me.js).
-const GLO_MOODS = [
-  { value: 'default', label: 'Nyfiken', unlockLevel: 1 },
-  { value: 'wink', label: 'Glad', unlockLevel: 2 },
-  { value: 'sad', label: 'Ledsen', unlockLevel: 3 }
-];
-
-const EMOJIS = [
-  { value: '🦊', label: 'Räv', unlockLevel: 1 },
-  { value: '🐱', label: 'Katt', unlockLevel: 1 },
-  { value: '🐰', label: 'Kanin', unlockLevel: 1 },
-  { value: '🦉', label: 'Uggla', unlockLevel: 2 },
-  { value: '🐧', label: 'Pingvin', unlockLevel: 2 },
-  { value: '🐙', label: 'Bläckfisk', unlockLevel: 2 },
-  { value: '🐢', label: 'Sköldpadda', unlockLevel: 3 },
-  { value: '🐸', label: 'Groda', unlockLevel: 3 },
-  { value: '🦔', label: 'Igelkott', unlockLevel: 3 },
-  { value: '🐼', label: 'Panda', unlockLevel: 4 },
-  { value: '🦦', label: 'Utter', unlockLevel: 4 },
-  { value: '🦄', label: 'Enhörning', unlockLevel: 5 }
-];
+import { GLO_MOODS, EMOJIS, TOTAL_AVATAR_COUNT } from '../config/avatars';
 
 function OptionButton({ children, selected, locked, lockLabel, onClick }) {
   return (
@@ -79,7 +58,7 @@ export default function AvatarPicker({ currentAvatar, username, userLevel = 1, o
   const initial = (username || '?').trim().charAt(0).toUpperCase();
   const unlockedCount =
     1 + GLO_MOODS.filter((m) => m.unlockLevel <= userLevel).length + EMOJIS.filter((e) => e.unlockLevel <= userLevel).length;
-  const totalCount = 1 + GLO_MOODS.length + EMOJIS.length;
+  const totalCount = TOTAL_AVATAR_COUNT;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

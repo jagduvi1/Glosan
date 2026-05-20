@@ -9,12 +9,9 @@ import ModePicker from '../components/ModePicker';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
+import { LANG_TO_FLAG } from '../utils/lang';
 
 const LAST_MODE_KEY = 'glosan:lastMode';
-
-const LANG_TO_FLAG = {
-  fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
-};
 
 function masteryOf(glos) {
   const c = glos.stats?.correct ?? 0;

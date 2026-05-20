@@ -4,19 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchList } from '../api/lists';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
-
-const LANG_TO_FLAG = {
-  fr: 'fr', de: 'de', es: 'es', en: 'uk', sv: 'se'
-};
-
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+import { LANG_TO_FLAG } from '../utils/lang';
+import { shuffle } from '../utils/quiz';
 
 export default function Flashcards() {
   const { id } = useParams();
