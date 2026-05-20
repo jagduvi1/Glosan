@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { translate, exampleSentence } from '../api/ai';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
@@ -23,6 +24,7 @@ function readPair() {
 
 export default function Dictionary() {
   const { apiFetch } = useAuth();
+  const { refresh: refreshGamification } = useGamification();
   const [pair, setPair] = useState(readPair);
   const [word, setWord] = useState('');
   const [busy, setBusy] = useState(false);
@@ -61,6 +63,7 @@ export default function Dictionary() {
         targetLang: pair.target
       });
       setResult({ word: word.trim(), translation, source: pair.source, target: pair.target });
+      refreshGamification();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -78,6 +81,7 @@ export default function Dictionary() {
         lang: result.target
       });
       setExample(sentence);
+      refreshGamification();
     } catch (err) {
       setError(err.message);
     } finally {

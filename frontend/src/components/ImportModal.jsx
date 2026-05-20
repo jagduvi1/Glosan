@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { parseList } from '../api/ai';
+import { useGamification } from '../contexts/GamificationContext';
 import GloAvatar from './GloAvatar';
 
 export default function ImportModal({
@@ -10,6 +11,7 @@ export default function ImportModal({
   onClose,
   onConfirm
 }) {
+  const { refresh: refreshGamification } = useGamification();
   const [step, setStep] = useState('input');
   const [text, setText] = useState('');
   const [title, setTitle] = useState('');
@@ -41,6 +43,7 @@ export default function ImportModal({
       }
       setGlosor(result.glosor.map((g) => ({ ...g, id: crypto.randomUUID() })));
       setStep('review');
+      refreshGamification();
     } catch (e) {
       setError(e.message);
       setStep('input');

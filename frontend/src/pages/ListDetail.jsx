@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { fetchList, swapListDirection } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList, extendList } from '../api/ai';
@@ -50,6 +51,7 @@ export default function ListDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { apiFetch } = useAuth();
+  const { refresh: refreshGamification } = useGamification();
   const [list, setList] = useState(null);
   const [glosor, setGlosor] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,6 +142,7 @@ export default function ListDetail() {
       setGlosor((cur) => [...cur, glos]);
     }
     setShowImport(false);
+    refreshGamification();
   };
 
   const onAiGenerate = async (e) => {
@@ -162,6 +165,7 @@ export default function ListDetail() {
       }
       setAiTopic('');
       setAiTopicOpen(false);
+      refreshGamification();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -180,6 +184,7 @@ export default function ListDetail() {
         const glos = await createGlos(apiFetch, id, { source: s.source, target: s.target, extra: true });
         setGlosor((cur) => [...cur, glos]);
       }
+      refreshGamification();
     } catch (err) {
       setError(err.message);
     } finally {
