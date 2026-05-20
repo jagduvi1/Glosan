@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
+import { updateAvatar } from '../api/me';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
+import AvatarDisplay from '../components/AvatarDisplay';
+import AvatarPicker from '../components/AvatarPicker';
 
 const BADGES = [
   {
@@ -50,8 +54,20 @@ const BADGES = [
 ];
 
 export default function Profile() {
-  const { user } = useAuth();
-  const { profile, loading, error } = useGamification();
+  const { user, apiFetch } = useAuth();
+  const { profile, loading, error, refresh } = useGamification();
+  const [showPicker, setShowPicker] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+
+  const onSelectAvatar = async (next) => {
+    setAvatarError('');
+    try {
+      await updateAvatar(apiFetch, next);
+      refresh();
+    } catch (e) {
+      setAvatarError(e.message);
+    }
+  };
 
   if (loading && !profile) return <p className="t-hand muted">Glo letar upp dina rekord…</p>;
 
@@ -66,7 +82,6 @@ export default function Profile() {
     );
   }
 
-  const initial = (user?.username || '?').trim().charAt(0).toUpperCase();
   const memberSince = new Date(profile.joinedAt).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long' });
   const earnedBadges = BADGES.filter((b) => b.check(profile));
   const xpInLevel = profile.xp - profile.thisLevelAt;
@@ -80,12 +95,28 @@ export default function Profile() {
     <div className="stack" style={{ gap: 24 }}>
       <div className="card card-lg">
         <div className="row" style={{ gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span
-            className="avatar"
-            style={{ width: 96, height: 96, background: 'var(--coral)', fontSize: 44 }}
-          >
-            {initial}
-          </span>
+          <div style={{ position: 'relative' }}>
+            <AvatarDisplay
+              avatar={profile.avatar}
+              username={user.username}
+              size={96}
+              style={{ fontSize: 44 }}
+            />
+            <button
+              onClick={() => setShowPicker(true)}
+              className="btn btn-sm"
+              style={{
+                position: 'absolute',
+                bottom: -8,
+                right: -8,
+                padding: '4px 10px',
+                fontSize: 12,
+                background: 'var(--mustard)'
+              }}
+            >
+              Byt
+            </button>
+          </div>
           <div className="grow" style={{ minWidth: 240 }}>
             <h1 style={{ margin: 0 }}>{user.username}</h1>
             <p className="t-hand muted" style={{ fontSize: 16, margin: '4px 0 12px' }}>
@@ -104,6 +135,7 @@ export default function Profile() {
                 {profile.xp} XP
               </span>
             </div>
+            {avatarError && <p className="error" style={{ marginTop: 8 }}>{avatarError}</p>}
           </div>
         </div>
       </div>
@@ -183,6 +215,16 @@ export default function Profile() {
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <Link to="/lists"><button className="btn btn-primary">Tillbaka till listorna →</button></Link>
       </div>
+
+      {showPicker && (
+        <AvatarPicker
+          currentAvatar={profile.avatar}
+          username={user.username}
+          userLevel={profile.level}
+          onSelect={onSelectAvatar}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   );
 }

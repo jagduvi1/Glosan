@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  avatar: {
+    kind: { type: String, enum: ['initial', 'glo', 'emoji'], default: 'initial' },
+    value: { type: String, default: '', maxlength: 16 }
+  },
   xp: { type: Number, default: 0, min: 0 },
   streak: {
     current: { type: Number, default: 0, min: 0 },
