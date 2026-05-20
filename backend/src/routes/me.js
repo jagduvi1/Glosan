@@ -58,6 +58,10 @@ router.get('/profile', async (req, res) => {
       username: user.username,
       email: user.email,
       joinedAt: user.createdAt,
+      avatar: {
+        kind: user.avatar?.kind || 'initial',
+        value: user.avatar?.value || ''
+      },
       xp: user.xp,
       level,
       nextLevelAt,
@@ -138,6 +142,35 @@ router.post('/quiz-complete', async (req, res) => {
   } catch (err) {
     console.error('Quiz-complete error:', err);
     res.status(500).json({ error: 'Failed to record quiz' });
+  }
+});
+
+// PATCH /api/me/avatar — update the user's avatar
+// Body: { kind: 'initial' | 'glo' | 'emoji', value?: string }
+const ALLOWED_KINDS = ['initial', 'glo', 'emoji'];
+const ALLOWED_GLO_MOODS = ['default', 'wink', 'sad'];
+
+router.patch('/avatar', async (req, res) => {
+  const { kind, value } = req.body;
+  if (!ALLOWED_KINDS.includes(kind)) {
+    return res.status(400).json({ error: 'kind must be one of: initial, glo, emoji' });
+  }
+  if (kind === 'glo' && !ALLOWED_GLO_MOODS.includes(value)) {
+    return res.status(400).json({ error: 'For kind=glo, value must be one of: default, wink, sad' });
+  }
+  if (kind === 'emoji' && (typeof value !== 'string' || value.length === 0 || value.length > 16)) {
+    return res.status(400).json({ error: 'For kind=emoji, value must be a 1-16 character string' });
+  }
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.avatar = { kind, value: kind === 'initial' ? '' : value };
+    await user.save();
+    res.json({ avatar: user.avatar });
+  } catch (err) {
+    console.error('Avatar update error:', err);
+    res.status(500).json({ error: 'Failed to update avatar' });
   }
 });
 
