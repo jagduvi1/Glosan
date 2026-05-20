@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
@@ -10,6 +10,12 @@ import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import { shuffle, answerVariants } from '../utils/quiz';
 import { LANG_TO_FLAG } from '../utils/lang';
+import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
+
+const VOICE_MODE_KEY = 'glosan:quizVoiceMode';
+const readVoiceMode = () => {
+  try { return localStorage.getItem(VOICE_MODE_KEY) === 'true'; } catch { return false; }
+};
 
 export default function CategoryQuiz() {
   const { catId } = useParams();
@@ -32,8 +38,27 @@ export default function CategoryQuiz() {
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(readVoiceMode);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const recognitionRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    try { localStorage.setItem(VOICE_MODE_KEY, String(voiceMode)); } catch { /* ignore */ }
+  }, [voiceMode]);
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   const listById = useMemo(() => Object.fromEntries(lists.map((l) => [String(l._id), l])), [lists]);
 
@@ -84,6 +109,8 @@ export default function CategoryQuiz() {
   useEffect(() => { load(); }, [load]);
 
   const recordAnswer = async (isCorrect, given, expectedWord) => {
+    stopSpeaking();
+    setListening(false);
     setFeedback({ isCorrect, expected: expectedWord, given });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     const newStreak = isCorrect ? streak + 1 : 0;
@@ -110,9 +137,68 @@ export default function CategoryQuiz() {
     recordAnswer(isCorrect, answer.trim(), expectedWord);
   };
 
+  // Auto-speak the prompt when a new card appears in voice mode.
+  useEffect(() => {
+    if (!voiceMode || !current || feedback) return;
+    const { promptField, promptLang } = cardInfo(current);
+    const text = current[promptField];
+    if (text) speak(text, promptLang);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, voiceMode]);
+
+  const onSpeakPrompt = () => {
+    if (!current) return;
+    const { promptField, promptLang } = cardInfo(current);
+    speak(current[promptField], promptLang);
+  };
+
+  const startListening = () => {
+    if (!current || feedback) return;
+    setVoiceError('');
+    setTranscript('');
+    const { expectedField, expectedLang } = cardInfo(current);
+    const expectedWord = current[expectedField];
+    const rec = createRecognition(expectedLang);
+    if (!rec) {
+      setVoiceError('Tal-läget funkar inte i den här webbläsaren — prova Chrome eller Edge.');
+      return;
+    }
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.onresult = (e) => {
+      const txt = e.results?.[0]?.[0]?.transcript || '';
+      setTranscript(txt);
+      const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
+      recordAnswer(isCorrect, txt.trim(), expectedWord);
+    };
+    rec.onerror = (e) => {
+      setListening(false);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setVoiceError('Glo kan inte höra dig — kolla att mikrofon-tillstånd är på.');
+      } else if (e.error === 'no-speech') {
+        setVoiceError('Glo hörde inget. Försök igen.');
+      } else {
+        setVoiceError(`Mikrofon-fel: ${e.error || 'okänt'}`);
+      }
+    };
+    rec.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    try { rec.start(); } catch (err) { setVoiceError(err.message); setListening(false); }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+    }
+  };
+
   const onNext = async () => {
     setAnswer('');
     setFeedback(null);
+    setTranscript('');
+    setVoiceError('');
     if (queue.length === 0) {
       // Finished — attribute XP to the first list in the pool so the user's
       // language progression / streak still ticks for this practice session.
@@ -218,13 +304,40 @@ export default function CategoryQuiz() {
               {info.parent.title.length > 24 ? info.parent.title.slice(0, 22) + '…' : info.parent.title}
             </span>
           )}
+          {isSTTSupported() && (
+            <button
+              className="pill"
+              style={{
+                background: voiceMode ? 'var(--sky-soft)' : 'transparent',
+                border: '2px solid var(--ink)',
+                cursor: 'pointer',
+                font: 'inherit'
+              }}
+              onClick={() => setVoiceMode((v) => !v)}
+              type="button"
+              title="Lyssna och tala in svaret istället för att skriva"
+            >
+              {voiceMode ? '✓ ' : ''}🎤 tal-läge
+            </button>
+          )}
         </div>
 
         <div className="t-hand muted" style={{ fontSize: 18, marginBottom: 8 }}>
           Översätt till {info.expectedLang}
         </div>
 
-        <div className="card card-lg" style={{ padding: 36, textAlign: 'center' }}>
+        <div className="card card-lg" style={{ padding: 36, textAlign: 'center', position: 'relative' }}>
+          {isTTSSupported() && (
+            <button
+              className="btn btn-sm"
+              onClick={onSpeakPrompt}
+              style={{ position: 'absolute', top: 14, right: 14 }}
+              title={`Läs upp på ${info.promptLang}`}
+              type="button"
+            >
+              🔊 lyssna
+            </button>
+          )}
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 96, lineHeight: 1 }}>
             {promptWord}
           </div>
@@ -234,25 +347,47 @@ export default function CategoryQuiz() {
         </div>
 
         {!feedback ? (
-          <form onSubmit={onSubmit} style={{ marginTop: 24 }}>
-            <input
-              className="inp inp-lg"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder={`skriv ${info.expectedLang}…`}
-              autoFocus
-              required
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-            />
-            <div className="row between" style={{ marginTop: 16 }}>
-              <span className="t-hand muted" style={{ fontSize: 14 }}>
-                tryck <code>enter</code> för att svara
-              </span>
-              <button type="submit" className="btn btn-primary">Svara</button>
+          voiceMode && isSTTSupported() ? (
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <button
+                type="button"
+                className={`btn ${listening ? '' : 'btn-primary'} btn-lg`}
+                onClick={listening ? stopListening : startListening}
+                style={listening ? { background: 'var(--berry-soft)', borderColor: 'var(--berry-deep)' } : undefined}
+              >
+                {listening ? '🎤 Lyssnar… klicka för att stoppa' : '🎤 Tala in svaret'}
+              </button>
+              {transcript && !listening && (
+                <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
+                  Glo hörde: <strong>{transcript}</strong>
+                </p>
+              )}
+              {voiceError && <p className="error" style={{ marginTop: 10 }}>{voiceError}</p>}
+              <p className="t-hand muted" style={{ marginTop: 14, fontSize: 13 }}>
+                tala på {info.expectedLang}. Glo jämför mot rätt svar.
+              </p>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={onSubmit} style={{ marginTop: 24 }}>
+              <input
+                className="inp inp-lg"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder={`skriv ${info.expectedLang}…`}
+                autoFocus
+                required
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <div className="row between" style={{ marginTop: 16 }}>
+                <span className="t-hand muted" style={{ fontSize: 14 }}>
+                  tryck <code>enter</code> för att svara
+                </span>
+                <button type="submit" className="btn btn-primary">Svara</button>
+              </div>
+            </form>
+          )
         ) : (
           <div
             className="card pop-in"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, submitScore, updateList } from '../api/lists';
@@ -7,6 +7,13 @@ import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { shuffle, answerVariants, buildDistractors } from '../utils/quiz';
+import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
+
+const VOICE_MODE_KEY = 'glosan:quizVoiceMode';
+
+function readVoiceMode() {
+  try { return localStorage.getItem(VOICE_MODE_KEY) === 'true'; } catch { return false; }
+}
 
 export default function Quiz() {
   const { id } = useParams();
@@ -27,8 +34,28 @@ export default function Quiz() {
   const [bestStreak, setBestStreak] = useState(0);
   const [wrongOnly, setWrongOnly] = useState(false);
   const [reversed, setReversed] = useState(true);
+  const [voiceMode, setVoiceMode] = useState(readVoiceMode);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const recognitionRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    try { localStorage.setItem(VOICE_MODE_KEY, String(voiceMode)); } catch { /* ignore */ }
+  }, [voiceMode]);
+
+  // Stop any ongoing speech / recognition on unmount.
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   const promptField = reversed ? 'target' : 'source';
   const expectedField = reversed ? 'source' : 'target';
@@ -72,6 +99,8 @@ export default function Quiz() {
 
   const recordAnswer = async (isCorrect, given) => {
     const expectedWord = current[expectedField];
+    stopSpeaking();
+    setListening(false);
     setFeedback({ isCorrect, expected: expectedWord, given });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     if (current.extra) {
@@ -143,8 +172,64 @@ export default function Quiz() {
     }
     setAnswer('');
     setFeedback(null);
+    setTranscript('');
+    setVoiceError('');
     setCurrent(queue[0]);
     setQueue((q) => q.slice(1));
+  };
+
+  // Auto-speak the prompt when a new card appears in voice mode.
+  useEffect(() => {
+    if (!voiceMode || !current || feedback || mode !== 'write') return;
+    const text = current[promptField];
+    if (text) speak(text, promptLang);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, voiceMode, mode]);
+
+  const onSpeakPrompt = () => {
+    if (!current) return;
+    speak(current[promptField], promptLang);
+  };
+
+  const startListening = () => {
+    if (!current || feedback) return;
+    setVoiceError('');
+    setTranscript('');
+    const expectedWord = current[expectedField];
+    const rec = createRecognition(expectedLang);
+    if (!rec) {
+      setVoiceError('Tal-läget funkar inte i den här webbläsaren — prova Chrome eller Edge.');
+      return;
+    }
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.onresult = (e) => {
+      const txt = e.results?.[0]?.[0]?.transcript || '';
+      setTranscript(txt);
+      const isCorrect = answerVariants(expectedWord).includes(txt.trim().toLowerCase());
+      recordAnswer(isCorrect, txt.trim());
+    };
+    rec.onerror = (e) => {
+      setListening(false);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setVoiceError('Glo kan inte höra dig — kolla att mikrofon-tillstånd är på.');
+      } else if (e.error === 'no-speech') {
+        setVoiceError('Glo hörde inget. Försök igen.');
+      } else {
+        setVoiceError(`Mikrofon-fel: ${e.error || 'okänt'}`);
+      }
+    };
+    rec.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    try { rec.start(); } catch (err) { setVoiceError(err.message); setListening(false); }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+    }
   };
 
   useEffect(() => {
@@ -266,6 +351,22 @@ export default function Quiz() {
             >
               {wrongOnly ? '✓ ' : ''}bara fel
             </button>
+            {mode === 'write' && isSTTSupported() && (
+              <button
+                className="pill"
+                style={{
+                  background: voiceMode ? 'var(--sky-soft)' : 'transparent',
+                  border: '2px solid var(--ink)',
+                  cursor: 'pointer',
+                  font: 'inherit'
+                }}
+                onClick={() => setVoiceMode((v) => !v)}
+                type="button"
+                title="Lyssna och tala in svaret istället för att skriva"
+              >
+                {voiceMode ? '✓ ' : ''}🎤 tal-läge
+              </button>
+            )}
           </div>
         </div>
 
@@ -273,7 +374,18 @@ export default function Quiz() {
           {mode === 'choice' ? `Vilken översättning?` : `Översätt till ${expectedLang}`}
         </div>
 
-        <div className="card card-lg" style={{ padding: 36, textAlign: 'center' }}>
+        <div className="card card-lg" style={{ padding: 36, textAlign: 'center', position: 'relative' }}>
+          {isTTSSupported() && (
+            <button
+              className="btn btn-sm"
+              onClick={onSpeakPrompt}
+              style={{ position: 'absolute', top: 14, right: 14 }}
+              title={`Läs upp på ${promptLang}`}
+              type="button"
+            >
+              🔊 lyssna
+            </button>
+          )}
           <div style={{ fontFamily: 'var(--font-display)', fontSize: mode === 'choice' ? 80 : 96, lineHeight: 1 }}>
             {promptWord}
           </div>
@@ -311,6 +423,26 @@ export default function Quiz() {
                 tryck <code>1–4</code> för att svara snabbt
               </p>
             </>
+          ) : voiceMode && isSTTSupported() ? (
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <button
+                type="button"
+                className={`btn ${listening ? '' : 'btn-primary'} btn-lg`}
+                onClick={listening ? stopListening : startListening}
+                style={listening ? { background: 'var(--berry-soft)', borderColor: 'var(--berry-deep)' } : undefined}
+              >
+                {listening ? '🎤 Lyssnar… klicka för att stoppa' : '🎤 Tala in svaret'}
+              </button>
+              {transcript && !listening && (
+                <p className="t-hand" style={{ marginTop: 12, fontSize: 16 }}>
+                  Glo hörde: <strong>{transcript}</strong>
+                </p>
+              )}
+              {voiceError && <p className="error" style={{ marginTop: 10 }}>{voiceError}</p>}
+              <p className="t-hand muted" style={{ marginTop: 14, fontSize: 13 }}>
+                tala på {expectedLang}. Glo jämför mot rätt svar.
+              </p>
+            </div>
           ) : (
             <form onSubmit={onSubmit} style={{ marginTop: 24 }}>
               <input
