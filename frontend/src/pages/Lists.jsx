@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchLists, createList, deleteList } from '../api/lists';
 import { createGlos } from '../api/glosor';
 import ImportModal from '../components/ImportModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import DeckCard from '../components/DeckCard';
 import GloAvatar from '../components/GloAvatar';
 
@@ -27,6 +28,7 @@ export default function Lists() {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,13 +62,15 @@ export default function Lists() {
     }
   };
 
-  const onDelete = async (id) => {
-    if (!window.confirm('Radera listan?')) return;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
     try {
-      await deleteList(apiFetch, id);
-      setLists((cur) => cur.filter((l) => l._id !== id));
+      await deleteList(apiFetch, pendingDelete._id);
+      setLists((cur) => cur.filter((l) => l._id !== pendingDelete._id));
     } catch (err) {
       setError(err.message);
+    } finally {
+      setPendingDelete(null);
     }
   };
 
@@ -167,7 +171,7 @@ export default function Lists() {
                   <button
                     className="btn btn-sm btn-ghost"
                     style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
-                    onClick={(e) => { e.stopPropagation(); onDelete(list._id); }}
+                    onClick={(e) => { e.stopPropagation(); setPendingDelete(list); }}
                   >
                     Radera
                   </button>
@@ -184,6 +188,17 @@ export default function Lists() {
           apiFetch={apiFetch}
           onClose={() => setShowImport(false)}
           onConfirm={onImportConfirm}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Radera listan?"
+          message={`"${pendingDelete.title}" och alla glosor i listan raderas permanent. Det här går inte att ångra.`}
+          confirmLabel="Radera"
+          destructive
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
         />
       )}
     </div>
