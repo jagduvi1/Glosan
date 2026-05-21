@@ -2,14 +2,11 @@ import { Link } from 'react-router-dom';
 import GloAvatar from '../components/GloAvatar';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 
-// Integritetspolicy. Text + ansvarig + kontaktuppgifter måste hållas
-// aktuella av Johan — flagga vid juridiska ändringar.
-//
-// PLACEHOLDER: kontakt/PUL-uppgifter nedan är preliminära. Johan ska
-// validera dem innan publik produktion.
+// Integritetspolicy. Personuppgiftsansvarig + kontaktuppgifter ska
+// fyllas i av Majkens vårdnadshavare innan publik produktion.
 const LAST_UPDATED = '2026-05-21';
-const CONTACT_EMAIL = 'johan@accure.se';
-const CONTROLLER_NAME = 'Johan Eklund (Glosan)';
+const CONTACT_EMAIL = null;
+const CONTROLLER_NAME = 'Glosan';
 
 export default function Integritet() {
   useDocumentTitle('Integritetspolicy');
@@ -29,7 +26,12 @@ export default function Integritet() {
 
       <section className="card" style={{ marginBottom: 18 }}>
         <h2 style={{ marginTop: 0 }}>Personuppgiftsansvarig</h2>
-        <p>{CONTROLLER_NAME} är personuppgiftsansvarig för Glosan. Kontakt: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</p>
+        <p>
+          {CONTROLLER_NAME} är personuppgiftsansvarig.{' '}
+          {CONTACT_EMAIL
+            ? <>Kontakt: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</>
+            : 'Kontaktuppgifter uppdateras inom kort.'}
+        </p>
       </section>
 
       <section className="card" style={{ marginBottom: 18 }}>
@@ -145,7 +147,9 @@ export default function Integritet() {
       </section>
 
       <p className="t-hand muted" style={{ fontSize: 14 }}>
-        Frågor? Maila <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        {CONTACT_EMAIL
+          ? <>Frågor? Maila <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</>
+          : 'Frågor? Kontaktuppgifter uppdateras inom kort.'}
       </p>
     </div>
   );
