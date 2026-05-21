@@ -1,17 +1,56 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" fill="none">
   <defs>
     <filter id="logoRough" x="-2%" y="-2%" width="104%" height="104%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="2"></feTurbulence>
-      <feDisplacementMap in="SourceGraphic" scale="1.2"></feDisplacementMap>
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.6"/>
+    </filter>
+    <filter id="logoSoftRough" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="2" seed="9"/>
+      <feDisplacementMap in="SourceGraphic" scale="0.9"/>
     </filter>
   </defs>
-  <g filter="url(#logoRough)">
-    
-    <rect x="14" y="46" width="320" height="48" rx="6" fill="#FFC93C"></rect>
-    
-    <text x="20" y="84" font-family="&#39;Lilita One&#39;, &#39;Arial Rounded MT Bold&#39;, sans-serif" font-size="64" fill="#1F1B16" letter-spacing="-1">Glosan</text>
-    
-    <circle cx="120" cy="36" r="9" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3"></circle>
-    <circle cx="123" cy="38" r="4" fill="#1F1B16"></circle>
+
+  <!-- Hela loggan får en lätt tilt så den känns "klistrad på papperet" -->
+  <g transform="rotate(-2.5 200 60)">
+
+    <!-- Marker-drop-shadow bakom highlight: skapar samma 4px-offset-ink-skugga
+         som .card-elementen i appen -->
+    <rect x="92" y="40" width="282" height="58" rx="10" fill="#1F1B16" filter="url(#logoSoftRough)"/>
+
+    <!-- Mustard highlight bakom texten -->
+    <rect x="88" y="36" width="282" height="58" rx="10" fill="#FFC93C" filter="url(#logoSoftRough)"/>
+
+    <!-- Wordmark -->
+    <g filter="url(#logoRough)">
+      <text x="100" y="80"
+            font-family="'Lilita One', 'Arial Rounded MT Bold', sans-serif"
+            font-size="56" fill="#1F1B16" letter-spacing="-1">Glosan</text>
+    </g>
+
+    <!-- Mini-Glo till vänster: huvud + ögon + winkande blink. Coral som mascot. -->
+    <g filter="url(#logoRough)">
+      <!-- Huvud -->
+      <ellipse cx="44" cy="64" rx="38" ry="36" fill="#FF6B6B" stroke="#1F1B16" stroke-width="4"/>
+      <!-- Vänster öga (öppen) -->
+      <circle cx="32" cy="58" r="9" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3"/>
+      <circle cx="34" cy="60" r="4" fill="#1F1B16"/>
+      <!-- Höger öga (wink — bara en båge) -->
+      <path d="M48 60 Q56 54 64 60" stroke="#1F1B16" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <!-- Litet leende -->
+      <path d="M30 76 Q44 86 60 76" stroke="#1F1B16" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <!-- Antenn med stjärna — Glos signaturpinne -->
+      <path d="M44 28 Q40 14 46 4" stroke="#1F1B16" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <!-- Sparkle uppe till höger -->
+    <g transform="translate(360 22) rotate(12)" filter="url(#logoSoftRough)">
+      <path d="M10 0 Q11 8 20 10 Q11 12 10 20 Q9 12 0 10 Q9 8 10 0 Z"
+            fill="#FFC93C" stroke="#1F1B16" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Liten scribble-understrykning under "Glosan" -->
+    <path d="M104 102 Q150 98 200 102 Q260 106 360 100"
+          stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" fill="none"
+          filter="url(#logoSoftRough)" opacity="0.85"/>
   </g>
 </svg>
