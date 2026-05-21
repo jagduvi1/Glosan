@@ -6,6 +6,7 @@ import { postQuizComplete } from '../api/me';
 import { fetchCategoryPool, fetchCategories } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
+import ConfettiBurst from '../components/ConfettiBurst';
 
 const REPETITION_THRESHOLD = 0.8;
 const REPETITION_LIMIT = 5;
@@ -19,6 +20,7 @@ export default function Results() {
   const [xpInfo, setXpInfo] = useState(null);
   const [repetition, setRepetition] = useState(null); // { categoryName, poolSize } | null
   const submittedRef = useRef(false);
+  const [streakConfettiTrigger, setStreakConfettiTrigger] = useState(0);
 
   useEffect(() => {
     if (!state || submittedRef.current) return;
@@ -29,6 +31,11 @@ export default function Results() {
       .then((result) => {
         setXpInfo(result);
         refresh();
+        // Påskägg: 7-, 14-, 21- … dagars streak ger konfetti
+        const cur = result?.streak?.current ?? 0;
+        if (cur > 0 && cur % 7 === 0 && (result.streakChange === 'started' || result.streakChange === 'continued')) {
+          setStreakConfettiTrigger((t) => t + 1);
+        }
       })
       .catch((err) => console.error('Quiz-complete failed:', err));
   }, [state, apiFetch, refresh, id]);
@@ -111,6 +118,8 @@ export default function Results() {
   const extraTotal = extraCorrect + extraWrong;
   const hasExtras = extraTotal > 0;
   const best = list?.bestScore;
+  // Påskägg: noll rätt på en hel runda → Glo bjuder på en kram istället för triumf
+  const isZeroRun = total > 0 && correct === 0;
   const playAgain = () => {
     if (mode === 'galge') navigate(`/lists/${id}/galge`);
     else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
@@ -120,8 +129,9 @@ export default function Results() {
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
+      <ConfettiBurst trigger={streakConfettiTrigger} count={100} duration={3000} />
       <div style={{ position: 'relative', display: 'inline-block', margin: '20px 0' }}>
-        <GloAvatar size={180} float mood="wink" />
+        <GloAvatar size={180} float mood={isZeroRun ? 'sad' : 'wink'} />
         {wasNewBest && (
           <>
             <img
@@ -140,14 +150,25 @@ export default function Results() {
         )}
       </div>
 
-      <h1 style={{ fontSize: 52, margin: '8px 0' }}>
-        {wasNewBest ? <>Klart! <span className="mark-highlight">Nytt rekord.</span></> : <>Klart! Du krossade det.</>}
-      </h1>
-      <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 28px' }}>
-        {wrongOnly
-          ? 'En omgång med fel-glosor — bra jobbat.'
-          : 'Glo behöver lägga sig och vila ögonen.'}
-      </p>
+      {isZeroRun ? (
+        <>
+          <h1 style={{ fontSize: 44, margin: '8px 0' }}>Kom hit, en kram.</h1>
+          <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 28px' }}>
+            Glo ger dig en kram istället. Vi övar tillsammans en runda till — det blir bättre.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 style={{ fontSize: 52, margin: '8px 0' }}>
+            {wasNewBest ? <>Klart! <span className="mark-highlight">Nytt rekord.</span></> : <>Klart! Du krossade det.</>}
+          </h1>
+          <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 28px' }}>
+            {wrongOnly
+              ? 'En omgång med fel-glosor — bra jobbat.'
+              : 'Glo behöver lägga sig och vila ögonen.'}
+          </p>
+        </>
+      )}
 
       {hasExtras ? (
         <div className="row" style={{ gap: 14, marginBottom: 24, flexWrap: 'wrap', justifyContent: 'center' }}>

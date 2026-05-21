@@ -6,9 +6,12 @@ import { updateGlos } from '../api/glosor';
 import { fetchCategoryPool } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
+import ConfettiBurst from '../components/ConfettiBurst';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import { shuffle, answerVariants } from '../utils/quiz';
+
+const SNAKE_MASTER_THRESHOLD = 50;
 
 // Spelplan: rutnät av celler. Cellstorlek räknas ut i CSS via clamp så
 // det funkar både på mobil och desktop utan att jaga viewport-mått i JS.
@@ -132,6 +135,9 @@ export default function SnakeGame() {
   const poolExhaustedRef = useRef(false);    // satt när kategorin inte har fler ord
   const pausedRef = useRef(false);           // game-loop tickar inte när true
   const [pauseCountdown, setPauseCountdown] = useState(0); // 3..2..1..0 = ingen paus
+  const [masterTrigger, setMasterTrigger] = useState(0);   // höjs när påskägg-sticker triggas
+  const [showMasterSticker, setShowMasterSticker] = useState(false);
+  const masterTriggeredRef = useRef(false);  // bara en gång per spelrunda
 
   useDocumentTitle(list ? `Orm · ${list.title}` : 'Orm');
 
@@ -186,6 +192,8 @@ export default function SnakeGame() {
     poolExhaustedRef.current = false;
     pausedRef.current = true;
     setPauseCountdown(3);
+    masterTriggeredRef.current = false;
+    setShowMasterSticker(false);
     const initialPool = shuffle(glosor);
     setPool(initialPool);
     const firstGlos = initialPool[0];
@@ -320,6 +328,14 @@ export default function SnakeGame() {
       const newStreak = streak + 1;
       setStreak(newStreak);
       setBestStreak((b) => Math.max(b, newStreak));
+
+      // Påskägg: 50 rätt i rad → Orm-mästare-sticker + konfetti, en gång per körning
+      if (!masterTriggeredRef.current && newStreak >= SNAKE_MASTER_THRESHOLD) {
+        masterTriggeredRef.current = true;
+        setMasterTrigger((t) => t + 1);
+        setShowMasterSticker(true);
+        setTimeout(() => setShowMasterSticker(false), 4000);
+      }
 
       // Räkna glos-stat på server (best-effort)
       if (currentGlos) {
@@ -482,7 +498,16 @@ export default function SnakeGame() {
   const foodMap = new Map(foods.map((f) => [`${f.x}-${f.y}`, f]));
 
   return (
-    <div style={{ marginTop: -28 }}>
+    <div style={{ marginTop: -28, position: 'relative' }}>
+      <ConfettiBurst trigger={masterTrigger} count={120} duration={3400} />
+      {showMasterSticker && (
+        <div className="snake-master-sticker pop-in" role="status">
+          🐍 ORM-MÄSTARE!
+          <div className="t-hand" style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>
+            50 rätt i rad — galet bra
+          </div>
+        </div>
+      )}
       <div className="row between" style={{ padding: '14px 0', borderBottom: '2px solid var(--ink)', marginBottom: 16 }}>
         <Link to={`/lists/${id}`}>
           <button className="btn btn-ghost btn-sm" aria-label="Avbryt spel">× Avbryt</button>
