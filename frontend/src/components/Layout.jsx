@@ -22,6 +22,8 @@ export default function Layout({ children }) {
   const [confettiTrigger, setConfettiTrigger] = useState(0);
   const [starTrigger, setStarTrigger] = useState(0);
   const [magicTrigger, setMagicTrigger] = useState(0);
+  const [partyTrigger, setPartyTrigger] = useState(0);
+  const [showPartyBanner, setShowPartyBanner] = useState(false);
   const [showEggList, setShowEggList] = useState(false);
   const xpClicksRef = useRef(0);
   const footerClicksRef = useRef(0);
@@ -41,6 +43,18 @@ export default function Layout({ children }) {
   useTextSequence('abracadabra', () => {
     setMagicTrigger((t) => t + 1);
     markEggFound('abracadabra');
+  });
+
+  // Påskägg: IDKFA (Doom-fuskkod, "ge mig allt") triggar samtliga effekter
+  // på en gång — konfetti, stjärnor, magi, kanelbullar och en banner.
+  useTextSequence('idkfa', () => {
+    setConfettiTrigger((t) => t + 1);
+    setStarTrigger((t) => t + 1);
+    setMagicTrigger((t) => t + 1);
+    setPartyTrigger((t) => t + 1);
+    setShowPartyBanner(true);
+    setTimeout(() => setShowPartyBanner(false), 3500);
+    markEggFound('idkfa');
   });
 
   // Logga säsongs- och nattlägets-egg när de upptäcks visuellt
@@ -94,6 +108,12 @@ export default function Layout({ children }) {
       <ConfettiBurst trigger={confettiTrigger} />
       <EmojiBurst trigger={starTrigger} emoji={['⭐', '✨']} count={30} duration={2800} />
       <EmojiBurst trigger={magicTrigger} emoji={['✨', '💫', '🪄', '⭐']} count={36} duration={3200} />
+      <EmojiBurst trigger={partyTrigger} emoji={['🥐', '🎉', '🎊', '🍩', '🦄', '🌈']} count={50} duration={3500} />
+      {showPartyBanner && (
+        <div className="idkfa-banner pop-in" role="status" aria-live="polite">
+          🎉 IDKFA — allt på en gång! 🎉
+        </div>
+      )}
       {showEggList && <EasterEggListModal onClose={() => setShowEggList(false)} />}
       <nav className="navbar">
         <div className="nav-inner">

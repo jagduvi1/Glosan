@@ -389,6 +389,31 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
   50% { transform: rotate(0deg); }
 }
 
+/* IDKFA-banner — visas mitt på skärmen i 3.5 s när Doom-fuskkoden
+   skrivs. Aktiverar alla burst-effekter samtidigt. */
+.idkfa-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-2deg);
+  background: var(--coral);
+  color: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 22px;
+  padding: 22px 38px;
+  font-family: var(--font-display, var(--font-headline));
+  font-size: 28px;
+  font-weight: 900;
+  box-shadow: 7px 7px 0 0 var(--ink);
+  z-index: 10000;
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .idkfa-banner { font-size: 20px; padding: 16px 22px; }
+}
+
 /* glos-table */
 table.glos-table { width: 100%; border-collapse: collapse; }
 table.glos-table th {
