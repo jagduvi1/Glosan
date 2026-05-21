@@ -314,7 +314,7 @@ export default function ListDetail() {
               </div>
             )}
           </div>
-          <div className="row" style={{ gap: 10, flex: 'none', flexWrap: 'wrap' }}>
+          <div className="list-actions">
             {isOwner && (
               <button
                 className="btn"
@@ -353,7 +353,7 @@ export default function ListDetail() {
               </>
             )}
             <button
-              className="btn btn-primary btn-lg"
+              className="btn btn-primary btn-lg list-action-primary"
               onClick={() => setShowModePicker(true)}
               disabled={glosor.length === 0}
             >

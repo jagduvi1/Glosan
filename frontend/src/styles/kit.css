@@ -62,10 +62,34 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 /* nav */
 .navbar { background: var(--paper); border-bottom: 2px solid var(--ink); }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; gap: 24px; max-width: 1200px; margin: 0 auto; }
+.nav-logo { display: flex; align-items: center; gap: 10px; flex: none; }
 .nav-links { display: flex; gap: 24px; align-items: center; }
 .nav-link { font-family: var(--font-body); font-weight: 700; font-size: 16px; color: var(--ink); text-decoration: none; padding: 6px 8px; border-radius: 6px; }
 .nav-link.active { background: var(--mustard); }
 .nav-link:hover { background: var(--paper-deep); }
+.nav-actions { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+.nav-burger {
+  display: none;
+  border: 2px solid var(--ink); background: var(--bg-elev);
+  width: 38px; height: 38px; border-radius: 10px;
+  font-size: 20px; font-weight: 800; cursor: pointer;
+  box-shadow: 2px 2px 0 0 var(--ink);
+  align-items: center; justify-content: center; flex: none;
+}
+.nav-drawer { display: none; }
+
+/* list detail action-rad (Dela / Utmana / Starta öva) */
+.list-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* main + footer */
+.app-main { max-width: 960px; margin: 0 auto; padding: 28px 24px 60px; }
+.app-footer {
+  max-width: 960px; margin: 0 auto;
+  padding: 16px 24px 32px;
+  border-top: 1.5px dashed var(--paper-edge);
+  font-family: var(--font-hand); font-size: 14px; color: var(--ink-soft);
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
 
 /* flags */
 .flag { display: inline-block; width: 36px; height: 24px; border-radius: 4px; border: 2px solid var(--ink); flex: none; }
@@ -170,18 +194,59 @@ a:hover { text-decoration: underline; }
 
 /* mobile sizing — applied below 720px */
 @media (max-width: 720px) {
+  html, body { overflow-x: hidden; }
   body { font-size: 15px; }
-  h1 { font-size: 28px; }
-  h2 { font-size: 22px; }
-  h3 { font-size: 18px; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 20px; }
+  h3 { font-size: 17px; }
   .btn { font-size: 15px; padding: 11px 16px; border-radius: 12px; box-shadow: 3px 3px 0 0 var(--ink); }
   .btn-lg { font-size: 17px; padding: 14px 22px; }
   .btn-sm { font-size: 12px; padding: 6px 10px; box-shadow: 2px 2px 0 0 var(--ink); }
   .card { padding: 16px; box-shadow: 3px 3px 0 0 var(--ink); border-radius: 12px; }
-  .card-lg { padding: 20px; box-shadow: 4px 4px 0 0 var(--ink); border-radius: 16px; }
+  .card-lg { padding: 18px; box-shadow: 4px 4px 0 0 var(--ink); border-radius: 16px; }
   .inp { font-size: 16px; padding: 11px 14px; box-shadow: 3px 3px 0 0 var(--ink); border-radius: 12px; }
   .pill { font-size: 12px; padding: 4px 9px; box-shadow: 2px 2px 0 0 var(--ink); }
   .sticker { font-size: 11px; padding: 3px 8px; }
-  .nav-inner { padding: 10px 14px; gap: 12px; }
-  .nav-links { display: none; }
+
+  .app-main { padding: 18px 14px 60px; }
+  .app-footer { padding: 14px 14px 24px; }
+
+  /* nav: byter till burger-meny på mobil */
+  .nav-inner { padding: 10px 14px; gap: 8px; }
+  .nav-logo img { height: 32px; }
+  .nav-links-desktop { display: none; }
+  .nav-logout-desktop { display: none; }
+  .nav-burger { display: inline-flex; }
+  .nav-drawer {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 10px 14px 14px;
+    background: var(--paper);
+    border-top: 1.5px dashed var(--paper-edge);
+  }
+  .nav-drawer .nav-link {
+    padding: 10px 12px; font-size: 16px;
+    border-radius: 8px;
+  }
+
+  /* göm tunga pills på allra smalast så bara streak/avatar/burger ryms */
+  .nav-pill-link { display: none; }
+
+  /* ListDetail-knapprad: stacka knapparna vertikalt och låt primary
+     vara störst längst ner */
+  .list-actions {
+    display: flex; flex-direction: column; gap: 8px;
+    width: 100%;
+  }
+  .list-actions .btn { width: 100%; justify-content: center; }
+
+  /* Glos-tabellen kan ha långa fraser — låt den scrolla horisontellt
+     istället för att tvinga radbrytningar som blir omöjliga att läsa */
+  table.glos-table { font-size: 14px; }
+  table.glos-table th, table.glos-table td { padding: 8px 10px; }
+}
+
+/* extra-narrow: göm streak/xp/avatar-text om viewport är väldigt liten */
+@media (max-width: 380px) {
+  .nav-inner { gap: 6px; }
+  .nav-actions > .pill { display: none; } /* streak-pillen */
 }
