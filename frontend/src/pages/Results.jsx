@@ -114,6 +114,7 @@ export default function Results() {
   const playAgain = () => {
     if (mode === 'galge') navigate(`/lists/${id}/galge`);
     else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
+    else if (mode === 'snake') navigate(`/lists/${id}/orm`);
     else navigate(`/lists/${id}/quiz${mode === 'choice' ? '?mode=choice' : ''}`);
   };
 

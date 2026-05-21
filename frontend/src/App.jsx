@@ -22,6 +22,7 @@ const Friends   = lazy(() => import('./pages/Friends'));
 const Admin     = lazy(() => import('./pages/Admin'));
 const Galge     = lazy(() => import('./pages/Galge'));
 const Ordfall   = lazy(() => import('./pages/Ordfall'));
+const SnakeGame = lazy(() => import('./pages/SnakeGame'));
 const Integritet = lazy(() => import('./pages/Integritet'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
@@ -145,6 +146,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><Ordfall /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists/:id/orm"
+          element={
+            <ProtectedRoute>
+              <Layout><SnakeGame /></Layout>
             </ProtectedRoute>
           }
         />

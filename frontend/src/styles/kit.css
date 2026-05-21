@@ -81,6 +81,59 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 /* list detail action-rad (Dela / Utmana / Starta öva) */
 .list-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+/* Snake-spelet (orm) — spelplan-grid + dpad-knappar för mobil */
+.snake-board-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  touch-action: none;
+}
+.snake-board {
+  display: grid;
+  width: min(560px, 95vw);
+  aspect-ratio: 14 / 11;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: var(--paper-deep);
+  box-shadow: 5px 5px 0 0 var(--ink);
+  overflow: hidden;
+}
+.snake-cell {
+  border: 0.5px solid rgba(31, 27, 22, 0.04);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-body); font-weight: 800;
+  font-size: clamp(10px, 1.6vw, 14px);
+  text-align: center;
+  transition: background 120ms ease;
+  overflow: hidden;
+}
+.snake-cell.snake-body { background: var(--leaf); }
+.snake-cell.snake-head { background: var(--leaf-deep); border-radius: 4px; }
+.snake-cell.snake-food {
+  background: var(--mustard);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 0 4px;
+}
+.snake-food-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.snake-dpad { display: none; flex-direction: column; align-items: center; gap: 8px; margin-top: 8px; }
+.snake-dpad-btn {
+  width: 56px; height: 56px;
+  border: 2px solid var(--ink); border-radius: 14px;
+  background: var(--bg-elev);
+  font-size: 24px; font-weight: 800; cursor: pointer;
+  box-shadow: 3px 3px 0 0 var(--ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.snake-dpad-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 0 var(--ink); }
+@media (max-width: 720px) { .snake-dpad { display: flex; } }
+
 /* Flashcards-grid: 5 kort per sida, auto-fit så vi får 1 kolumn på mobil,
    2 på tablet, 2-3 på desktop beroende på viewport. Korten är klickbara
    knappar med flip-state. */

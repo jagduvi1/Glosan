@@ -83,6 +83,7 @@ export default function ListDetail() {
     else if (mode === 'choice') navigate(`/lists/${id}/quiz?mode=choice`);
     else if (mode === 'galge') navigate(`/lists/${id}/galge`);
     else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
+    else if (mode === 'orm') navigate(`/lists/${id}/orm`);
     else navigate(`/lists/${id}/quiz`);
   };
 
