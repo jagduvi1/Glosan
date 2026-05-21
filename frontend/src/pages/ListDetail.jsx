@@ -14,10 +14,12 @@ import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import AvatarDisplay from '../components/AvatarDisplay';
 import Sparkle from '../components/Sparkle';
+import EmojiBurst from '../components/EmojiBurst';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const LAST_MODE_KEY = 'glosan:lastMode';
+const FIKA_PATTERN = /\b(fika|kanelbulle|kanelbullar)\b/i;
 
 function masteryOf(glos) {
   const c = glos.stats?.correct ?? 0;
@@ -75,6 +77,7 @@ export default function ListDetail() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const [weeklyRecords, setWeeklyRecords] = useState([]);
+  const [fikaTrigger, setFikaTrigger] = useState(0);
 
   const onPickMode = (mode) => {
     try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
@@ -150,14 +153,17 @@ export default function ListDetail() {
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
+    const source = String(fd.get('source') || '');
+    const target = String(fd.get('target') || '');
+    const notes = String(fd.get('notes') || '');
     try {
-      const glos = await createGlos(apiFetch, id, {
-        source: fd.get('source'),
-        target: fd.get('target'),
-        notes: fd.get('notes')
-      });
+      const glos = await createGlos(apiFetch, id, { source, target, notes });
       setGlosor((cur) => [...cur, glos]);
       form.reset();
+      // Påskägg: skriv "fika" eller "kanelbulle" så regnar kanelbullar
+      if (FIKA_PATTERN.test(`${source} ${target} ${notes}`)) {
+        setFikaTrigger((t) => t + 1);
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -254,8 +260,11 @@ export default function ListDetail() {
   // riktning och radering av hela listan är fortfarande bara ägarens.
   const canEdit = isOwner || list.shareMode === 'edit';
 
+  const isGloList = list?.title?.trim().toLowerCase() === 'glo';
+
   return (
     <div>
+      <EmojiBurst trigger={fikaTrigger} emoji={['🥐', '☕', '🍪']} count={28} duration={3200} />
       <div className="row" style={{ gap: 6, marginBottom: 14, fontSize: 14 }}>
         <Link to="/lists" className="muted" style={{ textDecoration: 'none', fontWeight: 400 }}>Mina listor</Link>
         <span className="muted">/</span>
@@ -296,7 +305,18 @@ export default function ListDetail() {
                 </span>
               )}
             </div>
-            <h1 style={{ marginBottom: 6 }}>{list.title}</h1>
+            <h1 style={{ marginBottom: 6 }}>
+              {list.title}
+              {isGloList && (
+                <span
+                  aria-hidden="true"
+                  title="Hej!"
+                  style={{ marginLeft: 10, display: 'inline-block', animation: 'gl-glo-wave 1.4s ease-in-out infinite' }}
+                >
+                  👋
+                </span>
+              )}
+            </h1>
             {list.description && (
               <p className="t-hand muted" style={{ fontSize: 17, margin: 0 }}>{list.description}</p>
             )}
