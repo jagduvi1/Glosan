@@ -5,7 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const InviteCode = require('../models/InviteCode');
-const { generateUniqueFriendCode, randomCode } = require('../utils/friendCode');
+const { randomCode } = require('../utils/friendCode');
 
 const INVITE_TTL_DAYS = 7;
 const INVITE_CODE_LENGTH = 8;
@@ -46,29 +46,11 @@ const byCodeLimiter = rateLimit({
 
 router.use(requireAuth);
 
-// GET /api/me/friend-code — returns the user's own code, lazily generating
-// one the first time it's asked for. Existing users from before the
-// friends feature had no code; this fills it in transparently.
-router.get('/friend-code', async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.friendCode) {
-      user.friendCode = await generateUniqueFriendCode(User);
-      await user.save();
-    }
-    res.json({ friendCode: user.friendCode });
-  } catch (err) {
-    console.error('Friend-code error:', err);
-    res.status(500).json({ error: 'Failed to fetch friend code' });
-  }
-});
-
-// GET /api/me/friends — list of {friend: {_id, username, avatar, friendCode, streak, xp}, addedAt}
+// GET /api/me/friends — list of {friend: {_id, username, avatar, streak, xp}, addedAt}
 router.get('/friends', async (req, res) => {
   try {
     const rows = await Friendship.find({ user: req.user.id })
-      .populate('friend', 'username avatar friendCode streak xp')
+      .populate('friend', 'username avatar streak xp')
       .sort({ addedAt: -1 })
       .lean();
     res.json({
@@ -76,7 +58,6 @@ router.get('/friends', async (req, res) => {
         _id: r.friend._id,
         username: r.friend.username,
         avatar: r.friend.avatar || { kind: 'initial', value: '' },
-        friendCode: r.friend.friendCode,
         streak: {
           current: r.friend.streak?.current ?? 0,
           longest: r.friend.streak?.longest ?? 0
@@ -94,36 +75,27 @@ router.get('/friends', async (req, res) => {
 // POST /api/me/friends/by-code — body: { code }. Looks up the code, creates
 // the mutual friendship pair, returns the new friend. Idempotent — adding
 // someone already in the friend list is a no-op.
-// Letar både i User.friendCode (permanenta koder) och InviteCode (engångs).
+// Letar BARA i InviteCode (engångs). Permanenta koder är borta — om
+// någon skickar in en gammal 6-teckens kod får de "ingen användare".
 router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
   const code = (req.body.code || '').trim().toUpperCase();
-  if (!code || code.length < 4) {
-    return res.status(400).json({ error: 'Skriv in en kod på minst 4 tecken.' });
+  if (!code || code.length !== INVITE_CODE_LENGTH) {
+    return res.status(400).json({ error: `Kompis-koder är ${INVITE_CODE_LENGTH} tecken långa.` });
   }
   try {
-    // Försök först som engångskod (vanligast om koden är 8 tecken).
-    let target = null;
-    let invite = null;
-    if (code.length === INVITE_CODE_LENGTH) {
-      invite = await InviteCode.findOne({ code });
-      if (invite) {
-        if (invite.expiresAt && invite.expiresAt < new Date()) {
-          return res.status(400).json({ error: 'Den här koden har gått ut.' });
-        }
-        if (invite.usedBy) {
-          return res.status(400).json({ error: 'Koden är redan använd.' });
-        }
-        target = await User.findById(invite.user);
-        if (!target) {
-          return res.status(404).json({ error: 'Användaren finns inte längre.' });
-        }
-      }
+    const invite = await InviteCode.findOne({ code });
+    if (!invite) {
+      return res.status(404).json({ error: 'Ingen sådan kod finns.' });
     }
-    if (!target) {
-      target = await User.findOne({ friendCode: code });
+    if (invite.expiresAt && invite.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'Den här koden har gått ut.' });
     }
+    if (invite.usedBy) {
+      return res.status(400).json({ error: 'Koden är redan använd.' });
+    }
+    const target = await User.findById(invite.user);
     if (!target) {
-      return res.status(404).json({ error: 'Ingen användare har den koden.' });
+      return res.status(404).json({ error: 'Användaren finns inte längre.' });
     }
     if (target._id.toString() === req.user.id) {
       return res.status(400).json({ error: 'Det där är din egen kod 🙂' });
@@ -142,19 +114,16 @@ router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
       { upsert: true }
     );
 
-    // Bränn engångskoden om vi använde en.
-    if (invite) {
-      invite.usedBy = req.user.id;
-      invite.usedAt = now;
-      await invite.save();
-    }
+    // Bränn engångskoden.
+    invite.usedBy = req.user.id;
+    invite.usedAt = now;
+    await invite.save();
 
     res.json({
       friend: {
         _id: target._id,
         username: target.username,
         avatar: target.avatar || { kind: 'initial', value: '' },
-        friendCode: target.friendCode,
         addedAt: now
       }
     });

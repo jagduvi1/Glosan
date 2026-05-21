@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
+import { fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
 import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
 import { fetchDuels } from '../api/duels';
 import { fetchInviteCodes, createInviteCode, deleteInviteCode } from '../api/inviteCodes';
@@ -14,15 +14,9 @@ import GoalChallengeDialog from '../components/GoalChallengeDialog';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-function formatCode(code) {
-  if (!code) return '';
-  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
-}
-
 export default function Friends() {
   const { user, apiFetch } = useAuth();
   const { profile } = useGamification();
-  const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [coopStreaks, setCoopStreaks] = useState([]);
   const [duels, setDuels] = useState([]);
@@ -36,22 +30,19 @@ export default function Friends() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [pendingRemove, setPendingRemove] = useState(null);
-  const [copied, setCopied] = useState(false);
   const [showGoalChallenge, setShowGoalChallenge] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
-      const [c, fs, coops, ds, invites, xp] = await Promise.all([
-        fetchFriendCode(apiFetch),
+      const [fs, coops, ds, invites, xp] = await Promise.all([
         fetchFriends(apiFetch),
         fetchCoopStreaks(apiFetch),
         fetchDuels(apiFetch),
         fetchInviteCodes(apiFetch),
         fetchXpLeaderboard(apiFetch, 'month')
       ]);
-      setCode(c);
       setFriends(fs);
       setCoopStreaks(coops);
       setDuels(ds);
@@ -164,18 +155,6 @@ export default function Friends() {
     }
   };
 
-  const onCopy = async () => {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Older browsers / non-https — fallback to selection isn't worth it.
-      setError('Kunde inte kopiera. Markera koden manuellt och kopiera.');
-    }
-  };
-
   // Streak-race: mig + alla kompisar, sorterat på nuvarande streak. Topp-3
   // får medaljer. Krypterar inte ner till noll-streaks, men de syns på sin
   // plats i botten.
@@ -205,7 +184,7 @@ export default function Friends() {
     return rows;
   }, [user, profile, friends]);
 
-  if (busy && !code && friends.length === 0) {
+  if (busy && friends.length === 0) {
     return <p className="t-hand muted">Glo letar upp dina kompisar…</p>;
   }
 
@@ -221,43 +200,17 @@ export default function Friends() {
         <GloAvatar size={92} float tilt={-4} mood="wink" />
       </div>
 
-      <div className="card card-lg" style={{ background: 'var(--mustard-soft)' }}>
-        <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div className="grow" style={{ minWidth: 200 }}>
-            <p className="t-hand muted" style={{ fontSize: 16, margin: '0 0 6px' }}>
-              Din personliga kod
-            </p>
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 42,
-                fontWeight: 800,
-                letterSpacing: '0.15em',
-                lineHeight: 1
-              }}
-            >
-              {formatCode(code) || '— — —'}
-            </div>
-            <p className="t-hand muted" style={{ fontSize: 14, margin: '8px 0 0' }}>
-              Permanent — funkar tills du tar bort kompisen. Inget hindrar att kod sprids vidare.
-            </p>
-          </div>
-          <button className="btn" onClick={onCopy} disabled={!code}>
-            {copied ? 'Kopierad!' : 'Kopiera kod'}
-          </button>
-        </div>
-      </div>
-
-      <div className="card" style={{ background: 'var(--sky-soft)' }}>
+      <div className="card card-lg" style={{ background: 'var(--sky-soft)' }}>
         <div className="row between" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <h3 style={{ margin: 0 }}>🔒 Engångskoder</h3>
-            <p className="t-hand muted" style={{ fontSize: 14, margin: '4px 0 0' }}>
-              För när du vill dela med en specifik kompis. Funkar i 7 dagar, kan användas en gång.
+          <div className="grow" style={{ minWidth: 200 }}>
+            <h3 style={{ margin: 0 }}>🔒 Dina inbjudningskoder</h3>
+            <p className="t-hand muted" style={{ fontSize: 15, margin: '4px 0 0' }}>
+              Skapa en kod, skicka till en specifik kompis. Funkar i 7 dagar och bara en gång —
+              ingen kan sprida den vidare.
             </p>
           </div>
-          <button className="btn btn-sm" onClick={onCreateInvite} disabled={inviteBusy}>
-            {inviteBusy ? 'Skapar…' : '+ Skapa engångskod'}
+          <button className="btn btn-primary" onClick={onCreateInvite} disabled={inviteBusy}>
+            {inviteBusy ? 'Skapar…' : '+ Skapa ny kod'}
           </button>
         </div>
         {inviteCodes.length > 0 && (
@@ -311,20 +264,21 @@ export default function Friends() {
 
       <form onSubmit={onAdd} className="card stack">
         <label className="field">
-          <span className="field-label">Lägg till en kompis med deras kod</span>
+          <span className="field-label">Har du fått en kod av en kompis?</span>
           <input
             className="inp"
             value={addInput}
-            onChange={(e) => setAddInput(e.target.value.toUpperCase())}
-            placeholder="t.ex. AB3 D7X"
-            maxLength={10}
+            onChange={(e) => setAddInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+            placeholder="t.ex. KQ7M2X9P"
+            maxLength={8}
             autoComplete="off"
             spellCheck={false}
+            style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}
           />
         </label>
         <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
           {notice && <span className="t-hand" style={{ color: 'var(--leaf-deep)', fontSize: 15 }}>{notice}</span>}
-          <button type="submit" className="btn btn-primary" disabled={addBusy || !addInput.trim()}>
+          <button type="submit" className="btn btn-primary" disabled={addBusy || addInput.length !== 8}>
             {addBusy ? 'Glo söker…' : 'Lägg till kompis'}
           </button>
         </div>
