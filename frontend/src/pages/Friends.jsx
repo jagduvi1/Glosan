@@ -5,6 +5,7 @@ import { useGamification } from '../contexts/GamificationContext';
 import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
 import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
 import { fetchDuels } from '../api/duels';
+import { fetchInviteCodes, createInviteCode, deleteInviteCode } from '../api/inviteCodes';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -24,6 +25,9 @@ export default function Friends() {
   const [friends, setFriends] = useState([]);
   const [coopStreaks, setCoopStreaks] = useState([]);
   const [duels, setDuels] = useState([]);
+  const [inviteCodes, setInviteCodes] = useState([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [copiedInviteId, setCopiedInviteId] = useState(null);
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -37,16 +41,18 @@ export default function Friends() {
     setBusy(true);
     setError('');
     try {
-      const [c, fs, coops, ds] = await Promise.all([
+      const [c, fs, coops, ds, invites] = await Promise.all([
         fetchFriendCode(apiFetch),
         fetchFriends(apiFetch),
         fetchCoopStreaks(apiFetch),
-        fetchDuels(apiFetch)
+        fetchDuels(apiFetch),
+        fetchInviteCodes(apiFetch)
       ]);
       setCode(c);
       setFriends(fs);
       setCoopStreaks(coops);
       setDuels(ds);
+      setInviteCodes(invites);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -76,6 +82,48 @@ export default function Friends() {
     } catch (e) {
       setError(e.message);
     }
+  };
+
+  const onCreateInvite = async () => {
+    setError('');
+    setInviteBusy(true);
+    try {
+      const invite = await createInviteCode(apiFetch);
+      setInviteCodes((cur) => [invite, ...cur]);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const onDeleteInvite = async (id) => {
+    setError('');
+    try {
+      await deleteInviteCode(apiFetch, id);
+      setInviteCodes((cur) => cur.filter((c) => c._id !== id));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const onCopyInvite = async (invite) => {
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      setCopiedInviteId(invite._id);
+      setTimeout(() => setCopiedInviteId((cur) => (cur === invite._id ? null : cur)), 1800);
+    } catch {
+      setError('Kunde inte kopiera. Markera koden manuellt.');
+    }
+  };
+
+  const daysUntil = (iso) => {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return 'utgången';
+    const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+    if (days >= 1) return `${days} ${days === 1 ? 'dag' : 'dagar'} kvar`;
+    const hours = Math.max(1, Math.floor(ms / (60 * 60 * 1000)));
+    return `${hours} ${hours === 1 ? 'timme' : 'timmar'} kvar`;
   };
 
   useEffect(() => { load(); }, [load]);
@@ -187,13 +235,74 @@ export default function Friends() {
               {formatCode(code) || '— — —'}
             </div>
             <p className="t-hand muted" style={{ fontSize: 14, margin: '8px 0 0' }}>
-              Skicka den till en kompis så lägger ni till varandra.
+              Permanent — funkar tills du tar bort kompisen. Inget hindrar att kod sprids vidare.
             </p>
           </div>
           <button className="btn" onClick={onCopy} disabled={!code}>
             {copied ? 'Kopierad!' : 'Kopiera kod'}
           </button>
         </div>
+      </div>
+
+      <div className="card" style={{ background: 'var(--sky-soft)' }}>
+        <div className="row between" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>🔒 Engångskoder</h3>
+            <p className="t-hand muted" style={{ fontSize: 14, margin: '4px 0 0' }}>
+              För när du vill dela med en specifik kompis. Funkar i 7 dagar, kan användas en gång.
+            </p>
+          </div>
+          <button className="btn btn-sm" onClick={onCreateInvite} disabled={inviteBusy}>
+            {inviteBusy ? 'Skapar…' : '+ Skapa engångskod'}
+          </button>
+        </div>
+        {inviteCodes.length > 0 && (
+          <div className="stack" style={{ gap: 6, marginTop: 4 }}>
+            {inviteCodes.map((i) => {
+              const isCopied = copiedInviteId === i._id;
+              return (
+                <div
+                  key={i._id}
+                  className="row"
+                  style={{
+                    gap: 10,
+                    padding: '8px 12px',
+                    background: 'var(--bg-elev)',
+                    border: '1.5px solid var(--ink)',
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 800,
+                      fontSize: 20,
+                      letterSpacing: '0.12em'
+                    }}
+                  >
+                    {i.code}
+                  </span>
+                  <span className="pill" style={{ background: 'var(--paper-edge)', fontSize: 12 }}>
+                    {daysUntil(i.expiresAt)}
+                  </span>
+                  <span className="grow" />
+                  <button className="btn btn-sm" onClick={() => onCopyInvite(i)}>
+                    {isCopied ? 'Kopierad!' : 'Kopiera'}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: 'var(--berry-deep)' }}
+                    onClick={() => onDeleteInvite(i._id)}
+                  >
+                    Ta bort
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <form onSubmit={onAdd} className="card stack">

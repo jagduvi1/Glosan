@@ -4,7 +4,29 @@ const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
-const { generateUniqueFriendCode } = require('../utils/friendCode');
+const InviteCode = require('../models/InviteCode');
+const { generateUniqueFriendCode, randomCode } = require('../utils/friendCode');
+
+const INVITE_TTL_DAYS = 7;
+const INVITE_CODE_LENGTH = 8;
+const MAX_ACTIVE_INVITES = 10;
+
+// Hjälpare för att generera en engångskod som inte krockar med befintliga
+// (varken InviteCode eller User.friendCode). 8 tecken (32^8 ≈ 1 trillion)
+// gör att praktisk krock är försumbar, men vi loop:ar några gånger för
+// säkerhets skull.
+async function generateUniqueInviteCode() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomCode(INVITE_CODE_LENGTH);
+    // eslint-disable-next-line no-await-in-loop
+    const [existsInvite, existsFriend] = await Promise.all([
+      InviteCode.findOne({ code }).select('_id').lean(),
+      User.findOne({ friendCode: code }).select('_id').lean()
+    ]);
+    if (!existsInvite && !existsFriend) return code;
+  }
+  throw new Error('Kunde inte generera unik kod');
+}
 
 const router = express.Router();
 
@@ -72,13 +94,34 @@ router.get('/friends', async (req, res) => {
 // POST /api/me/friends/by-code — body: { code }. Looks up the code, creates
 // the mutual friendship pair, returns the new friend. Idempotent — adding
 // someone already in the friend list is a no-op.
+// Letar både i User.friendCode (permanenta koder) och InviteCode (engångs).
 router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
   const code = (req.body.code || '').trim().toUpperCase();
   if (!code || code.length < 4) {
     return res.status(400).json({ error: 'Skriv in en kod på minst 4 tecken.' });
   }
   try {
-    const target = await User.findOne({ friendCode: code });
+    // Försök först som engångskod (vanligast om koden är 8 tecken).
+    let target = null;
+    let invite = null;
+    if (code.length === INVITE_CODE_LENGTH) {
+      invite = await InviteCode.findOne({ code });
+      if (invite) {
+        if (invite.expiresAt && invite.expiresAt < new Date()) {
+          return res.status(400).json({ error: 'Den här koden har gått ut.' });
+        }
+        if (invite.usedBy) {
+          return res.status(400).json({ error: 'Koden är redan använd.' });
+        }
+        target = await User.findById(invite.user);
+        if (!target) {
+          return res.status(404).json({ error: 'Användaren finns inte längre.' });
+        }
+      }
+    }
+    if (!target) {
+      target = await User.findOne({ friendCode: code });
+    }
     if (!target) {
       return res.status(404).json({ error: 'Ingen användare har den koden.' });
     }
@@ -98,6 +141,13 @@ router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
       { $setOnInsert: { user: target._id, friend: req.user.id, addedAt: now } },
       { upsert: true }
     );
+
+    // Bränn engångskoden om vi använde en.
+    if (invite) {
+      invite.usedBy = req.user.id;
+      invite.usedAt = now;
+      await invite.save();
+    }
 
     res.json({
       friend: {
@@ -127,6 +177,85 @@ router.delete('/friends/:friendId', async (req, res) => {
   } catch (err) {
     console.error('Remove friend error:', err);
     res.status(500).json({ error: 'Failed to remove friend' });
+  }
+});
+
+// GET /api/me/invite-codes — alla mina aktiva (ej använda + ej utgångna)
+// engångskoder. Använda koder filtreras bort eftersom de är döda.
+router.get('/invite-codes', async (req, res) => {
+  try {
+    const now = new Date();
+    const codes = await InviteCode.find({
+      user: req.user.id,
+      usedBy: null,
+      expiresAt: { $gt: now }
+    }).sort({ createdAt: -1 }).lean();
+    res.json({
+      inviteCodes: codes.map((c) => ({
+        _id: c._id,
+        code: c.code,
+        expiresAt: c.expiresAt,
+        createdAt: c.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error('Invite-code list error:', err);
+    res.status(500).json({ error: 'Failed to fetch invite codes' });
+  }
+});
+
+// POST /api/me/invite-codes — skapa en ny engångskod (8 chars, 7 dagars
+// giltighet, kan användas EN gång). Limit på MAX_ACTIVE_INVITES per user
+// så ingen kan generera tusentals samtidigt.
+router.post('/invite-codes', async (req, res) => {
+  try {
+    const now = new Date();
+    const activeCount = await InviteCode.countDocuments({
+      user: req.user.id,
+      usedBy: null,
+      expiresAt: { $gt: now }
+    });
+    if (activeCount >= MAX_ACTIVE_INVITES) {
+      return res.status(400).json({
+        error: `Du har redan ${MAX_ACTIVE_INVITES} aktiva engångskoder. Ta bort en innan du skapar ny.`
+      });
+    }
+    const code = await generateUniqueInviteCode();
+    const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const invite = await InviteCode.create({
+      code,
+      user: req.user.id,
+      expiresAt
+    });
+    res.status(201).json({
+      inviteCode: {
+        _id: invite._id,
+        code: invite.code,
+        expiresAt: invite.expiresAt,
+        createdAt: invite.createdAt
+      }
+    });
+  } catch (err) {
+    console.error('Invite-code create error:', err);
+    res.status(500).json({ error: 'Failed to create invite code' });
+  }
+});
+
+// DELETE /api/me/invite-codes/:id — ångra en aktiv engångskod (t.ex. om
+// du delade den fel kompis). Använda koder kan inte tas bort.
+router.delete('/invite-codes/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid id' });
+  }
+  try {
+    const invite = await InviteCode.findOne({ _id: id, user: req.user.id });
+    if (!invite) return res.status(404).json({ error: 'Invite-kod hittades inte' });
+    await invite.deleteOne();
+    res.json({ message: 'Invite-kod borttagen' });
+  } catch (err) {
+    console.error('Invite-code delete error:', err);
+    res.status(500).json({ error: 'Failed to delete invite code' });
   }
 });
 
