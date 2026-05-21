@@ -262,7 +262,7 @@ export default function ListDetail() {
   // riktning och radering av hela listan är fortfarande bara ägarens.
   const canEdit = isOwner || list.shareMode === 'edit';
 
-  const isGloList = list?.title?.trim().toLowerCase() === 'glo';
+  const isGloList = (list?.title || '').trim().toLowerCase() === 'glo';
   useEffect(() => { if (isGloList) markEggFound('glo-title'); }, [isGloList]);
 
   return (
