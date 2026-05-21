@@ -1,13 +1,13 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { loadOwnedList, loadOwnedGlos } = require('../middleware/ownership');
+const { loadEditableList, loadEditableGlos } = require('../middleware/ownership');
 const Glos = require('../models/Glos');
 
 const router = express.Router();
 
 router.use(requireAuth);
 
-router.post('/lists/:listId/glosor', loadOwnedList('listId'), async (req, res) => {
+router.post('/lists/:listId/glosor', loadEditableList('listId'), async (req, res) => {
   try {
     const { source, target, notes, exampleSentence, extra } = req.body;
     if (!source || !target) {
@@ -32,16 +32,28 @@ router.post('/lists/:listId/glosor', loadOwnedList('listId'), async (req, res) =
   }
 });
 
-router.put('/glosor/:id', loadOwnedGlos, async (req, res) => {
+router.put('/glosor/:id', loadEditableGlos, async (req, res) => {
   try {
     const { source, target, notes, exampleSentence, stats, extra } = req.body;
-    if (source !== undefined) req.glos.source = source;
-    if (target !== undefined) req.glos.target = target;
-    if (notes !== undefined) req.glos.notes = notes;
-    if (exampleSentence !== undefined) req.glos.exampleSentence = exampleSentence;
-    if (typeof extra === 'boolean') req.glos.extra = extra;
+    // Mottagare i edit-mode får ändra source/target/notes m.m. men inte
+    // röra per-glos-mastery — det är ägarens data. Stats-uppdateringen
+    // ignoreras tyst för icke-ägare så Quiz.jsx slipper specialfall.
+    if (req.listIsOwner) {
+      if (source !== undefined) req.glos.source = source;
+      if (target !== undefined) req.glos.target = target;
+      if (notes !== undefined) req.glos.notes = notes;
+      if (exampleSentence !== undefined) req.glos.exampleSentence = exampleSentence;
+      if (typeof extra === 'boolean') req.glos.extra = extra;
+    } else {
+      // Mottagare som vill redigera innehåll: tillåt source/target/notes,
+      // men `extra` (homework vs extra) tillhör ägarens vy och låses.
+      if (source !== undefined) req.glos.source = source;
+      if (target !== undefined) req.glos.target = target;
+      if (notes !== undefined) req.glos.notes = notes;
+      if (exampleSentence !== undefined) req.glos.exampleSentence = exampleSentence;
+    }
 
-    if (stats && typeof stats === 'object') {
+    if (stats && typeof stats === 'object' && req.listIsOwner) {
       // Stats är monotont ökande per quiz-svar — exakt +0 eller +1. Validera
       // delta så en manipulerad klient inte kan trissa upp värden eller
       // backdatera dem. Quiz/Galge/Ordfall skickar alltid current+0 eller +1.
@@ -76,7 +88,7 @@ router.put('/glosor/:id', loadOwnedGlos, async (req, res) => {
   }
 });
 
-router.delete('/glosor/:id', loadOwnedGlos, async (req, res) => {
+router.delete('/glosor/:id', loadEditableGlos, async (req, res) => {
   try {
     await req.glos.deleteOne();
     res.json({ message: 'Glos deleted' });

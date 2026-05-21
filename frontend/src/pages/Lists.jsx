@@ -32,7 +32,7 @@ const dateFmt = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeri
 export default function Lists() {
   const { user, apiFetch } = useAuth();
   const navigate = useNavigate();
-  const [lists, setLists] = useState([]);
+  const [lists, setLists] = useState({ owned: [], shared: [] });
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,7 +83,7 @@ export default function Lists() {
     if (!pendingDelete) return;
     try {
       await deleteList(apiFetch, pendingDelete._id);
-      setLists((cur) => cur.filter((l) => l._id !== pendingDelete._id));
+      setLists((cur) => ({ ...cur, owned: cur.owned.filter((l) => l._id !== pendingDelete._id) }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -103,7 +103,10 @@ export default function Lists() {
   const onAssignCategory = async (listId, categoryId) => {
     try {
       const updated = await updateList(apiFetch, listId, { categoryId: categoryId || null });
-      setLists((cur) => cur.map((l) => (l._id === listId ? updated : l)));
+      setLists((cur) => ({
+        ...cur,
+        owned: cur.owned.map((l) => (l._id === listId ? updated : l))
+      }));
       // Refresh categories so the listCount stays in sync
       setCategories(await fetchCategories(apiFetch));
     } catch (err) {
@@ -138,7 +141,7 @@ export default function Lists() {
     const buckets = new Map();
     categories.forEach((c) => buckets.set(c._id, { category: c, lists: [] }));
     const uncategorised = [];
-    lists.forEach((l) => {
+    lists.owned.forEach((l) => {
       const cid = l.categoryId;
       if (cid && buckets.has(cid)) {
         buckets.get(cid).lists.push(l);
@@ -277,7 +280,7 @@ export default function Lists() {
 
       {loading ? (
         <p className="t-hand muted">Glo letar upp dina listor…</p>
-      ) : lists.length === 0 ? (
+      ) : lists.owned.length === 0 && lists.shared.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 48 }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
             <GloAvatar size={120} float />
@@ -328,6 +331,47 @@ export default function Lists() {
               </div>
             </section>
           ))}
+
+          {lists.shared.length > 0 && (
+            <section>
+              <div className="row between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+                <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0 }}>Delade med dig</h3>
+                  <span className="t-hand muted" style={{ fontSize: 14 }}>
+                    {lists.shared.length} {lists.shared.length === 1 ? 'lista' : 'listor'}
+                  </span>
+                </div>
+              </div>
+              <div className="deck-grid">
+                {lists.shared.map((list, i) => {
+                  const accent = ACCENTS[(i + 2) % ACCENTS.length];
+                  const flag = LANG_TO_FLAG[list.sourceLang];
+                  const subtitle = [
+                    list.sharedBy ? `delad av ${list.sharedBy.username}` : null,
+                    `${list.sourceLang} → ${list.targetLang}`
+                  ].filter(Boolean).join(' · ');
+                  return (
+                    <DeckCard
+                      key={list._id}
+                      flag={flag}
+                      lang={list.title}
+                      subtitle={subtitle}
+                      progress={0}
+                      total={0}
+                      accent={accent}
+                      onClick={() => navigate(`/lists/${list._id}`)}
+                    >
+                      <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                        <span className="pill" style={{ background: 'var(--plum-soft)', fontSize: 12 }}>
+                          delad
+                        </span>
+                      </div>
+                    </DeckCard>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
       )}
 

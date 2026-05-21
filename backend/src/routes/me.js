@@ -148,7 +148,11 @@ router.post('/quiz-complete', async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const list = await GlosList.findOne({ _id: listId, user: req.user.id }, 'sourceLang').lean();
+    // Tillåt även delade listor — quiz-XP räknas till mottagaren, inte ägaren.
+    const list = await GlosList.findOne({
+      _id: listId,
+      $or: [{ user: req.user.id }, { sharedWith: req.user.id }]
+    }, 'sourceLang').lean();
     if (!list) return res.status(404).json({ error: 'List not found' });
     const sourceLang = list.sourceLang || 'unknown';
 

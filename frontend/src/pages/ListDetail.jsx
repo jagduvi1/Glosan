@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { fetchList, swapListDirection } from '../api/lists';
+import { fetchList, swapListDirection, leaveSharedList, copyList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList, extendList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ShareDialog from '../components/ShareDialog';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
+import AvatarDisplay from '../components/AvatarDisplay';
 import Sparkle from '../components/Sparkle';
 import { LANG_TO_FLAG } from '../utils/lang';
 
@@ -63,6 +65,11 @@ export default function ListDetail() {
   const [showModePicker, setShowModePicker] = useState(false);
   const [showSwapConfirm, setShowSwapConfirm] = useState(false);
   const [swapBusy, setSwapBusy] = useState(false);
+  const [isOwner, setIsOwner] = useState(true);
+  const [sharedBy, setSharedBy] = useState(null);
+  const [showShare, setShowShare] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   const onPickMode = (mode) => {
     try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
@@ -84,12 +91,37 @@ export default function ListDetail() {
       const data = await fetchList(apiFetch, id);
       setList(data.list);
       setGlosor(data.glosor);
+      setIsOwner(data.isOwner !== false);
+      setSharedBy(data.sharedBy || null);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
   }, [apiFetch, id]);
+
+  const onLeave = async () => {
+    try {
+      await leaveSharedList(apiFetch, id);
+      navigate('/lists');
+    } catch (e) {
+      setError(e.message);
+      setShowLeaveConfirm(false);
+    }
+  };
+
+  const onCopy = async () => {
+    setCopyBusy(true);
+    setError('');
+    try {
+      const { list: copy } = await copyList(apiFetch, id);
+      navigate(`/lists/${copy._id}`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCopyBusy(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -197,6 +229,9 @@ export default function ListDetail() {
 
   const flag = LANG_TO_FLAG[list.sourceLang];
   const masteredCount = glosor.filter((g) => masteryOf(g) === 'gold').length;
+  // Mottagare får också ändra glosor när list.shareMode === 'edit'. Titel,
+  // riktning och radering av hela listan är fortfarande bara ägarens.
+  const canEdit = isOwner || list.shareMode === 'edit';
 
   return (
     <div>
@@ -214,18 +249,29 @@ export default function ListDetail() {
               <span className="pill" style={{ background: 'var(--coral-soft)' }}>
                 {list.sourceLang} → {list.targetLang}
               </span>
-              <button
-                className="btn btn-sm btn-ghost"
-                onClick={() => setShowSwapConfirm(true)}
-                style={{ fontSize: 13, padding: '4px 8px' }}
-                title="Byt källspråk och målspråk; alla glosor vänds också"
-              >
-                ↔ byt riktning
-              </button>
+              {isOwner && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setShowSwapConfirm(true)}
+                  style={{ fontSize: 13, padding: '4px 8px' }}
+                  title="Byt källspråk och målspråk; alla glosor vänds också"
+                >
+                  ↔ byt riktning
+                </button>
+              )}
               <span className="pill">{glosor.length} glosor</span>
-              {list.bestScore?.total > 0 && (
+              {list.bestScore?.total > 0 && isOwner && (
                 <span className="pill" style={{ background: 'var(--mustard-soft)' }}>
                   ⭐ bästa: {list.bestScore.correct}/{list.bestScore.total}
+                </span>
+              )}
+              {!isOwner && sharedBy && (
+                <span className="pill" style={{ background: 'var(--plum-soft)' }}>
+                  <AvatarDisplay avatar={sharedBy.avatar} username={sharedBy.username} size={20} />
+                  delad av {sharedBy.username}
+                  {list.shareMode === 'edit' && (
+                    <span style={{ fontSize: 11, marginLeft: 4, fontWeight: 600 }}>· du får ändra</span>
+                  )}
                 </span>
               )}
             </div>
@@ -250,7 +296,35 @@ export default function ListDetail() {
               </div>
             )}
           </div>
-          <div className="row" style={{ gap: 10, flex: 'none' }}>
+          <div className="row" style={{ gap: 10, flex: 'none', flexWrap: 'wrap' }}>
+            {isOwner && (
+              <button
+                className="btn"
+                onClick={() => setShowShare(true)}
+                title="Dela listan med en kompis"
+              >
+                Dela med kompis
+              </button>
+            )}
+            {!isOwner && (
+              <>
+                <button
+                  className="btn"
+                  onClick={onCopy}
+                  disabled={copyBusy}
+                  title="Skapa en egen kopia som du äger och kan ändra fritt"
+                >
+                  {copyBusy ? 'Kopierar…' : 'Kopiera till mina'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowLeaveConfirm(true)}
+                  style={{ color: 'var(--berry-deep)' }}
+                >
+                  Lämna listan
+                </button>
+              </>
+            )}
             <button
               className="btn btn-primary btn-lg"
               onClick={() => setShowModePicker(true)}
@@ -266,15 +340,17 @@ export default function ListDetail() {
         <div>
           <h3 style={{ margin: '0 0 10px' }}>Glosor</h3>
 
-          <div className="card" style={{ padding: 12, marginBottom: 14 }}>
-            <form onSubmit={onAdd} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <input className="inp" name="source" placeholder={list.sourceLang} required style={{ flex: 1, minWidth: 120 }} />
-              <span className="t-hand muted" style={{ fontSize: 18 }}>→</span>
-              <input className="inp" name="target" placeholder={list.targetLang} required style={{ flex: 1, minWidth: 120 }} />
-              <input className="inp" name="notes" placeholder="anteckning (valfri)" style={{ flex: 1.4, minWidth: 140 }} />
-              <button type="submit" className="btn btn-primary">Lägg till</button>
-            </form>
-          </div>
+          {canEdit && (
+            <div className="card" style={{ padding: 12, marginBottom: 14 }}>
+              <form onSubmit={onAdd} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <input className="inp" name="source" placeholder={list.sourceLang} required style={{ flex: 1, minWidth: 120 }} />
+                <span className="t-hand muted" style={{ fontSize: 18 }}>→</span>
+                <input className="inp" name="target" placeholder={list.targetLang} required style={{ flex: 1, minWidth: 120 }} />
+                <input className="inp" name="notes" placeholder="anteckning (valfri)" style={{ flex: 1.4, minWidth: 140 }} />
+                <button type="submit" className="btn btn-primary">Lägg till</button>
+              </form>
+            </div>
+          )}
 
           {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
@@ -325,13 +401,15 @@ export default function ListDetail() {
                         <span className="stat-bad">{g.stats?.wrong ?? 0}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
-                          onClick={() => onDelete(g._id)}
-                        >
-                          Radera
-                        </button>
+                        {canEdit && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
+                            onClick={() => onDelete(g._id)}
+                          >
+                            Radera
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -350,6 +428,7 @@ export default function ListDetail() {
           )}
         </div>
 
+        {isOwner && (
         <div className="card card-lg" style={{ background: 'var(--plum-soft)', alignSelf: 'flex-start', position: 'sticky', top: 24 }}>
           <div className="row" style={{ gap: 10, marginBottom: 10 }}>
             <GloAvatar size={48} mood="wink" tilt={-6} />
@@ -421,6 +500,7 @@ export default function ListDetail() {
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {showImport && (
@@ -449,6 +529,27 @@ export default function ListDetail() {
           confirmLabel={swapBusy ? 'Vänder…' : 'Byt riktning'}
           onConfirm={confirmSwapDirection}
           onCancel={() => !swapBusy && setShowSwapConfirm(false)}
+        />
+      )}
+
+      {showShare && (
+        <ShareDialog
+          listId={id}
+          listTitle={list.title}
+          initialMode={list.shareMode || 'read'}
+          onClose={() => setShowShare(false)}
+          onChanged={load}
+        />
+      )}
+
+      {showLeaveConfirm && (
+        <ConfirmDialog
+          title="Lämna den delade listan?"
+          message={`${sharedBy?.username || 'Ägaren'} kan fortfarande dela listan med dig igen senare. Du tappar ingen XP du tjänat från quizen.`}
+          confirmLabel="Lämna"
+          destructive
+          onConfirm={onLeave}
+          onCancel={() => setShowLeaveConfirm(false)}
         />
       )}
     </div>
