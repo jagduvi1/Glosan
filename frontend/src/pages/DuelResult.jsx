@@ -48,6 +48,7 @@ export default function DuelResult() {
   }
 
   const allCompleted = duel.allCompleted;
+  const isGoal = duel.kind === 'goal';
   // Rangordna: status=completed först, sen på correct desc, sen durationMs asc.
   const ranked = [...duel.participants].sort((a, b) => {
     if (a.status !== b.status) return a.status === 'completed' ? -1 : 1;
@@ -57,6 +58,7 @@ export default function DuelResult() {
 
   const winnerId = allCompleted && ranked.length > 0 ? ranked[0].user?.toString() : null;
   const myId = user?.id || (typeof user === 'object' ? user._id : null);
+  const goalMet = (p) => isGoal && duel.goal != null && p.status === 'completed' && p.correct >= duel.goal;
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
@@ -68,19 +70,30 @@ export default function DuelResult() {
         />
       </div>
       <h1 style={{ fontSize: 44, margin: '8px 0 4px' }}>
-        {allCompleted
-          ? (winnerId === String(myId) ? <>Du <span className="mark-highlight">vann</span>!</> : 'Slutresultat')
-          : 'Utmaning pågår'}
+        {isGoal && allCompleted
+          ? (goalMet(ranked.find((p) => String(p.user) === String(myId))) ? <>Du <span className="mark-highlight">klarade målet</span>!</> : 'Klarade inte målet')
+          : allCompleted
+            ? (winnerId === String(myId) ? <>Du <span className="mark-highlight">vann</span>!</> : 'Slutresultat')
+            : 'Utmaning pågår'}
       </h1>
       <p className="t-hand muted" style={{ fontSize: 17, margin: '0 0 24px' }}>
-        {duel.list?.title}
+        {isGoal ? (duel.title || 'Klarar du den här?') : duel.list?.title}
+        {isGoal && duel.goal != null && ` · mål: ${duel.goal}`}
         {!allCompleted && ' · väntar på att alla ska spela'}
       </p>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', textAlign: 'left' }}>
         {ranked.map((p, i) => {
           const isMe = p.user && String(p.user) === String(myId);
-          const isWinner = allCompleted && i === 0 && p.status === 'completed';
+          // För 'duel': vinnare = #1. För 'goal': "vinnare"-färgning ges alla
+          // som klarat målet, inte bara den första.
+          const made = goalMet(p);
+          const isWinner = isGoal
+            ? made
+            : (allCompleted && i === 0 && p.status === 'completed');
+          const bg = isGoal
+            ? (made ? 'var(--leaf-soft)' : p.status === 'completed' ? 'var(--berry-soft)' : 'var(--bg-elev)')
+            : (isWinner ? 'var(--mustard-soft)' : isMe ? 'var(--paper-deep)' : 'var(--bg-elev)');
           return (
             <div
               key={p.user}
@@ -88,13 +101,15 @@ export default function DuelResult() {
               style={{
                 gap: 12,
                 padding: '14px 18px',
-                background: isWinner ? 'var(--mustard-soft)' : isMe ? 'var(--paper-deep)' : 'var(--bg-elev)',
+                background: bg,
                 borderBottom: i < ranked.length - 1 ? '1px dashed var(--paper-edge)' : 'none',
                 alignItems: 'center'
               }}
             >
               <span style={{ width: 28, fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18, textAlign: 'center' }}>
-                {isWinner ? '🥇' : p.status === 'completed' ? `#${i + 1}` : '⏳'}
+                {isGoal
+                  ? (p.status === 'completed' ? (made ? '✓' : '✗') : '⏳')
+                  : (isWinner ? '🥇' : p.status === 'completed' ? `#${i + 1}` : '⏳')}
               </span>
               <AvatarDisplay avatar={p.avatar} username={p.username || '?'} size={40} />
               <div className="grow" style={{ minWidth: 0 }}>
@@ -104,7 +119,7 @@ export default function DuelResult() {
                 </div>
                 <p className="t-hand muted" style={{ fontSize: 13, margin: '2px 0 0' }}>
                   {p.status === 'completed'
-                    ? `${p.correct} / ${p.total} rätt · ${formatTime(p.durationMs)}`
+                    ? `${p.correct} / ${p.total} rätt · ${formatTime(p.durationMs)}${isGoal ? (made ? ' · klarade målet' : ' · missade målet') : ''}`
                     : 'har inte spelat än'}
                 </p>
               </div>

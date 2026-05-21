@@ -8,6 +8,7 @@ import { fetchDuels } from '../api/duels';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
+import GoalChallengeDialog from '../components/GoalChallengeDialog';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -30,6 +31,7 @@ export default function Friends() {
   const [notice, setNotice] = useState('');
   const [pendingRemove, setPendingRemove] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [showGoalChallenge, setShowGoalChallenge] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -217,18 +219,33 @@ export default function Friends() {
 
       {error && <p className="error">{error}</p>}
 
-      {duels.length > 0 && (
-        <div>
-          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <h2 style={{ margin: 0 }}>⚔️ Utmaningar</h2>
-            <span className="t-hand muted" style={{ fontSize: 14 }}>{duels.length} totalt</span>
+      <div>
+        <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ margin: 0 }}>⚔️ Utmaningar</h2>
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => setShowGoalChallenge(true)}
+              style={{ background: 'var(--mustard-soft)' }}
+            >
+              🎯 Klarar du den här?
+            </button>
           </div>
+        </div>
+        {duels.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 24 }}>
+            <p className="t-hand muted" style={{ margin: 0 }}>
+              Inga utmaningar än. Skicka en till en kompis från en lista eller med "Klarar du den här?" ovan.
+            </p>
+          </div>
+        ) : (
           <div className="stack" style={{ gap: 8 }}>
             {duels.map((d) => {
               const myStatus = d.myStatus;
               const link = myStatus === 'pending' ? `/duels/${d._id}/play` : `/duels/${d._id}/result`;
               const others = d.participants.filter((p) => String(p.user) !== String(user?.id || user?._id));
               const completedCount = d.participants.filter((p) => p.status === 'completed').length;
+              const titleText = d.kind === 'goal' ? (d.title || 'Klarar du den här?') : (d.list?.title || 'lista borttagen');
               return (
                 <Link key={d._id} to={link} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div
@@ -253,7 +270,14 @@ export default function Friends() {
                       ))}
                     </div>
                     <div className="grow" style={{ minWidth: 0 }}>
-                      <strong style={{ fontSize: 16 }}>{d.list?.title || 'lista borttagen'}</strong>
+                      <div className="row" style={{ gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: 16 }}>{titleText}</strong>
+                        {d.kind === 'goal' && d.goal != null && (
+                          <span className="pill" style={{ background: 'var(--mustard-soft)', fontSize: 12 }}>
+                            🎯 mål {d.goal}
+                          </span>
+                        )}
+                      </div>
                       <p className="t-hand muted" style={{ fontSize: 13, margin: '2px 0 0' }}>
                         {myStatus === 'pending'
                           ? 'Klicka för att spela →'
@@ -270,8 +294,8 @@ export default function Friends() {
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {coopStreaks.length > 0 && (
         <div>
@@ -448,6 +472,10 @@ export default function Friends() {
           onConfirm={onRemoveConfirmed}
           onCancel={() => setPendingRemove(null)}
         />
+      )}
+
+      {showGoalChallenge && (
+        <GoalChallengeDialog onClose={() => setShowGoalChallenge(false)} />
       )}
     </div>
   );

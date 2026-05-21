@@ -9,6 +9,17 @@ export async function createDuel(apiFetch, body) {
   return data.duel;
 }
 
+export async function createGoalChallenge(apiFetch, body) {
+  const res = await apiFetch('/api/duels/goal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte skapa utmaning');
+  return data.duel;
+}
+
 export async function fetchDuels(apiFetch) {
   const res = await apiFetch('/api/duels');
   const data = await res.json();
