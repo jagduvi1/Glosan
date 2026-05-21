@@ -11,12 +11,22 @@ import { shuffle, answerVariants } from '../utils/quiz';
 
 // Spelplan: rutnät av celler. Cellstorlek räknas ut i CSS via clamp så
 // det funkar både på mobil och desktop utan att jaga viewport-mått i JS.
-const COLS = 14;
-const ROWS = 11;
-const TICK_MS = 240;     // hur ofta ormen flyttas
+const COLS = 16;
+const ROWS = 12;
+const TICK_MS = 220;     // hur ofta ormen flyttas
 const TOTAL_ROUNDS = 10; // hur många glosor man ska klara innan vinst
 const LIVES = 3;
 const MIN_FOODS = 3;     // alltid 1 rätt + 2-3 fel
+
+// Färgpalett för matrutorna. Varje runda får varje matruta en egen färg
+// och i sidopanelen står ordet i samma färg. Spelaren måste läsa ordet,
+// notera färgen, och styra ormen till boxen med rätt färg.
+const FOOD_COLORS = [
+  { key: 'coral',   var: 'var(--coral)' },
+  { key: 'sky',     var: 'var(--sky)' },
+  { key: 'mustard', var: 'var(--mustard)' },
+  { key: 'plum',    var: 'var(--plum)' }
+];
 
 function emptyCellFar(occupied, near) {
   // Hitta en cell som inte ligger på ormen/maten och inte alldeles intill `near`.
@@ -32,7 +42,8 @@ function emptyCellFar(occupied, near) {
 }
 
 function pickFood(glosor, currentGlosId, reversed) {
-  // Plocka 3-4 distraktorer från andra glosor + det rätta svaret.
+  // Plocka 3 distraktorer från andra glosor + det rätta svaret, och tilldela
+  // varje matruta en egen färg från paletten (slumpas varje runda).
   const cur = glosor.find((g) => g._id === currentGlosId);
   if (!cur) return { correctText: '', foods: [] };
   const correctText = (reversed ? cur.source : cur.target).split('/')[0].trim();
@@ -42,10 +53,12 @@ function pickFood(glosor, currentGlosId, reversed) {
     .filter((t) => t && t.toLowerCase() !== correctText.toLowerCase());
   const distractorCount = Math.min(3, distractorPool.length);
   const distractors = shuffle(distractorPool).slice(0, distractorCount);
-  const all = shuffle([
+  const items = shuffle([
     { text: correctText, correct: true },
     ...distractors.map((t) => ({ text: t, correct: false }))
   ]);
+  const colors = shuffle(FOOD_COLORS).slice(0, items.length);
+  const all = items.map((item, i) => ({ ...item, color: colors[i] }));
   return { correctText, foods: all };
 }
 
@@ -359,12 +372,13 @@ export default function SnakeGame() {
         <GloAvatar size={140} float mood="wink" style={{ margin: '0 auto 8px' }} />
         <h1 style={{ marginBottom: 6 }}>🐍 Orm</h1>
         <p className="t-hand muted" style={{ fontSize: 16, margin: '0 0 18px' }}>
-          Styr ormen att äta rätt översättning. Pilar eller WASD på datorn,
-          svep med fingret på mobil. {LIVES} liv, {TOTAL_ROUNDS} ord att klara.
+          Läs orden i sidopanelen, hitta rätt översättning och styr ormen till
+          boxen med samma färg. Pilar/WASD på datorn, svep med fingret på mobil.
+          {' '}{LIVES} liv, {TOTAL_ROUNDS} ord att klara.
         </p>
         <button className="btn btn-primary btn-lg" onClick={startGame}>Starta →</button>
         <p className="t-hand muted" style={{ fontSize: 13, marginTop: 14 }}>
-          Tips: fel översättningar krymper inte ormen, men kostar liv.
+          Tips: fel färg krymper inte ormen, men kostar ett liv.
         </p>
       </div>
     );
@@ -412,47 +426,62 @@ export default function SnakeGame() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: 16, textAlign: 'center', marginBottom: 14 }}>
-        <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 4px' }}>
-          Ät översättningen av:
-        </p>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, lineHeight: 1 }}>
-          {promptWord}
-        </div>
-      </div>
-
-      <div className="snake-board-wrap" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        <div
-          className="snake-board"
-          style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)`, gridTemplateRows: `repeat(${ROWS}, 1fr)` }}
-        >
-          {Array.from({ length: ROWS * COLS }).map((_, i) => {
-            const x = i % COLS;
-            const y = Math.floor(i / COLS);
-            const seg = cellSet.get(`${x}-${y}`);
-            const food = foodMap.get(`${x}-${y}`);
-            return (
-              <div
-                key={i}
-                className={`snake-cell ${seg ? 'snake-' + seg : ''} ${food ? 'snake-food' : ''}`}
-                style={feedback === 'correct' && food?.correct ? { background: 'var(--leaf)', color: 'var(--paper)' }
-                     : feedback === 'wrong' && food && !food.correct ? { background: 'var(--berry)', color: 'var(--paper)' }
-                     : undefined}
-              >
-                {food && <span className="snake-food-text">{food.text}</span>}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Pil-knappar för mobil */}
-        <div className="snake-dpad" aria-hidden="true">
-          <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dy === 1)) pendingDirRef.current = { dx: 0, dy: -1 }; }}>↑</button>
-          <div className="row" style={{ gap: 36 }}>
-            <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dx === 1)) pendingDirRef.current = { dx: -1, dy: 0 }; }}>←</button>
-            <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dx === -1)) pendingDirRef.current = { dx: 1, dy: 0 }; }}>→</button>
+      <div className="snake-layout">
+        <aside className="snake-wordlist card">
+          <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 2px' }}>
+            Hitta översättningen av:
+          </p>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1.05, marginBottom: 14, wordBreak: 'break-word' }}>
+            {promptWord}
           </div>
-          <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dy === -1)) pendingDirRef.current = { dx: 0, dy: 1 }; }}>↓</button>
+          <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+            Ät boxen med rätt färg ↓
+          </p>
+          <div className="snake-wordlist-items">
+            {foods.map((f, i) => (
+              <div key={`${f.text}-${i}`} className="snake-wordlist-item">
+                <span className="snake-wordlist-swatch" style={{ background: f.color.var }} aria-hidden="true" />
+                <span className="snake-wordlist-text">{f.text}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="snake-board-wrap" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <div
+            className="snake-board"
+            style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)`, gridTemplateRows: `repeat(${ROWS}, 1fr)` }}
+          >
+            {Array.from({ length: ROWS * COLS }).map((_, i) => {
+              const x = i % COLS;
+              const y = Math.floor(i / COLS);
+              const seg = cellSet.get(`${x}-${y}`);
+              const food = foodMap.get(`${x}-${y}`);
+              let bg;
+              if (food) {
+                if (feedback === 'correct' && food.correct) bg = 'var(--leaf)';
+                else if (feedback === 'wrong' && !food.correct) bg = 'var(--berry)';
+                else bg = food.color.var;
+              }
+              return (
+                <div
+                  key={i}
+                  className={`snake-cell ${seg ? 'snake-' + seg : ''} ${food ? 'snake-food' : ''}`}
+                  style={bg ? { background: bg } : undefined}
+                />
+              );
+            })}
+          </div>
+
+          {/* Pil-knappar för mobil */}
+          <div className="snake-dpad" aria-hidden="true">
+            <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dy === 1)) pendingDirRef.current = { dx: 0, dy: -1 }; }}>↑</button>
+            <div className="row" style={{ gap: 36 }}>
+              <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dx === 1)) pendingDirRef.current = { dx: -1, dy: 0 }; }}>←</button>
+              <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dx === -1)) pendingDirRef.current = { dx: 1, dy: 0 }; }}>→</button>
+            </div>
+            <button className="snake-dpad-btn" onClick={() => { const c = dirRef.current; if (!(c.dy === -1)) pendingDirRef.current = { dx: 0, dy: 1 }; }}>↓</button>
+          </div>
         </div>
       </div>
     </div>
