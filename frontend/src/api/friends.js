@@ -1,10 +1,3 @@
-export async function fetchFriendCode(apiFetch) {
-  const res = await apiFetch('/api/me/friend-code');
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Kunde inte hämta din kod');
-  return data.friendCode;
-}
-
 export async function fetchFriends(apiFetch) {
   const res = await apiFetch('/api/me/friends');
   const data = await res.json();
