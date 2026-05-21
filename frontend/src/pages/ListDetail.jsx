@@ -418,12 +418,12 @@ export default function ListDetail() {
 
           {canEdit && (
             <div className="card" style={{ padding: 12, marginBottom: 14 }}>
-              <form onSubmit={onAdd} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <input className="inp" name="source" placeholder={list.sourceLang} required style={{ flex: 1, minWidth: 120 }} />
-                <span className="t-hand muted" style={{ fontSize: 18 }}>→</span>
-                <input className="inp" name="target" placeholder={list.targetLang} required style={{ flex: 1, minWidth: 120 }} />
-                <input className="inp" name="notes" placeholder="anteckning (valfri)" style={{ flex: 1.4, minWidth: 140 }} />
-                <button type="submit" className="btn btn-primary">Lägg till</button>
+              <form onSubmit={onAdd} className="add-glos-form">
+                <input className="inp" name="source" placeholder={list.sourceLang} required />
+                <span className="add-glos-arrow t-hand muted" style={{ fontSize: 18 }}>→</span>
+                <input className="inp" name="target" placeholder={list.targetLang} required />
+                <input className="inp add-glos-notes" name="notes" placeholder="anteckning (valfri)" />
+                <button type="submit" className="btn btn-primary add-glos-submit">Lägg till</button>
               </form>
             </div>
           )}
@@ -437,16 +437,16 @@ export default function ListDetail() {
               </p>
             </div>
           ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card glos-table-wrap" style={{ padding: 0, overflow: 'hidden' }}>
               <table className="glos-table">
                 <thead>
                   <tr>
                     <th style={{ width: 24 }}></th>
                     <th>{list.sourceLang}</th>
                     <th>{list.targetLang}</th>
-                    <th style={{ width: 60, textAlign: 'right' }}>rätt</th>
-                    <th style={{ width: 60, textAlign: 'right' }}>fel</th>
-                    <th style={{ width: 80 }}></th>
+                    <th className="hide-on-mobile" style={{ width: 60, textAlign: 'right' }}>rätt</th>
+                    <th className="hide-on-mobile" style={{ width: 60, textAlign: 'right' }}>fel</th>
+                    <th style={{ width: 60 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -470,20 +470,22 @@ export default function ListDetail() {
                         )}
                       </td>
                       <td>{g.target}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="hide-on-mobile" style={{ textAlign: 'right' }}>
                         <span className="stat-good">{g.stats?.correct ?? 0}</span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="hide-on-mobile" style={{ textAlign: 'right' }}>
                         <span className="stat-bad">{g.stats?.wrong ?? 0}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {canEdit && (
                           <button
-                            className="btn btn-sm btn-ghost"
+                            className="btn btn-sm btn-ghost glos-delete"
                             style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
                             onClick={() => onDelete(g._id)}
+                            aria-label="Radera glosa"
                           >
-                            Radera
+                            <span className="glos-delete-text">Radera</span>
+                            <span className="glos-delete-icon" aria-hidden="true">✕</span>
                           </button>
                         )}
                       </td>

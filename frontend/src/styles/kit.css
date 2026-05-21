@@ -81,6 +81,21 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 /* list detail action-rad (Dela / Utmana / Starta öva) */
 .list-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+/* add-glosa-formuläret på ListDetail: input → arrow → input → notes → knapp */
+.add-glos-form {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr 1.4fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.add-glos-form > .inp { min-width: 0; }
+.add-glos-arrow { text-align: center; }
+.add-glos-submit { white-space: nowrap; }
+
+/* glos-tabellens "Radera" — desktop visar text, mobil visar ✕-ikon */
+.glos-delete-icon { display: none; font-size: 16px; line-height: 1; }
+.glos-delete-text { display: inline; }
+
 /* main + footer */
 .app-main { max-width: 960px; margin: 0 auto; padding: 28px 24px 60px; }
 .app-footer {
@@ -239,10 +254,21 @@ a:hover { text-decoration: underline; }
   }
   .list-actions .btn { width: 100%; justify-content: center; }
 
-  /* Glos-tabellen kan ha långa fraser — låt den scrolla horisontellt
-     istället för att tvinga radbrytningar som blir omöjliga att läsa */
+  /* Glos-tabellen: göm rätt/fel-kolumner på mobil och förkorta Radera */
   table.glos-table { font-size: 14px; }
   table.glos-table th, table.glos-table td { padding: 8px 10px; }
+  .hide-on-mobile { display: none !important; }
+  .glos-delete-text { display: none; }
+  .glos-delete-icon { display: inline; }
+  .glos-delete { padding: 4px 8px !important; min-width: 32px; }
+
+  /* Add-glosa-form: stacka allt vertikalt, göm pilen */
+  .add-glos-form {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .add-glos-arrow { display: none; }
+  .add-glos-submit { width: 100%; }
 }
 
 /* extra-narrow: göm streak/xp/avatar-text om viewport är väldigt liten */
