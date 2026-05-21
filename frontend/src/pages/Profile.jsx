@@ -249,7 +249,7 @@ export default function Profile() {
             )}
             {!plan.trial.active && plan.hasUsedTrial && plan.effectivePlan.id !== 'premium' && (
               <span className="t-hand muted" style={{ fontSize: 13 }}>
-                Trial använd. Kontakta Johan för uppgradering.
+                Trial använd. Premium kommer snart.
               </span>
             )}
           </div>
