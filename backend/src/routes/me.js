@@ -6,6 +6,7 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const Friendship = require('../models/Friendship');
 const CoopStreak = require('../models/CoopStreak');
+const XpEvent = require('../models/XpEvent');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -200,6 +201,14 @@ router.post('/quiz-complete', async (req, res) => {
     user.streak.lastActiveDay = today;
 
     await user.save();
+
+    // XP-event-logg för "Månadens XP"-leaderboard m.fl. tidsbaserade vyer.
+    // Insertas asynkront utan att blockera svaret — om det misslyckas är
+    // det bara en kosmetisk siffra som blir fel.
+    if (xpEarned > 0) {
+      XpEvent.create({ user: user._id, amount: xpEarned, sourceLang })
+        .catch((e) => console.error('XpEvent log error:', e.message));
+    }
 
     // Co-op-streaks: för varje par jag är med i, tickas streaken upp om
     // den andre också är aktiv idag. Brytlogiken körs implicit — om

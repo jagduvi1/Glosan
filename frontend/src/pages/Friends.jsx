@@ -6,6 +6,7 @@ import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '..
 import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
 import { fetchDuels } from '../api/duels';
 import { fetchInviteCodes, createInviteCode, deleteInviteCode } from '../api/inviteCodes';
+import { fetchXpLeaderboard } from '../api/leaderboards';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -28,6 +29,7 @@ export default function Friends() {
   const [inviteCodes, setInviteCodes] = useState([]);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [copiedInviteId, setCopiedInviteId] = useState(null);
+  const [xpBoard, setXpBoard] = useState({ leaderboard: [], since: null });
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -41,18 +43,20 @@ export default function Friends() {
     setBusy(true);
     setError('');
     try {
-      const [c, fs, coops, ds, invites] = await Promise.all([
+      const [c, fs, coops, ds, invites, xp] = await Promise.all([
         fetchFriendCode(apiFetch),
         fetchFriends(apiFetch),
         fetchCoopStreaks(apiFetch),
         fetchDuels(apiFetch),
-        fetchInviteCodes(apiFetch)
+        fetchInviteCodes(apiFetch),
+        fetchXpLeaderboard(apiFetch, 'month')
       ]);
       setCode(c);
       setFriends(fs);
       setCoopStreaks(coops);
       setDuels(ds);
       setInviteCodes(invites);
+      setXpBoard(xp);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -459,6 +463,52 @@ export default function Friends() {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {friends.length > 0 && xpBoard.leaderboard.some((r) => r.xp > 0) && (
+        <div>
+          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>
+              <img src="/assets/star-sticker.svg" width="22" height="22" alt="" style={{ verticalAlign: -3, marginRight: 6 }} />
+              Månadens XP
+            </h2>
+            <span className="t-hand muted" style={{ fontSize: 14 }}>
+              {xpBoard.since ? `sedan ${new Date(xpBoard.since).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' })}` : ''}
+            </span>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {xpBoard.leaderboard.map((row, i) => {
+              const medal = i < 3 && row.xp > 0 ? MEDALS[i] : null;
+              return (
+                <div
+                  key={row._id}
+                  className="row"
+                  style={{
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: row.isMe ? 'var(--paper-deep)' : 'var(--bg-elev)',
+                    borderBottom: i < xpBoard.leaderboard.length - 1 ? '1px dashed var(--paper-edge)' : 'none'
+                  }}
+                >
+                  <span style={{ width: 28, fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18, textAlign: 'center' }}>
+                    {medal || `#${i + 1}`}
+                  </span>
+                  <AvatarDisplay avatar={row.avatar} username={row.username} size={36} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="row" style={{ gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 16 }}>{row.username}</strong>
+                      {row.isMe && <span className="t-hand muted" style={{ fontSize: 13 }}>(du)</span>}
+                    </div>
+                  </div>
+                  <span className="pill" style={{ background: row.xp > 0 ? 'var(--mustard-soft)' : 'var(--paper-edge)' }}>
+                    <img src="/assets/star-sticker.svg" width="12" height="12" alt="" />
+                    {row.xp} XP
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
