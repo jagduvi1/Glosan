@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, submitScore } from '../api/lists';
 import { updateGlos } from '../api/glosor';
+import { fetchCategoryPool } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG } from '../utils/lang';
@@ -11,12 +12,15 @@ import { shuffle, answerVariants } from '../utils/quiz';
 
 // Spelplan: rutnät av celler. Cellstorlek räknas ut i CSS via clamp så
 // det funkar både på mobil och desktop utan att jaga viewport-mått i JS.
+// Orm är "endless" — spelet slutar bara när ormen krockar eller liven
+// tar slut, och poolen fylls på med ord från samma kategori när listans
+// egna glosor börjar ta slut.
 const COLS = 16;
 const ROWS = 12;
 const TICK_MS = 220;     // hur ofta ormen flyttas
-const TOTAL_ROUNDS = 10; // hur många glosor man ska klara innan vinst
 const LIVES = 3;
 const MIN_FOODS = 3;     // alltid 1 rätt + 2-3 fel
+const POOL_FETCH_LIMIT = 200;
 
 // Färgpalett för matrutorna. Varje runda får varje matruta en egen färg
 // och i sidopanelen står ordet i samma färg. Spelaren måste läsa ordet,
@@ -91,6 +95,7 @@ export default function SnakeGame() {
   const dirRef = useRef({ dx: 1, dy: 0 });
   const pendingDirRef = useRef(null);
   const [foods, setFoods] = useState([]);
+  const [pool, setPool] = useState([]); // växande pool: börjar = listans glosor, fylls på från kategorin
   const [currentGlosId, setCurrentGlosId] = useState(null);
   const [lives, setLives] = useState(LIVES);
   const [score, setScore] = useState({ correct: 0, wrong: 0 });
@@ -98,13 +103,15 @@ export default function SnakeGame() {
   const [bestStreak, setBestStreak] = useState(0);
   const [streak, setStreak] = useState(0);
   const submittingRef = useRef(false);
+  const fetchingPoolRef = useRef(false);     // hindrar parallella fetches
+  const poolExhaustedRef = useRef(false);    // satt när kategorin inte har fler ord
 
   useDocumentTitle(list ? `Orm · ${list.title}` : 'Orm');
 
   const reversed = list?.quizReversed ?? true;
   const currentGlos = useMemo(
-    () => glosor.find((g) => g._id === currentGlosId),
-    [glosor, currentGlosId]
+    () => pool.find((g) => g._id === currentGlosId),
+    [pool, currentGlosId]
   );
   const promptWord = currentGlos
     ? (reversed ? currentGlos.target : currentGlos.source)
@@ -148,9 +155,13 @@ export default function SnakeGame() {
     setStreak(0);
     setBestStreak(0);
     setFeedback(null);
-    const firstGlos = glosor[0];
+    fetchingPoolRef.current = false;
+    poolExhaustedRef.current = false;
+    const initialPool = shuffle(glosor);
+    setPool(initialPool);
+    const firstGlos = initialPool[0];
     setCurrentGlosId(firstGlos._id);
-    const { foods: f } = pickFood(glosor, firstGlos._id, reversed);
+    const { foods: f } = pickFood(initialPool, firstGlos._id, reversed);
     setFoods(placeFoods(startSnake, f));
     setPhase('playing');
   }, [glosor, reversed]);
@@ -223,13 +234,43 @@ export default function SnakeGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, foods]);
 
+  const maybeFetchMore = useCallback((curIdx) => {
+    // Förladda fler glosor från samma kategori när vi passerat halva poolen
+    // och inte redan har hämtat (eller försökt och fått tomt).
+    if (poolExhaustedRef.current || fetchingPoolRef.current) return;
+    if (!list?.categoryId) { poolExhaustedRef.current = true; return; }
+    if (curIdx < Math.floor(pool.length / 2)) return;
+
+    fetchingPoolRef.current = true;
+    fetchCategoryPool(apiFetch, list.categoryId, {
+      mode: 'all',
+      excludeListId: id,
+      limit: POOL_FETCH_LIMIT
+    }).then((data) => {
+      const existing = new Set(pool.map((g) => g._id));
+      const fresh = (data.glosor || []).filter((g) =>
+        !existing.has(g._id) && (g.source || '').trim() && (g.target || '').trim()
+      );
+      if (fresh.length > 0) {
+        setPool((cur) => [...cur, ...shuffle(fresh)]);
+      } else {
+        poolExhaustedRef.current = true;
+      }
+    }).catch((err) => {
+      console.error('Snake category-pool fetch failed:', err);
+      // Vid fel: cykla bara om från befintlig pool
+      poolExhaustedRef.current = true;
+    }).finally(() => {
+      fetchingPoolRef.current = false;
+    });
+  }, [apiFetch, id, list, pool]);
+
   const handleEat = (eaten) => {
     const wasCorrect = eaten.correct;
     setFeedback(wasCorrect ? 'correct' : 'wrong');
     setTimeout(() => setFeedback(null), 350);
 
     if (wasCorrect) {
-      const newCorrect = score.correct + 1;
       setScore((s) => ({ ...s, correct: s.correct + 1 }));
       const newStreak = streak + 1;
       setStreak(newStreak);
@@ -245,16 +286,12 @@ export default function SnakeGame() {
         }).catch(() => { /* swallow */ });
       }
 
-      // Klar?
-      if (newCorrect >= TOTAL_ROUNDS) {
-        finishGame(newCorrect, score.wrong);
-        return;
-      }
-      // Nästa glosa
-      const nextIdx = (glosor.findIndex((g) => g._id === currentGlos._id) + 1) % glosor.length;
-      const nextGlos = glosor[nextIdx];
+      // Nästa glosa från poolen (cyklar runt om vi inte hunnit fylla på)
+      const curIdx = pool.findIndex((g) => g._id === currentGlos._id);
+      const nextIdx = (curIdx + 1) % pool.length;
+      const nextGlos = pool[nextIdx];
       setCurrentGlosId(nextGlos._id);
-      const { foods: f } = pickFood(glosor, nextGlos._id, reversed);
+      const { foods: f } = pickFood(pool, nextGlos._id, reversed);
       // placera nya mat — men vi måste använda *nyaste* ormen, så vänta en mikrotick
       setTimeout(() => {
         setSnake((s) => {
@@ -262,6 +299,9 @@ export default function SnakeGame() {
           return s;
         });
       }, 0);
+
+      // Trigga ev. förladdning av fler ord från kategorin (best-effort)
+      maybeFetchMore(curIdx);
     } else {
       // Fel mat — förlorar liv, glosan kvarstår, generera nya mat-positioner
       setScore((s) => ({ ...s, wrong: s.wrong + 1 }));
@@ -281,7 +321,7 @@ export default function SnakeGame() {
           return 0;
         }
         // Refresh foods för samma glosa
-        const { foods: f } = pickFood(glosor, currentGlos._id, reversed);
+        const { foods: f } = pickFood(pool, currentGlos._id, reversed);
         setTimeout(() => {
           setSnake((s) => {
             setFoods(placeFoods(s, f));
@@ -374,11 +414,12 @@ export default function SnakeGame() {
         <p className="t-hand muted" style={{ fontSize: 16, margin: '0 0 18px' }}>
           Läs orden i sidopanelen, hitta rätt översättning och styr ormen till
           boxen med samma färg. Pilar/WASD på datorn, svep med fingret på mobil.
-          {' '}{LIVES} liv, {TOTAL_ROUNDS} ord att klara.
+          {' '}{LIVES} liv — kör så långt du kan!
         </p>
         <button className="btn btn-primary btn-lg" onClick={startGame}>Starta →</button>
         <p className="t-hand muted" style={{ fontSize: 13, marginTop: 14 }}>
-          Tips: fel färg krymper inte ormen, men kostar ett liv.
+          Tips: när listans glosor tar slut fyller Glo på med fler ord från samma
+          tema. Fel färg krymper inte ormen, men kostar ett liv.
         </p>
       </div>
     );
@@ -397,7 +438,7 @@ export default function SnakeGame() {
         <Link to={`/lists/${id}`}>
           <button className="btn btn-ghost btn-sm" aria-label="Avbryt spel">× Avbryt</button>
         </Link>
-        <span className="t-hand muted">{score.correct} / {TOTAL_ROUNDS} klara</span>
+        <span className="t-hand muted">{score.correct} rätt{streak >= 2 ? ` · ${streak} i rad` : ''}</span>
       </div>
 
       <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
