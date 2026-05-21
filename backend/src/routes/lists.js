@@ -6,6 +6,7 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
+const QuizRunEvent = require('../models/QuizRunEvent');
 
 const router = express.Router();
 
@@ -305,6 +306,69 @@ router.post('/:id/leave', loadReadableList(), async (req, res) => {
   } catch (error) {
     console.error('List leave error:', error);
     res.status(500).json({ error: 'Failed to leave list' });
+  }
+});
+
+// GET /api/lists/:id/weekly-records — bästa quiz-rond denna vecka per
+// deltagare (ägare + alla i sharedWith). Bara users som faktiskt gjort
+// minst en rond denna vecka tas med.
+router.get('/:id/weekly-records', loadReadableList(), async (req, res) => {
+  try {
+    // Vecka börjar måndag (svensk konvention).
+    const now = new Date();
+    const day = now.getDay(); // 0 = söndag
+    const offset = day === 0 ? 6 : day - 1;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - offset);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const participants = [req.list.user, ...(req.list.sharedWith || [])];
+    // Aggregera bästa ratio per deltagare. Tie-break: senast.
+    const agg = await QuizRunEvent.aggregate([
+      { $match: { list: req.list._id, user: { $in: participants }, createdAt: { $gte: weekStart } } },
+      {
+        $sort: { ratio: -1, correct: -1, createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: '$user',
+          bestCorrect: { $first: '$correct' },
+          bestTotal: { $first: '$total' },
+          bestRatio: { $first: '$ratio' },
+          runs: { $sum: 1 },
+          lastRun: { $first: '$createdAt' }
+        }
+      }
+    ]);
+    const byUser = new Map(agg.map((r) => [r._id.toString(), r]));
+    const users = await User.find({ _id: { $in: participants } }, 'username avatar').lean();
+    const rows = users
+      .map((u) => {
+        const r = byUser.get(u._id.toString());
+        if (!r) return null;
+        return {
+          _id: u._id,
+          username: u.username,
+          avatar: u.avatar || { kind: 'initial', value: '' },
+          isMe: u._id.toString() === req.user.id,
+          isOwner: u._id.toString() === req.list.user.toString(),
+          bestCorrect: r.bestCorrect,
+          bestTotal: r.bestTotal,
+          bestRatio: r.bestRatio,
+          runs: r.runs,
+          lastRun: r.lastRun
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (b.bestRatio !== a.bestRatio) return b.bestRatio - a.bestRatio;
+        if (b.bestCorrect !== a.bestCorrect) return b.bestCorrect - a.bestCorrect;
+        return new Date(a.lastRun) - new Date(b.lastRun);
+      });
+    res.json({ weekStart, records: rows });
+  } catch (error) {
+    console.error('Weekly records error:', error);
+    res.status(500).json({ error: 'Failed to fetch weekly records' });
   }
 });
 

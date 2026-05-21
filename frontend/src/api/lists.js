@@ -92,6 +92,13 @@ export async function setShareMode(apiFetch, id, mode) {
   return data.list;
 }
 
+export async function fetchWeeklyRecords(apiFetch, id) {
+  const res = await apiFetch(`/api/lists/${id}/weekly-records`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte hämta veckans rekord');
+  return data;
+}
+
 export async function copyList(apiFetch, id, title) {
   const res = await apiFetch(`/api/lists/${id}/copy`, {
     method: 'POST',

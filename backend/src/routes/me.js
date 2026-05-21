@@ -7,6 +7,7 @@ const Glos = require('../models/Glos');
 const Friendship = require('../models/Friendship');
 const CoopStreak = require('../models/CoopStreak');
 const XpEvent = require('../models/XpEvent');
+const QuizRunEvent = require('../models/QuizRunEvent');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -209,6 +210,17 @@ router.post('/quiz-complete', async (req, res) => {
       XpEvent.create({ user: user._id, amount: xpEarned, sourceLang })
         .catch((e) => console.error('XpEvent log error:', e.message));
     }
+
+    // Per-runda-logg för "veckans rekord per lista" — aggregeras av
+    // /api/lists/:id/weekly-records mellan ägare + mottagare av delade
+    // listor. Async så svaret inte blockas.
+    QuizRunEvent.create({
+      user: user._id,
+      list: listId,
+      correct,
+      total,
+      ratio: total > 0 ? correct / total : 0
+    }).catch((e) => console.error('QuizRunEvent log error:', e.message));
 
     // Co-op-streaks: för varje par jag är med i, tickas streaken upp om
     // den andre också är aktiv idag. Brytlogiken körs implicit — om
