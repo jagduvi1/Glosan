@@ -1,56 +1,76 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140" fill="none">
   <defs>
-    <filter id="logoRough" x="-2%" y="-2%" width="104%" height="104%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4"/>
+    <filter id="logoRough" x="-3%" y="-3%" width="106%" height="106%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="5"/>
       <feDisplacementMap in="SourceGraphic" scale="1.6"/>
     </filter>
     <filter id="logoSoftRough" x="-2%" y="-2%" width="104%" height="104%">
       <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="2" seed="9"/>
-      <feDisplacementMap in="SourceGraphic" scale="0.9"/>
+      <feDisplacementMap in="SourceGraphic" scale="1"/>
     </filter>
   </defs>
 
   <!-- Hela loggan får en lätt tilt så den känns "klistrad på papperet" -->
-  <g transform="rotate(-2.5 200 60)">
+  <g transform="rotate(-2.5 210 70)">
 
-    <!-- Marker-drop-shadow bakom highlight: skapar samma 4px-offset-ink-skugga
-         som .card-elementen i appen -->
-    <rect x="92" y="40" width="282" height="58" rx="10" fill="#1F1B16" filter="url(#logoSoftRough)"/>
+    <!-- Marker-drop-shadow bakom highlight -->
+    <rect x="116" y="54" width="296" height="62" rx="14" fill="#1F1B16" filter="url(#logoSoftRough)"/>
 
     <!-- Mustard highlight bakom texten -->
-    <rect x="88" y="36" width="282" height="58" rx="10" fill="#FFC93C" filter="url(#logoSoftRough)"/>
+    <rect x="112" y="50" width="296" height="62" rx="14" fill="#FFC93C" filter="url(#logoSoftRough)"/>
+
+    <!-- Coral scribble-underline under "Glosan" -->
+    <path d="M128 110 Q180 106 250 110 Q320 114 398 108"
+          stroke="#FF6B6B" stroke-width="3.5" stroke-linecap="round" fill="none"
+          filter="url(#logoSoftRough)" opacity="0.9"/>
 
     <!-- Wordmark -->
     <g filter="url(#logoRough)">
-      <text x="100" y="80"
+      <text x="124" y="94"
             font-family="'Lilita One', 'Arial Rounded MT Bold', sans-serif"
             font-size="56" fill="#1F1B16" letter-spacing="-1">Glosan</text>
     </g>
 
-    <!-- Mini-Glo till vänster: huvud + ögon + winkande blink. Coral som mascot. -->
+    <!-- Mini-Glo — mascot-stil med antenn-stjärna, kindkulor, wink. -->
     <g filter="url(#logoRough)">
-      <!-- Huvud -->
-      <ellipse cx="44" cy="64" rx="38" ry="36" fill="#FF6B6B" stroke="#1F1B16" stroke-width="4"/>
-      <!-- Vänster öga (öppen) -->
-      <circle cx="32" cy="58" r="9" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3"/>
-      <circle cx="34" cy="60" r="4" fill="#1F1B16"/>
-      <!-- Höger öga (wink — bara en båge) -->
-      <path d="M48 60 Q56 54 64 60" stroke="#1F1B16" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-      <!-- Litet leende -->
-      <path d="M30 76 Q44 86 60 76" stroke="#1F1B16" stroke-width="3" stroke-linecap="round" fill="none"/>
-      <!-- Antenn med stjärna — Glos signaturpinne -->
-      <path d="M44 28 Q40 14 46 4" stroke="#1F1B16" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <!-- Antenn -->
+      <path d="M58 42 Q54 28 60 18" stroke="#1F1B16" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <!-- Stjärna ovanpå antenn -->
+      <g transform="rotate(-8 60 14)">
+        <path d="M60 4 L64 14 L74 14 L66 20 L68 30 L60 24 L52 30 L54 20 L46 14 L56 14 Z"
+              fill="#FFC93C" stroke="#1F1B16" stroke-width="2.5" stroke-linejoin="round"/>
+      </g>
+
+      <!-- Huvud — coral, samma färg som mascot -->
+      <ellipse cx="58" cy="78" rx="46" ry="44" fill="#FF6B6B" stroke="#1F1B16" stroke-width="4"/>
+
+      <!-- Inre highlight (mascot har det) -->
+      <path d="M26 92 Q34 110 64 116 Q82 116 90 108 Q72 122 40 116 Q24 110 26 92 Z"
+            fill="#FFD3D0" opacity="0.55"/>
+
+      <!-- Kindkulor — rosa stänk samma som mascot -->
+      <ellipse cx="22" cy="88" rx="9" ry="5" fill="#E84A8C" opacity="0.45"/>
+      <ellipse cx="94" cy="92" rx="9" ry="5" fill="#E84A8C" opacity="0.45"/>
+
+      <!-- Vänster öga — öppet -->
+      <circle cx="42" cy="72" r="12" fill="#FFFCF2" stroke="#1F1B16" stroke-width="3.5"/>
+      <circle cx="44" cy="74" r="5.5" fill="#1F1B16"/>
+      <circle cx="42" cy="72" r="1.8" fill="#FFFCF2"/>
+
+      <!-- Höger öga — wink (båge) -->
+      <path d="M64 74 Q74 66 82 74" stroke="#1F1B16" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+
+      <!-- Leende -->
+      <path d="M36 96 Q58 110 78 96" stroke="#1F1B16" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+
+      <!-- Liten tunga (samma som mascot) -->
+      <path d="M52 104 Q58 112 64 104 L64 100 Q58 102 52 100 Z" fill="#E84A8C"/>
     </g>
 
     <!-- Sparkle uppe till höger -->
-    <g transform="translate(360 22) rotate(12)" filter="url(#logoSoftRough)">
+    <g transform="translate(390 36) rotate(15)" filter="url(#logoSoftRough)">
       <path d="M10 0 Q11 8 20 10 Q11 12 10 20 Q9 12 0 10 Q9 8 10 0 Z"
             fill="#FFC93C" stroke="#1F1B16" stroke-width="2" stroke-linejoin="round"/>
     </g>
-
-    <!-- Liten scribble-understrykning under "Glosan" -->
-    <path d="M104 102 Q150 98 200 102 Q260 106 360 100"
-          stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" fill="none"
-          filter="url(#logoSoftRough)" opacity="0.85"/>
   </g>
 </svg>
