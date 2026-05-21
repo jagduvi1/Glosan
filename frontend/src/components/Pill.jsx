@@ -5,8 +5,14 @@ export default function Pill({ children, bg, color, flat = false, style = {}, ..
 }
 
 export function StreakPill({ n }) {
+  // 30+ dagars streak → gyllene variant (påskägg)
+  const isGolden = n >= 30;
   return (
-    <Pill bg="var(--sky-soft)">
+    <Pill
+      bg={isGolden ? 'var(--mustard)' : 'var(--sky-soft)'}
+      style={isGolden ? { boxShadow: '2px 2px 0 0 var(--ink), 0 0 0 2px var(--mustard-soft)', color: 'var(--ink)', fontWeight: 800 } : undefined}
+      title={isGolden ? `${n} dagar i rad — gyllene streak!` : undefined}
+    >
       <img src="/assets/flame-streak.svg" width="14" height="18" alt="" /> {n}
     </Pill>
   );

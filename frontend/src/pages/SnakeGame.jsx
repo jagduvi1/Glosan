@@ -10,6 +10,7 @@ import ConfettiBurst from '../components/ConfettiBurst';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import { shuffle, answerVariants } from '../utils/quiz';
+import { markEggFound } from '../utils/easterEggs';
 
 const SNAKE_MASTER_THRESHOLD = 50;
 
@@ -334,6 +335,7 @@ export default function SnakeGame() {
         masterTriggeredRef.current = true;
         setMasterTrigger((t) => t + 1);
         setShowMasterSticker(true);
+        markEggFound('snake-master');
         setTimeout(() => setShowMasterSticker(false), 4000);
       }
 
