@@ -4,6 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { StreakPill, XpPill, QuotaPill } from './Pill';
 import AvatarDisplay from './AvatarDisplay';
+import ConfettiBurst from './ConfettiBurst';
+import { useKonamiCode } from '../utils/useKonamiCode';
+import { useLogoOutfit } from '../utils/useLogoOutfit';
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -11,6 +14,11 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const { onClick: onLogoClick, outfit } = useLogoOutfit();
+
+  // Påskägg: Konami-koden ger en regnbåge-konfetti över sidan
+  useKonamiCode(() => setConfettiTrigger((t) => t + 1));
 
   // Stäng menyn när vi navigerar bort
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
@@ -29,9 +37,13 @@ export default function Layout({ children }) {
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
+      <ConfettiBurst trigger={confettiTrigger} />
       <nav className="navbar">
         <div className="nav-inner">
-          <Link to="/lists" className="nav-logo" aria-label="Glosan startsida">
+          <Link to="/lists" className="nav-logo" aria-label="Glosan startsida" onClick={onLogoClick}>
+            {outfit && (
+              <span className="nav-logo-outfit" aria-hidden="true">{outfit}</span>
+            )}
             <img src="/assets/logo-wordmark.svg" height={40} alt="Glosan" />
           </Link>
           <div className="nav-links nav-links-desktop">
