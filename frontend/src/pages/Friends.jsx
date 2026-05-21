@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
+import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -18,6 +19,7 @@ export default function Friends() {
   const { profile } = useGamification();
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
+  const [coopStreaks, setCoopStreaks] = useState([]);
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -30,18 +32,44 @@ export default function Friends() {
     setBusy(true);
     setError('');
     try {
-      const [c, fs] = await Promise.all([
+      const [c, fs, coops] = await Promise.all([
         fetchFriendCode(apiFetch),
-        fetchFriends(apiFetch)
+        fetchFriends(apiFetch),
+        fetchCoopStreaks(apiFetch)
       ]);
       setCode(c);
       setFriends(fs);
+      setCoopStreaks(coops);
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
     }
   }, [apiFetch]);
+
+  const onStartCoop = async (friendId) => {
+    setError('');
+    try {
+      const coop = await startCoopStreak(apiFetch, friendId);
+      // Lägg till om den är ny, ersätt om den fanns
+      setCoopStreaks((cur) => {
+        const filtered = cur.filter((c) => c._id !== coop._id);
+        return [coop, ...filtered];
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const onEndCoop = async (id) => {
+    setError('');
+    try {
+      await endCoopStreak(apiFetch, id);
+      setCoopStreaks((cur) => cur.filter((c) => c._id !== id));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -184,6 +212,63 @@ export default function Friends() {
 
       {error && <p className="error">{error}</p>}
 
+      {coopStreaks.length > 0 && (
+        <div>
+          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>Co-op-streaks</h2>
+            <span className="t-hand muted" style={{ fontSize: 14 }}>kör båda samma dag → tickar upp</span>
+          </div>
+          <div className="stack" style={{ gap: 8 }}>
+            {coopStreaks.map((c) => (
+              <div
+                key={c._id}
+                className="card row"
+                style={{
+                  padding: 14,
+                  gap: 12,
+                  alignItems: 'center',
+                  background: c.current > 0 ? 'var(--coral-soft)' : 'var(--paper-edge)'
+                }}
+              >
+                <div className="row" style={{ gap: -6, alignItems: 'center' }}>
+                  <AvatarDisplay
+                    avatar={profile?.avatar}
+                    username={user?.username || ''}
+                    size={36}
+                  />
+                  <AvatarDisplay
+                    avatar={c.other?.avatar}
+                    username={c.other?.username || '?'}
+                    size={36}
+                    style={{ marginLeft: -10, border: '2px solid var(--bg-elev)' }}
+                  />
+                </div>
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <strong style={{ fontSize: 16 }}>
+                    Du + {c.other?.username || 'okänd'}
+                  </strong>
+                  <p className="t-hand muted" style={{ fontSize: 13, margin: '2px 0 0' }}>
+                    längsta hittills: {c.longest}
+                    {c.lastBothActiveDay && ` · senast: ${new Date(c.lastBothActiveDay).toLocaleDateString('sv-SE')}`}
+                  </p>
+                </div>
+                <span className="pill" style={{ background: 'var(--bg-elev)' }}>
+                  <img src="/assets/flame-streak.svg" width="12" height="16" alt="" />
+                  {c.current} {c.current === 1 ? 'dag' : 'dagar'}
+                </span>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  style={{ color: 'var(--berry-deep)' }}
+                  onClick={() => onEndCoop(c._id)}
+                >
+                  Avsluta
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {friends.length > 0 && (
         <div>
           <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
@@ -259,24 +344,36 @@ export default function Friends() {
           </div>
         ) : (
           <div className="stack" style={{ gap: 10 }}>
-            {friends.map((f) => (
-              <div key={f._id} className="card row" style={{ padding: 14, gap: 14, alignItems: 'center' }}>
-                <AvatarDisplay avatar={f.avatar} username={f.username} size={48} />
-                <div className="grow" style={{ minWidth: 0 }}>
-                  <h3 style={{ margin: 0, fontSize: 20 }}>{f.username}</h3>
-                  <p className="t-hand muted" style={{ fontSize: 14, margin: '2px 0 0' }}>
-                    Kompisar sedan {new Date(f.addedAt).toLocaleDateString('sv-SE')}
-                  </p>
+            {friends.map((f) => {
+              const hasCoop = coopStreaks.some((c) => c.other?._id === f._id);
+              return (
+                <div key={f._id} className="card row" style={{ padding: 14, gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <AvatarDisplay avatar={f.avatar} username={f.username} size={48} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontSize: 20 }}>{f.username}</h3>
+                    <p className="t-hand muted" style={{ fontSize: 14, margin: '2px 0 0' }}>
+                      Kompisar sedan {new Date(f.addedAt).toLocaleDateString('sv-SE')}
+                    </p>
+                  </div>
+                  {!hasCoop && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => onStartCoop(f._id)}
+                      title="Starta gemensam streak — båda måste köra varje dag"
+                    >
+                      + co-op-streak
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: 'var(--berry-deep)' }}
+                    onClick={() => setPendingRemove(f)}
+                  >
+                    Ta bort
+                  </button>
                 </div>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  style={{ color: 'var(--berry-deep)' }}
-                  onClick={() => setPendingRemove(f)}
-                >
-                  Ta bort
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
