@@ -391,36 +391,104 @@ router.post('/trial', async (req, res) => {
 
 // GET /api/me/export — GDPR Art. 20: portabel kopia av all användardata.
 // Returnerar en JSON-blob som frontend skickar vidare till browsern som
-// nedladdning. Inkluderar profil, listor, glosor och kompis-kopplingar.
+// nedladdning. Inkluderar profil, listor (egna + delade med mig), glosor,
+// kompis-kopplingar, co-op-streaks, utmaningar (duels/goal/live), XP- och
+// quiz-runda-historik, samt aktiva engångskoder.
 router.get('/export', async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).lean();
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const lists = await GlosList.find({ user: req.user.id }).lean();
-    const listIds = lists.map((l) => l._id);
-    const glosor = listIds.length > 0
-      ? await Glos.find({ list: { $in: listIds } }).lean()
-      : [];
-    const friendships = await Friendship.find({ user: req.user.id })
-      .populate('friend', 'username friendCode')
-      .lean();
+    const Duel = require('../models/Duel');
+    const InviteCode = require('../models/InviteCode');
+
+    const [ownedLists, sharedLists] = await Promise.all([
+      GlosList.find({ user: userId }).lean(),
+      GlosList.find({ sharedWith: userId }).populate('user', 'username').lean()
+    ]);
+    const ownedListIds = ownedLists.map((l) => l._id);
+    const [
+      glosor,
+      friendships,
+      coopStreaks,
+      duels,
+      xpEvents,
+      quizRunEvents,
+      inviteCodes
+    ] = await Promise.all([
+      ownedListIds.length > 0 ? Glos.find({ list: { $in: ownedListIds } }).lean() : [],
+      Friendship.find({ user: userId }).populate('friend', 'username').lean(),
+      CoopStreak.find({ users: userId }).populate('users', 'username').lean(),
+      Duel.find({ 'participants.user': userId })
+        .populate('participants.user', 'username')
+        .populate('list', 'title')
+        .lean(),
+      XpEvent.find({ user: userId }).lean(),
+      QuizRunEvent.find({ user: userId }).populate('list', 'title').lean(),
+      InviteCode.find({ user: userId }).lean()
+    ]);
 
     // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
     // ens till användaren själv.
-    const { password, refreshTokenHash, ...safeUser } = user;
+    const { password, refreshTokenHash, refreshTokenFamily, ...safeUser } = user;
 
     res.setHeader('Content-Disposition', `attachment; filename="glosan-export-${user.username}-${new Date().toISOString().slice(0, 10)}.json"`);
     res.json({
       exportedAt: new Date().toISOString(),
-      schema: 'glosan-export-v1',
+      schema: 'glosan-export-v2',
       user: safeUser,
-      lists,
+      lists: {
+        owned: ownedLists,
+        sharedWithMe: sharedLists.map((l) => ({
+          _id: l._id,
+          title: l.title,
+          ownerUsername: l.user?.username,
+          shareMode: l.shareMode,
+          addedAt: l.createdAt
+        }))
+      },
       glosor,
       friendships: friendships.map((f) => ({
         friendUsername: f.friend?.username,
-        friendCode: f.friend?.friendCode,
         addedAt: f.addedAt
+      })),
+      coopStreaks: coopStreaks.map((c) => ({
+        otherUsername: c.users.find((u) => u._id.toString() !== req.user.id)?.username,
+        current: c.current,
+        longest: c.longest,
+        lastBothActiveDay: c.lastBothActiveDay,
+        createdAt: c.createdAt
+      })),
+      duels: duels.map((d) => ({
+        _id: d._id,
+        kind: d.kind,
+        title: d.title,
+        listTitle: d.list?.title,
+        questionCount: d.questions?.length || 0,
+        participants: d.participants.map((p) => ({
+          username: p.user?.username,
+          status: p.status,
+          correct: p.correct,
+          total: p.total,
+          durationMs: p.durationMs,
+          completedAt: p.completedAt
+        })),
+        createdAt: d.createdAt
+      })),
+      xpEvents,
+      quizRunEvents: quizRunEvents.map((q) => ({
+        listTitle: q.list?.title,
+        correct: q.correct,
+        total: q.total,
+        ratio: q.ratio,
+        createdAt: q.createdAt
+      })),
+      inviteCodes: inviteCodes.map((c) => ({
+        code: c.code,
+        expiresAt: c.expiresAt,
+        usedAt: c.usedAt,
+        createdAt: c.createdAt
       }))
     });
   } catch (err) {
@@ -429,27 +497,52 @@ router.get('/export', async (req, res) => {
   }
 });
 
-// DELETE /api/me — GDPR Art. 17: rätt att raderas. Tar bort kontot, alla
-// listor + glosor och båda hållen av vänskapsrelationerna. Refresh-cookien
-// rensas. Hård delete — vi behåller inget för "soft delete" eftersom appen
-// inte har någon legal grund för det.
+// DELETE /api/me — GDPR Art. 17: rätt att raderas. Hård delete på allt jag
+// äger eller är knuten till. Cascading: User, GlosList, Glos, Friendship,
+// CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode. Pull också ut mig
+// från andras GlosList.sharedWith så jag inte syns kvar i deras "delade
+// med dig"-sektion.
 router.delete('/', async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const Duel = require('../models/Duel');
+    const InviteCode = require('../models/InviteCode');
+
     const userLists = await GlosList.find({ user: userId }, '_id').lean();
     const listIds = userLists.map((l) => l._id);
 
     if (listIds.length > 0) {
       await Glos.deleteMany({ list: { $in: listIds } });
+      // QuizRunEvent kan referera mina listor; raderas via user-filter nedan,
+      // men list-refen tas också bort när listan dör.
       await GlosList.deleteMany({ _id: { $in: listIds } });
     }
+    // Pull ut mig från andras shared-listor (annars syns mitt user-ID
+    // som dangling ref i deras "delade med dig"-sektion).
+    await GlosList.updateMany(
+      { sharedWith: userId },
+      { $pull: { sharedWith: userId } }
+    );
     await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] });
+    await CoopStreak.deleteMany({ users: userId });
+    // Duels jag deltagit i raderas i sin helhet — alternativ vore att
+    // anonymisera mitt namn men för en hobby-app är hård delete cleaner.
+    await Duel.deleteMany({ 'participants.user': userId });
+    await XpEvent.deleteMany({ user: userId });
+    await QuizRunEvent.deleteMany({ user: userId });
+    await InviteCode.deleteMany({ user: userId });
+    // Förbruka använda invites där jag var usedBy så de inte refererar mig
+    await InviteCode.updateMany(
+      { usedBy: userId },
+      { $set: { usedBy: null } }
+    );
+
     await User.deleteOne({ _id: userId });
 
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      sameSite: 'strict'
     });
     res.json({ message: 'Konto raderat' });
   } catch (err) {

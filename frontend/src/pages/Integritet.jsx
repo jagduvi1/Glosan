@@ -6,7 +6,7 @@ import GloAvatar from '../components/GloAvatar';
 //
 // PLACEHOLDER: kontakt/PUL-uppgifter nedan är preliminära. Johan ska
 // validera dem innan publik produktion.
-const LAST_UPDATED = '2026-05-20';
+const LAST_UPDATED = '2026-05-21';
 const CONTACT_EMAIL = 'johan@accure.se';
 const CONTROLLER_NAME = 'Johan Eklund (Glosan)';
 
@@ -33,11 +33,16 @@ export default function Integritet() {
       <section className="card" style={{ marginBottom: 18 }}>
         <h2 style={{ marginTop: 0 }}>Vilka uppgifter behandlar vi?</h2>
         <ul>
-          <li><strong>Kontouppgifter:</strong> användarnamn, e-postadress, lösenord (lagras hashat med bcrypt — vi ser aldrig ditt lösenord i klartext).</li>
-          <li><strong>Innehåll du skapar:</strong> dina glos­listor, glosor och anteckningar.</li>
-          <li><strong>Användningsstatistik:</strong> XP, streak, antal genomförda quiz, antal AI-anrop denna månad.</li>
-          <li><strong>Kompis-koder:</strong> en 6-teckens kod genereras när du först begär den; den används för att lägga till kompisar.</li>
-          <li><strong>Tekniska detaljer:</strong> en httpOnly-cookie med en hashad refresh-token som låter dig vara inloggad i upp till 7 dagar.</li>
+          <li><strong>Kontouppgifter:</strong> användarnamn, e-postadress, lösenord (lagras hashat med bcrypt — vi ser aldrig ditt lösenord i klartext), valfri avatar.</li>
+          <li><strong>Innehåll du skapar:</strong> glos­listor, glosor och anteckningar. Listor kan delas med kompisar (read-only eller med redigerings­rätt) och kopieras till deras egna konton.</li>
+          <li><strong>Användningsstatistik:</strong> XP-totalt + per språk, streak, antal genomförda quiz, perfekta rundor, antal AI-anrop denna månad. Loggas för leaderboards och rekord.</li>
+          <li><strong>Händelse­logg per quiz-runda</strong> (<em>QuizRunEvent</em>): vilken lista, antal rätt/fel, tidpunkt — driver "veckans rekord".</li>
+          <li><strong>XP-event­logg</strong> (<em>XpEvent</em>): varje XP-utdelning med språk och tidpunkt — driver "månadens XP".</li>
+          <li><strong>Engångskoder</strong> (<em>InviteCode</em>): 8 tecken, går ut efter 7 dagar och kan användas en gång. Vi lagrar vem som löste in koden tills den går ut.</li>
+          <li><strong>Kompis­relationer</strong> (<em>Friendship</em>): vilka konton som lagt till varandra. Inga meddelanden eller chattar.</li>
+          <li><strong>Co-op-streaks</strong> (<em>CoopStreak</em>): gemensam streak per kompis-par och senaste dagen ni båda var aktiva.</li>
+          <li><strong>Utmaningar</strong> (<em>Duel</em>): async-, mål- eller live-duells du deltagit i, inklusive snapshot av frågorna och varje deltagares resultat (rätt/total/tid). Live-duells visar tillfälligt din avatar och dina svar för motspelaren i realtid över WebSocket.</li>
+          <li><strong>Tekniska detaljer:</strong> en httpOnly-cookie med en hashad refresh-token som håller dig inloggad i upp till 7 dagar.</li>
         </ul>
       </section>
 
@@ -98,7 +103,16 @@ export default function Integritet() {
         <h2 style={{ marginTop: 0 }}>Hur länge sparas dina uppgifter?</h2>
         <p>
           Allt sparas tills du själv raderar det. Du kan när som helst radera enstaka glosor, listor och kompisar — eller
-          hela kontot från profilsidan. När du raderar kontot tas allt bort omedelbart, även dina kompis­kopplingar.
+          hela kontot från profilsidan.
+        </p>
+        <p>
+          När du raderar ditt konto tas följande bort omedelbart: kontouppgifter, dina egna listor + glosor, kompis­
+          relationer, co-op-streaks, utmaningar du deltagit i, XP- och quiz-runda-historik samt aktiva engångskoder.
+          Du tas också automatiskt bort från andras "delade med dig"-sektion.
+        </p>
+        <p className="t-hand muted" style={{ fontSize: 14 }}>
+          Påverkan på andra: kompisar som hade dina delade listor förlorar tillgången, utmaningar mellan dig och dem
+          försvinner, och co-op-streaks ni delade upphör. De ser inget av ditt användarnamn eller avatar längre.
         </p>
       </section>
 
