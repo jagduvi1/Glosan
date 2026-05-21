@@ -179,20 +179,23 @@ router.get('/:id/shares', loadOwnedList(), async (req, res) => {
   }
 });
 
-// POST /api/lists/:id/share — body { friendIds: [string] }. Lägger till
-// givna user-ID:n i sharedWith. Varje ID måste vara en bekräftad kompis
-// (finns i Friendship-tabellen) — vi delar inte med främlingar.
+// POST /api/lists/:id/share — body { friendIds: [string], mode?: 'read'|'edit' }.
+// Lägger till user-ID:n i sharedWith. Varje ID måste vara en bekräftad kompis
+// (finns i Friendship-tabellen). Om mode anges uppdateras list.shareMode för
+// alla nuvarande + nya mottagare (en mode per lista).
 router.post('/:id/share', loadOwnedList(), async (req, res) => {
-  const { friendIds } = req.body;
+  const { friendIds, mode } = req.body;
   if (!Array.isArray(friendIds) || friendIds.length === 0) {
     return res.status(400).json({ error: 'friendIds måste vara en lista med minst ett ID' });
+  }
+  if (mode !== undefined && mode !== 'read' && mode !== 'edit') {
+    return res.status(400).json({ error: 'mode måste vara "read" eller "edit"' });
   }
   const validIds = friendIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
   if (validIds.length === 0) {
     return res.status(400).json({ error: 'Inga giltiga ID:n' });
   }
   try {
-    // Verifiera att alla är kompisar med ägaren.
     const friendships = await Friendship.find({
       user: req.user.id,
       friend: { $in: validIds }
@@ -206,6 +209,7 @@ router.post('/:id/share', loadOwnedList(), async (req, res) => {
     const before = new Set(req.list.sharedWith.map(String));
     for (const id of toAdd) before.add(id);
     req.list.sharedWith = Array.from(before);
+    if (mode) req.list.shareMode = mode;
     await req.list.save();
 
     const users = await User.find({ _id: { $in: req.list.sharedWith } }, 'username avatar friendCode').lean();
@@ -213,6 +217,60 @@ router.post('/:id/share', loadOwnedList(), async (req, res) => {
   } catch (error) {
     console.error('List share error:', error);
     res.status(500).json({ error: 'Failed to share list' });
+  }
+});
+
+// PATCH /api/lists/:id/share-mode — flippa läget mellan read och edit utan
+// att ändra vilka som har access.
+router.patch('/:id/share-mode', loadOwnedList(), async (req, res) => {
+  const { mode } = req.body;
+  if (mode !== 'read' && mode !== 'edit') {
+    return res.status(400).json({ error: 'mode måste vara "read" eller "edit"' });
+  }
+  try {
+    req.list.shareMode = mode;
+    await req.list.save();
+    res.json({ list: req.list });
+  } catch (error) {
+    console.error('List share-mode error:', error);
+    res.status(500).json({ error: 'Failed to update share mode' });
+  }
+});
+
+// POST /api/lists/:id/copy — duplicera en lista (inkl. alla glosor) till
+// req.user. Funkar för både egna och delade listor. Den nya kopian äger
+// du själv, kan redigera fritt, inga delningar följer med.
+router.post('/:id/copy', loadReadableList(), async (req, res) => {
+  try {
+    const sourceList = req.list;
+    const newList = await GlosList.create({
+      user: req.user.id,
+      title: req.body.title || `${sourceList.title} (kopia)`,
+      description: sourceList.description,
+      sourceLang: sourceList.sourceLang,
+      targetLang: sourceList.targetLang,
+      quizReversed: sourceList.quizReversed
+      // categoryId hoppas — kopian börjar utan kategori; mottagaren placerar
+      // den i sin egen kategori-struktur.
+    });
+
+    const sourceGlosor = await Glos.find({ list: sourceList._id }).lean();
+    if (sourceGlosor.length > 0) {
+      await Glos.insertMany(sourceGlosor.map((g) => ({
+        list: newList._id,
+        source: g.source,
+        target: g.target,
+        notes: g.notes,
+        exampleSentence: g.exampleSentence,
+        extra: g.extra
+        // stats hoppas — kopian börjar med fresh mastery
+      })));
+    }
+
+    res.status(201).json({ list: newList, copiedGlosor: sourceGlosor.length });
+  } catch (error) {
+    console.error('List copy error:', error);
+    res.status(500).json({ error: 'Failed to copy list' });
   }
 });
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { fetchList, swapListDirection, leaveSharedList } from '../api/lists';
+import { fetchList, swapListDirection, leaveSharedList, copyList } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList, extendList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
@@ -69,6 +69,7 @@ export default function ListDetail() {
   const [sharedBy, setSharedBy] = useState(null);
   const [showShare, setShowShare] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   const onPickMode = (mode) => {
     try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
@@ -106,6 +107,19 @@ export default function ListDetail() {
     } catch (e) {
       setError(e.message);
       setShowLeaveConfirm(false);
+    }
+  };
+
+  const onCopy = async () => {
+    setCopyBusy(true);
+    setError('');
+    try {
+      const { list: copy } = await copyList(apiFetch, id);
+      navigate(`/lists/${copy._id}`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCopyBusy(false);
     }
   };
 
@@ -215,6 +229,9 @@ export default function ListDetail() {
 
   const flag = LANG_TO_FLAG[list.sourceLang];
   const masteredCount = glosor.filter((g) => masteryOf(g) === 'gold').length;
+  // Mottagare får också ändra glosor när list.shareMode === 'edit'. Titel,
+  // riktning och radering av hela listan är fortfarande bara ägarens.
+  const canEdit = isOwner || list.shareMode === 'edit';
 
   return (
     <div>
@@ -250,7 +267,11 @@ export default function ListDetail() {
               )}
               {!isOwner && sharedBy && (
                 <span className="pill" style={{ background: 'var(--plum-soft)' }}>
-                  <AvatarDisplay avatar={sharedBy.avatar} username={sharedBy.username} size={20} /> delad av {sharedBy.username}
+                  <AvatarDisplay avatar={sharedBy.avatar} username={sharedBy.username} size={20} />
+                  delad av {sharedBy.username}
+                  {list.shareMode === 'edit' && (
+                    <span style={{ fontSize: 11, marginLeft: 4, fontWeight: 600 }}>· du får ändra</span>
+                  )}
                 </span>
               )}
             </div>
@@ -286,13 +307,23 @@ export default function ListDetail() {
               </button>
             )}
             {!isOwner && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => setShowLeaveConfirm(true)}
-                style={{ color: 'var(--berry-deep)' }}
-              >
-                Lämna listan
-              </button>
+              <>
+                <button
+                  className="btn"
+                  onClick={onCopy}
+                  disabled={copyBusy}
+                  title="Skapa en egen kopia som du äger och kan ändra fritt"
+                >
+                  {copyBusy ? 'Kopierar…' : 'Kopiera till mina'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowLeaveConfirm(true)}
+                  style={{ color: 'var(--berry-deep)' }}
+                >
+                  Lämna listan
+                </button>
+              </>
             )}
             <button
               className="btn btn-primary btn-lg"
@@ -309,7 +340,7 @@ export default function ListDetail() {
         <div>
           <h3 style={{ margin: '0 0 10px' }}>Glosor</h3>
 
-          {isOwner && (
+          {canEdit && (
             <div className="card" style={{ padding: 12, marginBottom: 14 }}>
               <form onSubmit={onAdd} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <input className="inp" name="source" placeholder={list.sourceLang} required style={{ flex: 1, minWidth: 120 }} />
@@ -370,7 +401,7 @@ export default function ListDetail() {
                         <span className="stat-bad">{g.stats?.wrong ?? 0}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        {isOwner && (
+                        {canEdit && (
                           <button
                             className="btn btn-sm btn-ghost"
                             style={{ color: 'var(--berry-deep)', padding: '4px 8px' }}
@@ -505,7 +536,9 @@ export default function ListDetail() {
         <ShareDialog
           listId={id}
           listTitle={list.title}
+          initialMode={list.shareMode || 'read'}
           onClose={() => setShowShare(false)}
+          onChanged={load}
         />
       )}
 

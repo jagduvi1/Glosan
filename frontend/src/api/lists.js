@@ -69,15 +69,38 @@ export async function fetchListShares(apiFetch, id) {
   return data.shares;
 }
 
-export async function shareList(apiFetch, id, friendIds) {
+export async function shareList(apiFetch, id, friendIds, mode) {
+  const body = mode ? { friendIds, mode } : { friendIds };
   const res = await apiFetch(`/api/lists/${id}/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ friendIds })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Kunde inte dela listan');
-  return data.shares;
+  return data;
+}
+
+export async function setShareMode(apiFetch, id, mode) {
+  const res = await apiFetch(`/api/lists/${id}/share-mode`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte byta delningsläge');
+  return data.list;
+}
+
+export async function copyList(apiFetch, id, title) {
+  const res = await apiFetch(`/api/lists/${id}/copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(title ? { title } : {})
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte kopiera listan');
+  return data;
 }
 
 export async function unshareList(apiFetch, id, userId) {

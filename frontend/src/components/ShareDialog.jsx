@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFriends } from '../api/friends';
-import { fetchListShares, shareList, unshareList } from '../api/lists';
+import { fetchListShares, shareList, unshareList, setShareMode } from '../api/lists';
 import AvatarDisplay from './AvatarDisplay';
 import GloAvatar from './GloAvatar';
 
 // Modal för att dela en lista med kompisar. Visar alla kompisar; redan delade
 // kan tas bort, övriga kan markeras för att dela med. Vi accepterar bara att
-// dela med konfirmerade kompisar (backend dubbelkollar).
-export default function ShareDialog({ listId, listTitle, onClose, onChanged }) {
+// dela med konfirmerade kompisar (backend dubbelkollar). Mode-toggle (read/
+// edit) styr om mottagare bara får titta + öva eller om de också får lägga
+// till och redigera glosor.
+export default function ShareDialog({ listId, listTitle, initialMode = 'read', onClose, onChanged }) {
   const { apiFetch } = useAuth();
   const [friends, setFriends] = useState([]);
   const [shareIds, setShareIds] = useState(new Set()); // user-IDs som har access nu
   const [selectIds, setSelectIds] = useState(new Set()); // user-IDs valda för ny delning
+  const [mode, setMode] = useState(initialMode);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -55,7 +58,7 @@ export default function ShareDialog({ listId, listTitle, onClose, onChanged }) {
     setBusy(true);
     setError('');
     try {
-      await shareList(apiFetch, listId, Array.from(selectIds));
+      await shareList(apiFetch, listId, Array.from(selectIds), mode);
       await load();
       setSelectIds(new Set());
       onChanged?.();
@@ -63,6 +66,22 @@ export default function ShareDialog({ listId, listTitle, onClose, onChanged }) {
       setError(e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onChangeMode = async (newMode) => {
+    if (newMode === mode) return;
+    setMode(newMode);
+    // Om det redan finns mottagare ska serverns shareMode uppdateras direkt
+    // — annars triggar nästa share-anrop bytet ändå.
+    if (shareIds.size > 0) {
+      try {
+        await setShareMode(apiFetch, listId, newMode);
+        onChanged?.();
+      } catch (e) {
+        setError(e.message);
+        setMode(mode); // rulla tillbaka
+      }
     }
   };
 
@@ -100,6 +119,45 @@ export default function ShareDialog({ listId, listTitle, onClose, onChanged }) {
 
         <div className="modal-body stack" style={{ gap: 16 }}>
           {error && <p className="error">{error}</p>}
+
+          <div className="card" style={{ padding: 12, background: 'var(--paper-edge)' }}>
+            <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>
+              Vad får kompisarna göra?
+            </p>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { id: 'read', label: 'Bara titta + öva', desc: 'Mottagare kan se listan och köra quiz men inte ändra glosor.' },
+                { id: 'edit', label: 'Får också lägga till', desc: 'Mottagare kan lägga till + redigera glosor. Du äger fortfarande listan och rekordet.' }
+              ].map((opt) => (
+                <label
+                  key={opt.id}
+                  style={{
+                    flex: 1,
+                    minWidth: 180,
+                    padding: 10,
+                    border: '2px solid var(--ink)',
+                    borderRadius: 10,
+                    background: mode === opt.id ? 'var(--leaf-soft)' : 'var(--bg-elev)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="shareMode"
+                      checked={mode === opt.id}
+                      onChange={() => onChangeMode(opt.id)}
+                      disabled={busy}
+                    />
+                    <strong style={{ fontSize: 14 }}>{opt.label}</strong>
+                  </div>
+                  <p className="t-hand muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.3 }}>
+                    {opt.desc}
+                  </p>
+                </label>
+              ))}
+            </div>
+          </div>
 
           {loading ? (
             <p className="t-hand muted">Glo hämtar dina kompisar…</p>
