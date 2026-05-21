@@ -294,27 +294,25 @@ export default function Lists() {
         <div className="stack" style={{ gap: 26 }}>
           {groupedLists.map(({ category, lists: catLists }, sectionIdx) => (
             <section key={category?._id || 'uncategorised'}>
-              <div className="row between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-                <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-                  {category?.color && (
-                    <span
-                      style={{
-                        width: 16, height: 16, borderRadius: '50%',
-                        background: COLOR_VARS[category.color] || 'var(--paper-deep)',
-                        border: '2px solid var(--ink)',
-                        display: 'inline-block'
-                      }}
-                    />
-                  )}
-                  <h3 style={{ margin: 0 }}>
-                    {category ? category.name : <span className="muted">Okategoriserade</span>}
-                  </h3>
-                  <span className="t-hand muted" style={{ fontSize: 14 }}>
-                    {catLists.length} {catLists.length === 1 ? 'lista' : 'listor'}
-                  </span>
-                </div>
+              <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10, rowGap: 6 }}>
+                {category?.color && (
+                  <span
+                    style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      background: COLOR_VARS[category.color] || 'var(--paper-deep)',
+                      border: '2px solid var(--ink)',
+                      display: 'inline-block'
+                    }}
+                  />
+                )}
+                <h3 style={{ margin: 0 }}>
+                  {category ? category.name : <span className="muted">Okategoriserade</span>}
+                </h3>
+                <span className="t-hand muted" style={{ fontSize: 14 }}>
+                  {catLists.length} {catLists.length === 1 ? 'lista' : 'listor'}
+                </span>
                 {category && (
-                  <div className="row" style={{ gap: 8 }}>
+                  <div className="row" style={{ gap: 8, marginLeft: 6 }}>
                     <Link to={`/categories/${category._id}/quiz?mode=review`}>
                       <button
                         className="btn btn-sm"
