@@ -17,7 +17,8 @@ export const EGGS = [
   { id: 'glo-title',    label: 'Hej Glo!',             hint: 'En lista uppkallad efter mascoten.' },
   { id: 'xp-burst',     label: 'Stjärnregn',           hint: 'En XP-pille tål en del klick.' },
   { id: 'abracadabra',  label: 'Trollformeln',         hint: 'Skriv det magiska ordet.' },
-  { id: 'footer-list',  label: 'Påskägg-listan',       hint: 'Du tittar på den just nu.' }
+  { id: 'footer-list',  label: 'Påskägg-listan',       hint: 'Du tittar på den just nu.' },
+  { id: 'idkfa',        label: 'Allt på en gång',      hint: 'En gammal fuskkod från en riktigt blodig FPS.' }
 ];
 
 export function getFoundEggs() {
