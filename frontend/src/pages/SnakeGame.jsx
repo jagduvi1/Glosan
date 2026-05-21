@@ -66,9 +66,11 @@ function pickFood(glosor, currentGlosId, reversed) {
   return { correctText, foods: all };
 }
 
-function placeFoods(snake, foods) {
-  // Slumpa positioner för 3-4 mat-celler så att de inte krockar med ormen
-  // eller med varandra.
+function placeFoods(snake, foods, dir = { dx: 1, dy: 0 }) {
+  // Slumpa slut-positioner för 3-4 mat-celler så att de inte krockar med
+  // ormen eller varandra. Lägg också intro-positioner: en rad framför
+  // ormhuvudet i rörelseriktningen, så spelaren ser alla orden samlade
+  // under nedräkningen innan de flyger ut till sina slumpmässiga platser.
   const occupied = [...snake];
   const placed = [];
   for (const f of foods) {
@@ -77,7 +79,30 @@ function placeFoods(snake, foods) {
     placed.push({ ...f, ...cell });
     occupied.push(cell);
   }
-  return placed;
+
+  const head = snake[snake.length - 1];
+  const { dx, dy } = dir;
+  // Vinkelrät enhetsvektor — raden ligger tvärs ormens rörelse
+  const px = -dy;
+  const py = dx;
+  const count = placed.length;
+  const offset = 3; // antal rutor framför ormhuvudet
+  const startX = head.x + dx * offset - px * Math.floor((count - 1) / 2);
+  const startY = head.y + dy * offset - py * Math.floor((count - 1) / 2);
+  const intros = Array.from({ length: count }, (_, i) => ({
+    introX: startX + px * i,
+    introY: startY + py * i
+  }));
+  const allInBounds = intros.every((p) =>
+    p.introX >= 0 && p.introX < COLS && p.introY >= 0 && p.introY < ROWS
+  );
+  if (allInBounds) {
+    return placed.map((f, i) => ({ ...f, ...intros[i] }));
+  }
+  // Fallback: central rad nära toppen, alltid synlig
+  const fStart = Math.floor((COLS - count) / 2);
+  const fY = Math.max(1, Math.floor(ROWS / 4));
+  return placed.map((f, i) => ({ ...f, introX: fStart + i, introY: fY }));
 }
 
 export default function SnakeGame() {
@@ -166,16 +191,18 @@ export default function SnakeGame() {
     const firstGlos = initialPool[0];
     setCurrentGlosId(firstGlos._id);
     const { foods: f } = pickFood(initialPool, firstGlos._id, reversed);
-    setFoods(placeFoods(startSnake, f));
+    setFoods(placeFoods(startSnake, f, { dx: 1, dy: 0 }));
     setPhase('playing');
   }, [glosor, reversed]);
 
   // Nedräknings-timer som pausar ormens rörelse. Sätt pauseCountdown till
   // ett tal > 0 så räknas det ner till 0 och pausedRef synkas automatiskt.
+  // När countdown når 0 ger vi 500 ms extra så foods hinner glida ut till
+  // sina slutpositioner innan ormen får röra sig igen.
   useEffect(() => {
     if (pauseCountdown <= 0) {
-      pausedRef.current = false;
-      return undefined;
+      const t = setTimeout(() => { pausedRef.current = false; }, 500);
+      return () => clearTimeout(t);
     }
     pausedRef.current = true;
     const timer = setTimeout(() => setPauseCountdown((n) => Math.max(0, n - 1)), 1000);
@@ -313,7 +340,7 @@ export default function SnakeGame() {
       // placera nya mat — men vi måste använda *nyaste* ormen, så vänta en mikrotick
       setTimeout(() => {
         setSnake((s) => {
-          setFoods(placeFoods(s, f));
+          setFoods(placeFoods(s, f, dirRef.current));
           return s;
         });
       }, 0);
@@ -346,7 +373,7 @@ export default function SnakeGame() {
         const { foods: f } = pickFood(pool, currentGlos._id, reversed);
         setTimeout(() => {
           setSnake((s) => {
-            setFoods(placeFoods(s, f));
+            setFoods(placeFoods(s, f, dirRef.current));
             return s;
           });
         }, 0);
@@ -519,21 +546,38 @@ export default function SnakeGame() {
               const x = i % COLS;
               const y = Math.floor(i / COLS);
               const seg = cellSet.get(`${x}-${y}`);
-              const food = foodMap.get(`${x}-${y}`);
-              let bg;
-              if (food) {
-                if (feedback === 'correct' && food.correct) bg = 'var(--leaf)';
-                else if (feedback === 'wrong' && !food.correct) bg = 'var(--berry)';
-                else bg = food.color.var;
-              }
               return (
                 <div
                   key={i}
-                  className={`snake-cell ${seg ? 'snake-' + seg : ''} ${food ? 'snake-food' : ''}`}
-                  style={bg ? { background: bg } : undefined}
+                  className={`snake-cell ${seg ? 'snake-' + seg : ''}`}
                 />
               );
             })}
+            <div className="snake-food-layer" aria-hidden="true">
+              {foods.map((f, i) => {
+                const useIntro = pauseCountdown > 0;
+                const fx = useIntro ? f.introX : f.x;
+                const fy = useIntro ? f.introY : f.y;
+                let bg = f.color.var;
+                if (!useIntro) {
+                  if (feedback === 'correct' && f.correct) bg = 'var(--leaf)';
+                  else if (feedback === 'wrong' && !f.correct) bg = 'var(--berry)';
+                }
+                return (
+                  <div
+                    key={`food-${i}`}
+                    className="snake-food-piece"
+                    style={{
+                      left: `${(fx / COLS) * 100}%`,
+                      top: `${(fy / ROWS) * 100}%`,
+                      width: `${(1 / COLS) * 100}%`,
+                      height: `${(1 / ROWS) * 100}%`,
+                      background: bg
+                    }}
+                  />
+                );
+              })}
+            </div>
             {pauseCountdown > 0 && (
               <div className="snake-pause-overlay" aria-live="polite">
                 <div className="snake-pause-card">
