@@ -7,6 +7,7 @@ import AvatarDisplay from './AvatarDisplay';
 import ConfettiBurst from './ConfettiBurst';
 import { useKonamiCode } from '../utils/useKonamiCode';
 import { useLogoOutfit } from '../utils/useLogoOutfit';
+import { useSeasonalTheme } from '../utils/useSeasonalTheme';
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -16,6 +17,10 @@ export default function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
   const { onClick: onLogoClick, outfit } = useLogoOutfit();
+  const { accessory: seasonAccessory, message: seasonMessage, lateNight } = useSeasonalTheme();
+
+  // Säsongs-accessory tar över användarens valda outfit under helgdagen
+  const headAccessory = seasonAccessory || outfit;
 
   // Påskägg: Konami-koden ger en regnbåge-konfetti över sidan
   useKonamiCode(() => setConfettiTrigger((t) => t + 1));
@@ -41,8 +46,8 @@ export default function Layout({ children }) {
       <nav className="navbar">
         <div className="nav-inner">
           <Link to="/lists" className="nav-logo" aria-label="Glosan startsida" onClick={onLogoClick}>
-            {outfit && (
-              <span className="nav-logo-outfit" aria-hidden="true">{outfit}</span>
+            {headAccessory && (
+              <span className="nav-logo-outfit" aria-hidden="true">{headAccessory}</span>
             )}
             <img src="/assets/logo-wordmark.svg" height={40} alt="Glosan" />
           </Link>
@@ -56,6 +61,16 @@ export default function Layout({ children }) {
             )}
           </div>
           <div className="nav-actions">
+            {seasonMessage && (
+              <span className="pill nav-pill-link" style={{ background: 'var(--mustard-soft)' }} title={seasonMessage}>
+                {seasonMessage}
+              </span>
+            )}
+            {lateNight && !seasonMessage && (
+              <span className="pill nav-pill-link" style={{ background: 'var(--plum-soft)' }} title="Nattläge">
+                🌙 borde du inte sova?
+              </span>
+            )}
             {profile?.aiUsage && (
               <Link to="/profile" aria-label="AI-anrop kvar" style={{ textDecoration: 'none' }} className="nav-pill-link">
                 <QuotaPill used={profile.aiUsage.used} limit={profile.aiUsage.limit} />
