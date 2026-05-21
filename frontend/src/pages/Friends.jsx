@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
 import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
+import { fetchDuels } from '../api/duels';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -20,6 +22,7 @@ export default function Friends() {
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [coopStreaks, setCoopStreaks] = useState([]);
+  const [duels, setDuels] = useState([]);
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -32,14 +35,16 @@ export default function Friends() {
     setBusy(true);
     setError('');
     try {
-      const [c, fs, coops] = await Promise.all([
+      const [c, fs, coops, ds] = await Promise.all([
         fetchFriendCode(apiFetch),
         fetchFriends(apiFetch),
-        fetchCoopStreaks(apiFetch)
+        fetchCoopStreaks(apiFetch),
+        fetchDuels(apiFetch)
       ]);
       setCode(c);
       setFriends(fs);
       setCoopStreaks(coops);
+      setDuels(ds);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -211,6 +216,62 @@ export default function Friends() {
       </form>
 
       {error && <p className="error">{error}</p>}
+
+      {duels.length > 0 && (
+        <div>
+          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>⚔️ Utmaningar</h2>
+            <span className="t-hand muted" style={{ fontSize: 14 }}>{duels.length} totalt</span>
+          </div>
+          <div className="stack" style={{ gap: 8 }}>
+            {duels.map((d) => {
+              const myStatus = d.myStatus;
+              const link = myStatus === 'pending' ? `/duels/${d._id}/play` : `/duels/${d._id}/result`;
+              const others = d.participants.filter((p) => String(p.user) !== String(user?.id || user?._id));
+              const completedCount = d.participants.filter((p) => p.status === 'completed').length;
+              return (
+                <Link key={d._id} to={link} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <div
+                    className="card row"
+                    style={{
+                      padding: 14,
+                      gap: 12,
+                      alignItems: 'center',
+                      background: myStatus === 'pending' ? 'var(--berry-soft)' : d.allCompleted ? 'var(--leaf-soft)' : 'var(--bg-elev)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ display: 'flex' }}>
+                      {others.slice(0, 3).map((p, i) => (
+                        <AvatarDisplay
+                          key={p.user}
+                          avatar={p.avatar}
+                          username={p.username || '?'}
+                          size={36}
+                          style={{ marginLeft: i === 0 ? 0 : -10, border: '2px solid var(--bg-elev)' }}
+                        />
+                      ))}
+                    </div>
+                    <div className="grow" style={{ minWidth: 0 }}>
+                      <strong style={{ fontSize: 16 }}>{d.list?.title || 'lista borttagen'}</strong>
+                      <p className="t-hand muted" style={{ fontSize: 13, margin: '2px 0 0' }}>
+                        {myStatus === 'pending'
+                          ? 'Klicka för att spela →'
+                          : d.allCompleted
+                            ? 'Alla klara — se resultatet'
+                            : `Du klar · ${completedCount} av ${d.participants.length} har spelat`}
+                      </p>
+                    </div>
+                    <span className="pill" style={{ background: 'var(--bg-elev)' }}>
+                      {myStatus === 'pending' ? 'din tur' : d.allCompleted ? 'klar' : 'väntar'}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {coopStreaks.length > 0 && (
         <div>

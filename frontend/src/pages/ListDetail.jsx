@@ -9,6 +9,7 @@ import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ShareDialog from '../components/ShareDialog';
+import ChallengeDialog from '../components/ChallengeDialog';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import AvatarDisplay from '../components/AvatarDisplay';
@@ -68,6 +69,7 @@ export default function ListDetail() {
   const [isOwner, setIsOwner] = useState(true);
   const [sharedBy, setSharedBy] = useState(null);
   const [showShare, setShowShare] = useState(false);
+  const [showChallenge, setShowChallenge] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
 
@@ -306,6 +308,15 @@ export default function ListDetail() {
                 Dela med kompis
               </button>
             )}
+            <button
+              className="btn"
+              onClick={() => setShowChallenge(true)}
+              disabled={glosor.length === 0}
+              title={glosor.length === 0 ? 'Lägg till glosor först' : 'Utmana en kompis till en duell'}
+              style={{ background: 'var(--berry-soft)' }}
+            >
+              ⚔️ Utmana
+            </button>
             {!isOwner && (
               <>
                 <button
@@ -539,6 +550,14 @@ export default function ListDetail() {
           initialMode={list.shareMode || 'read'}
           onClose={() => setShowShare(false)}
           onChanged={load}
+        />
+      )}
+
+      {showChallenge && (
+        <ChallengeDialog
+          listId={id}
+          listTitle={list.title}
+          onClose={() => setShowChallenge(false)}
         />
       )}
 

@@ -22,6 +22,8 @@ const Admin     = lazy(() => import('./pages/Admin'));
 const Galge     = lazy(() => import('./pages/Galge'));
 const Ordfall   = lazy(() => import('./pages/Ordfall'));
 const Integritet = lazy(() => import('./pages/Integritet'));
+const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
+const DuelResult = lazy(() => import('./pages/DuelResult'));
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -140,6 +142,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><Ordfall /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/duels/:id/play"
+          element={
+            <ProtectedRoute>
+              <Layout><DuelPlay /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/duels/:id/result"
+          element={
+            <ProtectedRoute>
+              <Layout><DuelResult /></Layout>
             </ProtectedRoute>
           }
         />
