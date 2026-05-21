@@ -140,6 +140,34 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
   background: var(--paper-deep);
   box-shadow: 5px 5px 0 0 var(--ink);
   overflow: hidden;
+  position: relative;
+}
+.snake-pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 27, 22, 0.35);
+  pointer-events: none;
+  z-index: 5;
+}
+.snake-pause-card {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  padding: 14px 28px 18px;
+  box-shadow: 5px 5px 0 0 var(--ink);
+  text-align: center;
+  min-width: 110px;
+  animation: gl-pop-in 240ms var(--ease-snap, ease-out);
+}
+.snake-pause-count {
+  font-family: var(--font-display, var(--font-headline));
+  font-size: 56px;
+  line-height: 1;
+  margin-top: 2px;
+  color: var(--coral-deep, var(--ink));
 }
 .snake-cell {
   border: 0.5px solid rgba(31, 27, 22, 0.04);
