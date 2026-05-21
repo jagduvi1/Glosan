@@ -24,6 +24,7 @@ const Ordfall   = lazy(() => import('./pages/Ordfall'));
 const Integritet = lazy(() => import('./pages/Integritet'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
+const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -158,6 +159,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Layout><DuelResult /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/duels/:id/live"
+          element={
+            <ProtectedRoute>
+              <Layout><LiveDuel /></Layout>
             </ProtectedRoute>
           }
         />

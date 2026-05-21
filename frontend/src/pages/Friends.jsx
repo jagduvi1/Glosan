@@ -309,10 +309,16 @@ export default function Friends() {
           <div className="stack" style={{ gap: 8 }}>
             {duels.map((d) => {
               const myStatus = d.myStatus;
-              const link = myStatus === 'pending' ? `/duels/${d._id}/play` : `/duels/${d._id}/result`;
+              const link =
+                d.kind === 'live' && myStatus === 'pending'
+                  ? `/duels/${d._id}/live`
+                  : myStatus === 'pending'
+                    ? `/duels/${d._id}/play`
+                    : `/duels/${d._id}/result`;
               const others = d.participants.filter((p) => String(p.user) !== String(user?.id || user?._id));
               const completedCount = d.participants.filter((p) => p.status === 'completed').length;
               const titleText = d.kind === 'goal' ? (d.title || 'Klarar du den här?') : (d.list?.title || 'lista borttagen');
+              const kindPill = d.kind === 'live' ? '⚡ live' : d.kind === 'goal' ? '🎯 mål' : null;
               return (
                 <Link key={d._id} to={link} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div
@@ -339,9 +345,15 @@ export default function Friends() {
                     <div className="grow" style={{ minWidth: 0 }}>
                       <div className="row" style={{ gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <strong style={{ fontSize: 16 }}>{titleText}</strong>
-                        {d.kind === 'goal' && d.goal != null && (
-                          <span className="pill" style={{ background: 'var(--mustard-soft)', fontSize: 12 }}>
-                            🎯 mål {d.goal}
+                        {kindPill && (
+                          <span
+                            className="pill"
+                            style={{
+                              background: d.kind === 'live' ? 'var(--coral-soft)' : 'var(--mustard-soft)',
+                              fontSize: 12
+                            }}
+                          >
+                            {kindPill}{d.kind === 'goal' && d.goal != null ? ` ${d.goal}` : ''}
                           </span>
                         )}
                       </div>
