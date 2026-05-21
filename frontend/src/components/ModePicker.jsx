@@ -40,6 +40,14 @@ const MODES = [
     bg: 'var(--sky-soft)',
     iconBg: 'var(--sky)',
     icon: '⬇'
+  },
+  {
+    id: 'orm',
+    label: 'Orm',
+    description: 'Styr ormen och ät rätt översättning av fyra. Tre liv.',
+    bg: 'var(--leaf-soft)',
+    iconBg: 'var(--leaf)',
+    icon: '🐍'
   }
 ];
 
