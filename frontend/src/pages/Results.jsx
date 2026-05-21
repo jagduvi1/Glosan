@@ -42,6 +42,14 @@ export default function Results() {
       .catch((err) => console.error('Quiz-complete failed:', err));
   }, [state, apiFetch, refresh, id]);
 
+  // Påskägg: noll rätt på en runda (måste ligga före early returns)
+  useEffect(() => {
+    if (!state) return;
+    const c = state.correct ?? 0;
+    const w = state.wrong ?? 0;
+    if (c + w > 0 && c === 0) markEggFound('zero-hug');
+  }, [state]);
+
   // Optionally fetch a repetition pool from the list's category — only if the
   // user did well (≥ 80%), has a category set, and that category has other
   // lists with wrong-glosor to revisit. Silently no-op otherwise.
@@ -122,7 +130,6 @@ export default function Results() {
   const best = list?.bestScore;
   // Påskägg: noll rätt på en hel runda → Glo bjuder på en kram istället för triumf
   const isZeroRun = total > 0 && correct === 0;
-  useEffect(() => { if (isZeroRun) markEggFound('zero-hug'); }, [isZeroRun]);
   const playAgain = () => {
     if (mode === 'galge') navigate(`/lists/${id}/galge`);
     else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
