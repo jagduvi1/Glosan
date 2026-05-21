@@ -7,9 +7,9 @@ const crypto = require('crypto');
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-function randomCode() {
+function randomCode(length = 6) {
   let s = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < length; i++) {
     // crypto.randomInt är CSPRNG-säker; Math.random är en förutsägbar PRNG
     // som kan rekonstrueras om processminne läcker.
     s += ALPHABET[crypto.randomInt(0, ALPHABET.length)];
