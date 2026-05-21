@@ -229,25 +229,37 @@ router.post('/quiz-complete', async (req, res) => {
     let coopUpdates = [];
     try {
       const coops = await CoopStreak.find({ users: user._id });
-      for (const coop of coops) {
-        const otherId = coop.users.find((u) => u.toString() !== req.user.id);
-        if (!otherId) continue;
-        const other = await User.findById(otherId, 'streak').lean();
-        if (!other?.streak?.lastActiveDay) continue;
-        const otherActiveToday = startOfDay(other.streak.lastActiveDay).getTime() === today.getTime();
-        if (!otherActiveToday) continue;
-        if (coop.lastBothActiveDay && startOfDay(coop.lastBothActiveDay).getTime() === today.getTime()) {
-          continue; // redan räknad idag
+      if (coops.length > 0) {
+        // Hämta alla "andra"-users i ett enda anrop (slipper N+1).
+        const otherIds = coops
+          .map((c) => c.users.find((u) => u.toString() !== req.user.id))
+          .filter(Boolean);
+        const others = await User.find(
+          { _id: { $in: otherIds } },
+          'streak'
+        ).lean();
+        const streakByUser = new Map(others.map((u) => [u._id.toString(), u.streak]));
+
+        for (const coop of coops) {
+          const otherId = coop.users.find((u) => u.toString() !== req.user.id);
+          if (!otherId) continue;
+          const otherStreak = streakByUser.get(otherId.toString());
+          if (!otherStreak?.lastActiveDay) continue;
+          const otherActiveToday = startOfDay(otherStreak.lastActiveDay).getTime() === today.getTime();
+          if (!otherActiveToday) continue;
+          if (coop.lastBothActiveDay && startOfDay(coop.lastBothActiveDay).getTime() === today.getTime()) {
+            continue; // redan räknad idag
+          }
+          if (coop.lastBothActiveDay && daysBetween(coop.lastBothActiveDay, today) === 1) {
+            coop.current += 1;
+          } else {
+            coop.current = 1;
+          }
+          if (coop.current > coop.longest) coop.longest = coop.current;
+          coop.lastBothActiveDay = today;
+          await coop.save();
+          coopUpdates.push({ otherId: String(otherId), current: coop.current });
         }
-        if (coop.lastBothActiveDay && daysBetween(coop.lastBothActiveDay, today) === 1) {
-          coop.current += 1;
-        } else {
-          coop.current = 1;
-        }
-        if (coop.current > coop.longest) coop.longest = coop.current;
-        coop.lastBothActiveDay = today;
-        await coop.save();
-        coopUpdates.push({ otherId: String(otherId), current: coop.current });
       }
     } catch (e) {
       console.error('Co-op streak update error:', e.message);

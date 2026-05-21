@@ -12,7 +12,7 @@
   --paper-edge:   #E8DCB8;
   --ink:          #1F1B16;
   --ink-soft:     #5A5147;
-  --ink-mute:     #8C8273;
+  --ink-mute:     #6E6557; /* WCAG AA-kontrast (≥4.5:1) mot --paper */
 
   /* marker palette */
   --coral:        #FF6B6B;

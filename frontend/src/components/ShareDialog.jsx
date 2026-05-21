@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFriends } from '../api/friends';
 import { fetchListShares, shareList, unshareList, setShareMode } from '../api/lists';
+import { useModalFocus } from '../utils/modalFocus';
 import AvatarDisplay from './AvatarDisplay';
 import GloAvatar from './GloAvatar';
 
@@ -12,6 +13,7 @@ import GloAvatar from './GloAvatar';
 // till och redigera glosor.
 export default function ShareDialog({ listId, listTitle, initialMode = 'read', onClose, onChanged }) {
   const { apiFetch } = useAuth();
+  const ref = useModalFocus(onClose);
   const [friends, setFriends] = useState([]);
   const [shareIds, setShareIds] = useState(new Set()); // user-IDs som har access nu
   const [selectIds, setSelectIds] = useState(new Set()); // user-IDs valda för ny delning
@@ -38,12 +40,7 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', o
   }, [apiFetch, listId]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Escape + focus-trap hanteras av useModalFocus-hooken ovan.
 
   const toggleSelect = (id) => {
     setSelectIds((cur) => {
@@ -108,7 +105,14 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', o
 
   return (
     <div className="modal-backdrop" onClick={() => !busy && onClose()}>
-      <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="modal"
+        style={{ maxWidth: 520 }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-header">
           <div className="row" style={{ gap: 12 }}>
             <GloAvatar size={40} mood="wink" tilt={-6} />

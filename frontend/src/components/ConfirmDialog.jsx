@@ -1,3 +1,5 @@
+import { useModalFocus } from '../utils/modalFocus';
+
 export default function ConfirmDialog({
   title,
   message,
@@ -7,13 +9,21 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel
 }) {
+  const ref = useModalFocus(onCancel);
   const confirmStyle = destructive
     ? { background: 'var(--berry)', borderColor: 'var(--berry-deep)', color: 'var(--paper)' }
     : undefined;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="modal"
+        style={{ maxWidth: 440 }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-header">
           <h3 style={{ margin: 0 }}>{title}</h3>
           <button className="btn btn-sm btn-ghost" onClick={onCancel} aria-label="Stäng">×</button>

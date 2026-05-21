@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import Analytics from './components/Analytics';
 
 const Landing    = lazy(() => import('./pages/Landing'));
@@ -25,6 +26,7 @@ const Integritet = lazy(() => import('./pages/Integritet'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
+const NotFound   = lazy(() => import('./pages/NotFound'));
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -171,7 +173,14 @@ function AppRoutes() {
           }
         />
 
-        <Route path="*" element={<Navigate to={user ? '/lists' : '/login'} replace />} />
+        <Route
+          path="*"
+          element={
+            user
+              ? <Layout><NotFound /></Layout>
+              : <Navigate to="/login" replace />
+          }
+        />
       </Routes>
     </Suspense>
   );
@@ -179,13 +188,15 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <GamificationProvider>
-          <Analytics />
-          <AppRoutes />
-        </GamificationProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <GamificationProvider>
+            <Analytics />
+            <AppRoutes />
+          </GamificationProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

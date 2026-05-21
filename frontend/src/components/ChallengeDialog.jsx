@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFriends } from '../api/friends';
 import { createDuel, createLiveDuel } from '../api/duels';
+import { useModalFocus } from '../utils/modalFocus';
 import AvatarDisplay from './AvatarDisplay';
 import GloAvatar from './GloAvatar';
 
@@ -12,6 +13,7 @@ import GloAvatar from './GloAvatar';
 export default function ChallengeDialog({ listId, listTitle, onClose }) {
   const { apiFetch } = useAuth();
   const navigate = useNavigate();
+  const ref = useModalFocus(onClose);
   const [friends, setFriends] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [questionCount, setQuestionCount] = useState(5);
@@ -32,12 +34,7 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
   }, [apiFetch]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Escape + focus-trap hanteras av useModalFocus-hooken ovan.
 
   const toggle = (id) => {
     setSelected((cur) => {
@@ -73,7 +70,14 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={() => !busy && onClose()}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="modal"
+        style={{ maxWidth: 480 }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-header">
           <div className="row" style={{ gap: 12 }}>
             <GloAvatar size={40} mood="wink" tilt={-6} />
