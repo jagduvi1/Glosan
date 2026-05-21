@@ -26,7 +26,6 @@ export default function Layout({ children }) {
   const [showPartyBanner, setShowPartyBanner] = useState(false);
   const [showEggList, setShowEggList] = useState(false);
   const xpClicksRef = useRef(0);
-  const footerClicksRef = useRef(0);
   const { onClick: onLogoClick, outfit } = useLogoOutfit();
   const { season, accessory: seasonAccessory, message: seasonMessage, lateNight } = useSeasonalTheme();
 
@@ -78,13 +77,26 @@ export default function Layout({ children }) {
     }
   };
 
+  // Layout monteras om för varje route, så footer-räknaren lagras i
+  // localStorage med en timestamp. Gamla klick (>30 s) räknas inte.
   const onFooterClick = (e) => {
-    footerClicksRef.current += 1;
-    if (footerClicksRef.current >= 7) {
+    const FOOTER_KEY = 'glo-footer-clicks';
+    const WINDOW_MS = 30_000;
+    let cur = { count: 0, ts: 0 };
+    try {
+      const raw = localStorage.getItem(FOOTER_KEY);
+      if (raw) cur = JSON.parse(raw);
+    } catch { /* ignore */ }
+    const now = Date.now();
+    const recent = cur.ts && (now - cur.ts) < WINDOW_MS;
+    const next = recent ? cur.count + 1 : 1;
+    if (next >= 7) {
       e.preventDefault();
-      footerClicksRef.current = 0;
+      try { localStorage.removeItem(FOOTER_KEY); } catch { /* ignore */ }
       setShowEggList(true);
       markEggFound('footer-list');
+    } else {
+      try { localStorage.setItem(FOOTER_KEY, JSON.stringify({ count: next, ts: now })); } catch { /* ignore */ }
     }
   };
 
