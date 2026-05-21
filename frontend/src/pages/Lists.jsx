@@ -15,6 +15,7 @@ import CategoryManagerModal from '../components/CategoryManagerModal';
 import DeckCard from '../components/DeckCard';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const ACCENTS = ['coral', 'leaf', 'sky', 'mustard'];
 
@@ -30,6 +31,7 @@ const COLOR_VARS = {
 const dateFmt = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' });
 
 export default function Lists() {
+  useDocumentTitle('Mina listor');
   const { user, apiFetch } = useAuth();
   const navigate = useNavigate();
   const [lists, setLists] = useState({ owned: [], shared: [] });

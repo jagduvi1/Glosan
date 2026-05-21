@@ -14,6 +14,21 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'build'
+    outDir: 'build',
+    // Manual chunks så vendor-deps får egen cache som överlever app-deploys.
+    // React + router stannar i en chunk; socket.io ligger redan i sin egen
+    // (lazy-loadad i LiveDuel).
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom']
+        }
+      }
+    }
+  },
+  // Strippa console.* och debugger ur prod-bundlen. ErrorBoundary använder
+  // `import.meta.env.DEV` separat så dess dev-log finns kvar i utvecklarna.
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []
   }
 });

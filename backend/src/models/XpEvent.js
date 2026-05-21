@@ -14,4 +14,8 @@ const xpEventSchema = new mongoose.Schema({
 // query när vi aggregerar månads-leaderboard.
 xpEventSchema.index({ user: 1, createdAt: -1 });
 
+// TTL: 365 dagar. Vi använder bara events för månads/vecko-leaderboards
+// + ev. årsöversikt, så äldre än ett år är dödvikt.
+xpEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 });
+
 module.exports = mongoose.model('XpEvent', xpEventSchema);

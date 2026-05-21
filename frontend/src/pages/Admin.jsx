@@ -10,6 +10,7 @@ import {
 } from '../api/admin';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 function formatLimit(limit) {
   return limit === null ? 'obegränsat' : `${limit} / mån`;
@@ -29,6 +30,7 @@ function daysLeft(until) {
 }
 
 export default function Admin() {
+  useDocumentTitle('Admin');
   const { apiFetch, user } = useAuth();
   const [users, setUsers] = useState([]);
   const [plans, setPlans] = useState([]);

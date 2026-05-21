@@ -15,6 +15,7 @@ import GloAvatar from '../components/GloAvatar';
 import AvatarDisplay from '../components/AvatarDisplay';
 import Sparkle from '../components/Sparkle';
 import { LANG_TO_FLAG } from '../utils/lang';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const LAST_MODE_KEY = 'glosan:lastMode';
 
@@ -56,6 +57,7 @@ export default function ListDetail() {
   const { apiFetch } = useAuth();
   const { refresh: refreshGamification } = useGamification();
   const [list, setList] = useState(null);
+  useDocumentTitle(list?.title);
   const [glosor, setGlosor] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

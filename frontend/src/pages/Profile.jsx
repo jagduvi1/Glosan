@@ -9,6 +9,7 @@ import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 function daysUntil(iso) {
   if (!iso) return 0;
@@ -63,6 +64,7 @@ const BADGES = [
 ];
 
 export default function Profile() {
+  useDocumentTitle('Profil');
   const { user, apiFetch, logout } = useAuth();
   const { profile, loading, error, refresh } = useGamification();
   const navigate = useNavigate();

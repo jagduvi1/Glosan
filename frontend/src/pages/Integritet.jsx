@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import GloAvatar from '../components/GloAvatar';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 // Integritetspolicy. Text + ansvarig + kontaktuppgifter måste hållas
 // aktuella av Johan — flagga vid juridiska ändringar.
@@ -11,6 +12,7 @@ const CONTACT_EMAIL = 'johan@accure.se';
 const CONTROLLER_NAME = 'Johan Eklund (Glosan)';
 
 export default function Integritet() {
+  useDocumentTitle('Integritetspolicy');
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div className="row" style={{ gap: 14, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
