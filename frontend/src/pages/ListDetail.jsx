@@ -150,6 +150,14 @@ export default function ListDetail() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Påskägg: lista som heter "Glo" markeras som hittat (måste ligga
+  // före early returns för att inte bryta Rules of Hooks).
+  useEffect(() => {
+    if ((list?.title || '').trim().toLowerCase() === 'glo') {
+      markEggFound('glo-title');
+    }
+  }, [list]);
+
   const onAdd = async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -263,7 +271,6 @@ export default function ListDetail() {
   const canEdit = isOwner || list.shareMode === 'edit';
 
   const isGloList = (list?.title || '').trim().toLowerCase() === 'glo';
-  useEffect(() => { if (isGloList) markEggFound('glo-title'); }, [isGloList]);
 
   return (
     <div>
