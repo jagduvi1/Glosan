@@ -42,11 +42,11 @@ router.get('/friend-code', async (req, res) => {
   }
 });
 
-// GET /api/me/friends — list of {friend: {_id, username, avatar, friendCode}, addedAt}
+// GET /api/me/friends — list of {friend: {_id, username, avatar, friendCode, streak, xp}, addedAt}
 router.get('/friends', async (req, res) => {
   try {
     const rows = await Friendship.find({ user: req.user.id })
-      .populate('friend', 'username avatar friendCode')
+      .populate('friend', 'username avatar friendCode streak xp')
       .sort({ addedAt: -1 })
       .lean();
     res.json({
@@ -55,6 +55,11 @@ router.get('/friends', async (req, res) => {
         username: r.friend.username,
         avatar: r.friend.avatar || { kind: 'initial', value: '' },
         friendCode: r.friend.friendCode,
+        streak: {
+          current: r.friend.streak?.current ?? 0,
+          longest: r.friend.streak?.longest ?? 0
+        },
+        xp: r.friend.xp ?? 0,
         addedAt: r.addedAt
       }))
     });

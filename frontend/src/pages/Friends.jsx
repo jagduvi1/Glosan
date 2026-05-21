@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { fetchFriendCode, fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
+
+const MEDALS = ['🥇', '🥈', '🥉'];
 
 function formatCode(code) {
   if (!code) return '';
@@ -11,7 +14,8 @@ function formatCode(code) {
 }
 
 export default function Friends() {
-  const { apiFetch } = useAuth();
+  const { user, apiFetch } = useAuth();
+  const { profile } = useGamification();
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [addInput, setAddInput] = useState('');
@@ -85,6 +89,35 @@ export default function Friends() {
     }
   };
 
+  // Streak-race: mig + alla kompisar, sorterat på nuvarande streak. Topp-3
+  // får medaljer. Krypterar inte ner till noll-streaks, men de syns på sin
+  // plats i botten.
+  const streakLeaderboard = useMemo(() => {
+    const rows = [
+      {
+        _id: 'me',
+        username: user?.username || 'du',
+        avatar: profile?.avatar || { kind: 'initial', value: '' },
+        current: profile?.streak?.current ?? 0,
+        longest: profile?.streak?.longest ?? 0,
+        isMe: true
+      },
+      ...friends.map((f) => ({
+        _id: f._id,
+        username: f.username,
+        avatar: f.avatar,
+        current: f.streak?.current ?? 0,
+        longest: f.streak?.longest ?? 0,
+        isMe: false
+      }))
+    ];
+    rows.sort((a, b) => {
+      if (b.current !== a.current) return b.current - a.current;
+      return b.longest - a.longest; // tie-break på rekord
+    });
+    return rows;
+  }, [user, profile, friends]);
+
   if (busy && !code && friends.length === 0) {
     return <p className="t-hand muted">Glo letar upp dina kompisar…</p>;
   }
@@ -150,6 +183,66 @@ export default function Friends() {
       </form>
 
       {error && <p className="error">{error}</p>}
+
+      {friends.length > 0 && (
+        <div>
+          <div className="row between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0 }}>
+              <img src="/assets/flame-streak.svg" width="22" height="28" alt="" style={{ verticalAlign: -4, marginRight: 6 }} />
+              Streak-race
+            </h2>
+            <span className="t-hand muted" style={{ fontSize: 14 }}>vem håller längst i rad?</span>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {streakLeaderboard.map((row, i) => {
+              const medal = i < 3 && row.current > 0 ? MEDALS[i] : null;
+              return (
+                <div
+                  key={row._id}
+                  className="row"
+                  style={{
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: row.isMe ? 'var(--paper-deep)' : 'var(--bg-elev)',
+                    borderBottom: i < streakLeaderboard.length - 1 ? '1px dashed var(--paper-edge)' : 'none'
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 28,
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 800,
+                      fontSize: 18,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {medal || `#${i + 1}`}
+                  </span>
+                  <AvatarDisplay avatar={row.avatar} username={row.username} size={36} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="row" style={{ gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 16 }}>{row.username}</strong>
+                      {row.isMe && (
+                        <span className="t-hand muted" style={{ fontSize: 13 }}>(du)</span>
+                      )}
+                    </div>
+                    <p className="t-hand muted" style={{ fontSize: 13, margin: '2px 0 0' }}>
+                      längsta hittills: {row.longest}
+                    </p>
+                  </div>
+                  <span
+                    className="pill"
+                    style={{ background: row.current > 0 ? 'var(--sky-soft)' : 'var(--paper-edge)' }}
+                  >
+                    <img src="/assets/flame-streak.svg" width="12" height="16" alt="" />
+                    {row.current} {row.current === 1 ? 'dag' : 'dagar'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="row between" style={{ marginBottom: 14 }}>
