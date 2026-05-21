@@ -5,6 +5,7 @@ const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const Friendship = require('../models/Friendship');
+const CoopStreak = require('../models/CoopStreak');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -200,6 +201,37 @@ router.post('/quiz-complete', async (req, res) => {
 
     await user.save();
 
+    // Co-op-streaks: för varje par jag är med i, tickas streaken upp om
+    // den andre också är aktiv idag. Brytlogiken körs implicit — om
+    // lastBothActiveDay är äldre än igår sätts current till 1 vid nästa
+    // gemensamma dag.
+    let coopUpdates = [];
+    try {
+      const coops = await CoopStreak.find({ users: user._id });
+      for (const coop of coops) {
+        const otherId = coop.users.find((u) => u.toString() !== req.user.id);
+        if (!otherId) continue;
+        const other = await User.findById(otherId, 'streak').lean();
+        if (!other?.streak?.lastActiveDay) continue;
+        const otherActiveToday = startOfDay(other.streak.lastActiveDay).getTime() === today.getTime();
+        if (!otherActiveToday) continue;
+        if (coop.lastBothActiveDay && startOfDay(coop.lastBothActiveDay).getTime() === today.getTime()) {
+          continue; // redan räknad idag
+        }
+        if (coop.lastBothActiveDay && daysBetween(coop.lastBothActiveDay, today) === 1) {
+          coop.current += 1;
+        } else {
+          coop.current = 1;
+        }
+        if (coop.current > coop.longest) coop.longest = coop.current;
+        coop.lastBothActiveDay = today;
+        await coop.save();
+        coopUpdates.push({ otherId: String(otherId), current: coop.current });
+      }
+    } catch (e) {
+      console.error('Co-op streak update error:', e.message);
+    }
+
     res.json({
       xpEarned,
       xp: user.xp,
@@ -209,7 +241,8 @@ router.post('/quiz-complete', async (req, res) => {
       streak: user.streak,
       streakChange,
       perfectRounds: user.perfectRounds,
-      quizzesCompleted: user.quizzesCompleted
+      quizzesCompleted: user.quizzesCompleted,
+      coopUpdates
     });
   } catch (err) {
     console.error('Quiz-complete error:', err);
