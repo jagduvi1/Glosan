@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const BENEFITS = [
   'Oändligt antal egna listor',
@@ -23,6 +24,7 @@ function strengthSegments(pw) {
 const SEG_COLORS = ['var(--berry)', 'var(--mustard)', 'var(--leaf)', 'var(--leaf-deep)'];
 
 export default function Register() {
+  useDocumentTitle('Skapa konto');
   const { register } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');

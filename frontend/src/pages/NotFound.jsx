@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import GloAvatar from '../components/GloAvatar';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 export default function NotFound() {
+  useDocumentTitle('Sidan finns inte');
   return (
     <div className="card card-lg" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
       <GloAvatar size={140} float mood="sad" style={{ margin: '0 auto 16px' }} />

@@ -175,6 +175,19 @@ table.glos-table .stat-bad { color: var(--berry-deep); font-weight: 800; font-fa
 a { color: var(--coral-deep); text-decoration: none; font-weight: 700; }
 a:hover { text-decoration: underline; }
 
+/* tangentbordsfokus — bara när användaren tabbar, inte vid musklick.
+   Kontrast­stark ring i coral runt allt interaktivt. */
+:focus-visible {
+  outline: 3px solid var(--coral);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.btn:focus-visible,
+.inp:focus-visible {
+  outline: 3px solid var(--coral-deep);
+  outline-offset: 2px;
+}
+
 /* layout grids */
 .auth-grid {
   display: grid;

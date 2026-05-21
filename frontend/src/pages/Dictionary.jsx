@@ -5,6 +5,7 @@ import { translate, exampleSentence } from '../api/ai';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, LANG_NAMES } from '../utils/lang';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const LANGS = ['sv', 'en', 'fr', 'de', 'es'];
 const LAST_PAIR_KEY = 'glosan:dictPair';
@@ -23,6 +24,7 @@ function readPair() {
 }
 
 export default function Dictionary() {
+  useDocumentTitle('Ordbok');
   const { apiFetch } = useAuth();
   const { refresh: refreshGamification } = useGamification();
   const [pair, setPair] = useState(readPair);

@@ -11,10 +11,12 @@ import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import GoalChallengeDialog from '../components/GoalChallengeDialog';
+import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function Friends() {
+  useDocumentTitle('Kompisar');
   const { user, apiFetch } = useAuth();
   const { profile } = useGamification();
   const [friends, setFriends] = useState([]);
