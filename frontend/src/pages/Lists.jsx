@@ -232,13 +232,56 @@ export default function Lists() {
 
       <div className="row between" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0 }}>Mina glos-listor</h2>
-        <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn btn-sm" onClick={() => setShowCategoryManager(true)}>
-            Hantera kategorier ({categories.length})
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowCategoryManager(true)}
+            title="Skapa, byt färg och radera kategorier"
+            style={{ background: 'var(--plum-soft)' }}
+          >
+            <span aria-hidden="true" style={{ fontSize: 15 }}>📂</span>
+            Kategorier
+            {categories.length > 0 && (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 20,
+                  height: 20,
+                  padding: '0 6px',
+                  background: 'var(--ink)',
+                  color: 'var(--paper)',
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  marginLeft: 2
+                }}
+              >
+                {categories.length}
+              </span>
+            )}
           </button>
-          <button className="btn btn-sm" onClick={() => setShowImport(true)}>Importera från text</button>
-          <button className="btn btn-sm btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? '× Avbryt' : '+ Ny lista'}
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowImport(true)}
+            title="Klistra in text från läxa — Glo bygger en lista"
+            style={{ background: 'var(--sky-soft)' }}
+          >
+            <span aria-hidden="true" style={{ fontSize: 15 }}>📋</span>
+            Importera
+          </button>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => setShowForm((s) => !s)}
+            title={showForm ? 'Stäng formuläret' : 'Skapa en ny tom lista'}
+          >
+            {showForm ? (
+              <>× Avbryt</>
+            ) : (
+              <><span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>＋</span> Ny lista</>
+            )}
           </button>
         </div>
       </div>
