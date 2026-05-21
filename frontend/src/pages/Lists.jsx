@@ -316,13 +316,20 @@ export default function Lists() {
                 {category && (
                   <div className="row" style={{ gap: 8 }}>
                     <Link to={`/categories/${category._id}/quiz?mode=review`}>
-                      <button className="btn btn-sm" style={{ background: 'var(--coral-soft)' }}>
-                        Repetera allt
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: 'var(--coral-soft)' }}
+                        title="Träna på glosor du fastnat på i hela kategorin"
+                      >
+                        🔁 Bara fel
                       </button>
                     </Link>
                     <Link to={`/categories/${category._id}/quiz?mode=all`}>
-                      <button className="btn btn-sm" style={{ background: 'var(--leaf-soft)' }}>
-                        Öva allt
+                      <button
+                        className="btn btn-sm btn-primary"
+                        title="Slumpa glosor från alla listor i kategorin"
+                      >
+                        🎯 Öva allt
                       </button>
                     </Link>
                   </div>
