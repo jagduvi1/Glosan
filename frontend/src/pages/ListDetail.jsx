@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { fetchList, swapListDirection, leaveSharedList, copyList } from '../api/lists';
+import { fetchList, swapListDirection, leaveSharedList, copyList, fetchWeeklyRecords } from '../api/lists';
 import { createGlos, deleteGlos } from '../api/glosor';
 import { generateList, extendList } from '../api/ai';
 import ImportModal from '../components/ImportModal';
@@ -72,6 +72,7 @@ export default function ListDetail() {
   const [showChallenge, setShowChallenge] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
+  const [weeklyRecords, setWeeklyRecords] = useState([]);
 
   const onPickMode = (mode) => {
     try { localStorage.setItem(LAST_MODE_KEY, mode); } catch { /* private mode etc */ }
@@ -95,6 +96,21 @@ export default function ListDetail() {
       setGlosor(data.glosor);
       setIsOwner(data.isOwner !== false);
       setSharedBy(data.sharedBy || null);
+      // Hämta veckans rekord om listan är delad (egen med mottagare, eller
+      // jag är mottagare). Annars är leaderboarden bara mig själv — meningslös.
+      const hasShares =
+        (data.list.sharedWith && data.list.sharedWith.length > 0) ||
+        data.isOwner === false;
+      if (hasShares) {
+        try {
+          const wr = await fetchWeeklyRecords(apiFetch, id);
+          setWeeklyRecords(wr.records || []);
+        } catch (e) {
+          console.error('Weekly records fetch failed:', e.message);
+        }
+      } else {
+        setWeeklyRecords([]);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -346,6 +362,55 @@ export default function ListDetail() {
           </div>
         </div>
       </div>
+
+      {weeklyRecords.length > 0 && (
+        <div className="card" style={{ marginBottom: 22, background: 'var(--sky-soft)' }}>
+          <div className="row between" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={{ margin: 0 }}>📅 Veckans rekord</h3>
+            <span className="t-hand muted" style={{ fontSize: 13 }}>
+              bästa rond per spelare denna vecka
+            </span>
+          </div>
+          <div className="stack" style={{ gap: 6 }}>
+            {weeklyRecords.map((r, i) => {
+              const medal = i < 3 ? ['🥇', '🥈', '🥉'][i] : `#${i + 1}`;
+              const pct = Math.round(r.bestRatio * 100);
+              return (
+                <div
+                  key={r._id}
+                  className="row"
+                  style={{
+                    gap: 12,
+                    padding: '8px 12px',
+                    background: r.isMe ? 'var(--paper-deep)' : 'var(--bg-elev)',
+                    border: '1.5px solid var(--ink)',
+                    borderRadius: 10,
+                    alignItems: 'center'
+                  }}
+                >
+                  <span style={{ width: 28, fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, textAlign: 'center' }}>
+                    {medal}
+                  </span>
+                  <AvatarDisplay avatar={r.avatar} username={r.username} size={32} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="row" style={{ gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 15 }}>{r.username}</strong>
+                      {r.isMe && <span className="t-hand muted" style={{ fontSize: 12 }}>(du)</span>}
+                      {r.isOwner && <span className="pill" style={{ fontSize: 11, background: 'var(--mustard-soft)' }}>ägare</span>}
+                    </div>
+                    <p className="t-hand muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+                      {r.runs} {r.runs === 1 ? 'rond' : 'ronder'} denna vecka
+                    </p>
+                  </div>
+                  <span className="pill" style={{ background: 'var(--leaf-soft)' }}>
+                    {r.bestCorrect} / {r.bestTotal} · {pct}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="detail-grid">
         <div>
