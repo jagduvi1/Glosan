@@ -175,6 +175,14 @@ table.glos-table .stat-bad { color: var(--berry-deep); font-weight: 800; font-fa
 a { color: var(--coral-deep); text-decoration: none; font-weight: 700; }
 a:hover { text-decoration: underline; }
 
+/* När en <Link>/<a> wrappar en knapp ska den inte få text-decoration —
+   knappen är sin egen affordans. Tar bort underline-on-hover så vi inte
+   får en rödaktig linje under btn-wrappade länkar. */
+a:has(> .btn),
+a:has(> button) { text-decoration: none !important; }
+a:has(> .btn):hover,
+a:has(> button):hover { text-decoration: none !important; }
+
 /* tangentbordsfokus — bara när användaren tabbar, inte vid musklick.
    Kontrast­stark ring i coral runt allt interaktivt. */
 :focus-visible {
