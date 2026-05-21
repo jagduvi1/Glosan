@@ -218,6 +218,64 @@ router.post('/goal', async (req, res) => {
   }
 });
 
+// POST /api/duels/live — skapa en realtids-duell. Båda spelarna förväntas
+// öppna /duels/:id/live och spela samtidigt. Frågorna lottas vid skapandet
+// precis som i POST /. Auto-cancel via TTL om B inte joinar inom 24 h.
+router.post('/live', async (req, res) => {
+  const { listId, opponentId, questionCount } = req.body;
+  if (!mongoose.Types.ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: 'Invalid listId' });
+  }
+  if (!mongoose.Types.ObjectId.isValid(opponentId)) {
+    return res.status(400).json({ error: 'Invalid opponentId' });
+  }
+  const n = Math.min(Math.max(Number(questionCount) || DEFAULT_QUESTIONS, 1), MAX_QUESTIONS);
+  try {
+    const list = await GlosList.findOne({
+      _id: listId,
+      $or: [{ user: req.user.id }, { sharedWith: req.user.id }]
+    });
+    if (!list) return res.status(404).json({ error: 'List not found' });
+
+    const friendship = await Friendship.findOne({ user: req.user.id, friend: opponentId }).lean();
+    if (!friendship) {
+      return res.status(400).json({ error: 'Du måste vara kompis för att utmana.' });
+    }
+
+    const allGlosor = await Glos.find({ list: list._id }).lean();
+    if (allGlosor.length === 0) {
+      return res.status(400).json({ error: 'Listan har inga glosor — kan inte utmana.' });
+    }
+    const picked = shuffle(allGlosor).slice(0, Math.min(n, allGlosor.length));
+    const questions = picked.map((g) => ({
+      glosId: g._id,
+      source: g.source,
+      target: g.target,
+      notes: g.notes || ''
+    }));
+
+    const duel = await Duel.create({
+      kind: 'live',
+      list: list._id,
+      createdBy: req.user.id,
+      questions,
+      reversed: list.quizReversed ?? true,
+      liveExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      participants: [
+        { user: req.user.id, status: 'pending' },
+        { user: opponentId, status: 'pending' }
+      ]
+    });
+    const populated = await Duel.findById(duel._id)
+      .populate('participants.user', 'username avatar')
+      .populate('list', 'title');
+    res.status(201).json({ duel: shapeDuel(populated, req.user.id) });
+  } catch (err) {
+    console.error('Live duel create error:', err);
+    res.status(500).json({ error: 'Failed to create live duel' });
+  }
+});
+
 // GET /api/duels — alla duells jag är med i, sorterade på senast skapade.
 router.get('/', async (req, res) => {
   try {

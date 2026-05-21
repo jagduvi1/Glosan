@@ -16,7 +16,12 @@ const participantSchema = new mongoose.Schema({
 const duelSchema = new mongoose.Schema({
   // 'duel' = slumpade frågor från en hel lista, vinnare = flest rätt.
   // 'goal' = handplockade glosor från en eller flera listor, mål att klara.
-  kind: { type: String, enum: ['duel', 'goal'], default: 'duel' },
+  // 'live' = realtidsduell över WebSocket; båda spelar samtidigt och först
+  //          rätt på varje fråga får poängen.
+  kind: { type: String, enum: ['duel', 'goal', 'live'], default: 'duel' },
+  // För live: när första spelaren joinade ↔ när invitation går ut (24h).
+  // Auto-rensas av TTL-index för att slippa skräp.
+  liveExpiresAt: { type: Date, default: null },
   // En "goal"-utmaning kan blanda glosor från flera listor, så list får
   // vara null. För 'duel' krävs den.
   list: { type: mongoose.Schema.Types.ObjectId, ref: 'GlosList', default: null, index: true },
@@ -44,5 +49,7 @@ const duelSchema = new mongoose.Schema({
 
 // Snabb sökning av "mina duels" via participant-user.
 duelSchema.index({ 'participants.user': 1, createdAt: -1 });
+// TTL för live-duels som aldrig accepterades — försvinner vid liveExpiresAt.
+duelSchema.index({ liveExpiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Duel', duelSchema);

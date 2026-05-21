@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFriends } from '../api/friends';
-import { createDuel } from '../api/duels';
+import { createDuel, createLiveDuel } from '../api/duels';
 import AvatarDisplay from './AvatarDisplay';
 import GloAvatar from './GloAvatar';
 
@@ -15,6 +15,7 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
   const [friends, setFriends] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [questionCount, setQuestionCount] = useState(5);
+  const [mode, setMode] = useState('async'); // 'async' eller 'live'
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,13 +52,19 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
     setBusy(true);
     setError('');
     try {
-      const duel = await createDuel(apiFetch, {
-        listId,
-        opponentIds: Array.from(selected),
-        questionCount
-      });
-      // Skickaren spelar direkt — det är hela poängen med utmaningen.
-      navigate(`/duels/${duel._id}/play`);
+      if (mode === 'live') {
+        // Live tar bara EN motståndare — vi använder första.
+        const opponentId = Array.from(selected)[0];
+        const duel = await createLiveDuel(apiFetch, { listId, opponentId, questionCount });
+        navigate(`/duels/${duel._id}/live`);
+      } else {
+        const duel = await createDuel(apiFetch, {
+          listId,
+          opponentIds: Array.from(selected),
+          questionCount
+        });
+        navigate(`/duels/${duel._id}/play`);
+      }
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -77,6 +84,49 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
 
         <div className="modal-body stack" style={{ gap: 14 }}>
           {error && <p className="error">{error}</p>}
+
+          <div className="card" style={{ padding: 12, background: 'var(--paper-edge)' }}>
+            <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>Typ av utmaning</p>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { id: 'async', label: '📬 Async-duell', desc: 'Båda spelar när det passar. Vinst på flest rätt + snabbast.' },
+                { id: 'live', label: '⚡ Live-duell', desc: 'Båda online samtidigt. Först rätt på varje fråga vinner poängen. En motståndare.' }
+              ].map((opt) => (
+                <label
+                  key={opt.id}
+                  style={{
+                    flex: 1,
+                    minWidth: 180,
+                    padding: 10,
+                    border: '2px solid var(--ink)',
+                    borderRadius: 10,
+                    background: mode === opt.id ? 'var(--berry-soft)' : 'var(--bg-elev)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="challengeMode"
+                      checked={mode === opt.id}
+                      onChange={() => {
+                        setMode(opt.id);
+                        // Live tar bara en motståndare — krymp urvalet
+                        if (opt.id === 'live' && selected.size > 1) {
+                          const first = Array.from(selected)[0];
+                          setSelected(new Set([first]));
+                        }
+                      }}
+                    />
+                    <strong style={{ fontSize: 14 }}>{opt.label}</strong>
+                  </div>
+                  <p className="t-hand muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.3 }}>
+                    {opt.desc}
+                  </p>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <label className="field">
             <span className="field-label">Antal frågor</span>
@@ -98,7 +148,7 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
           ) : (
             <div>
               <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>
-                Välj vem (eller vilka) du vill utmana:
+                {mode === 'live' ? 'Välj en kompis (live tar bara en):' : 'Välj vem (eller vilka) du vill utmana:'}
               </p>
               <div className="stack" style={{ gap: 6 }}>
                 {friends.map((f) => {
@@ -116,7 +166,16 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
                         cursor: 'pointer'
                       }}
                     >
-                      <input type="checkbox" checked={sel} onChange={() => toggle(f._id)} style={{ width: 18, height: 18 }} />
+                      <input
+                        type={mode === 'live' ? 'radio' : 'checkbox'}
+                        name={mode === 'live' ? 'liveOpponent' : undefined}
+                        checked={sel}
+                        onChange={() => {
+                          if (mode === 'live') setSelected(new Set([f._id]));
+                          else toggle(f._id);
+                        }}
+                        style={{ width: 18, height: 18 }}
+                      />
                       <AvatarDisplay avatar={f.avatar} username={f.username} size={32} />
                       <span className="grow" style={{ fontWeight: 700 }}>{f.username}</span>
                     </label>
@@ -134,7 +193,11 @@ export default function ChallengeDialog({ listId, listTitle, onClose }) {
             onClick={onSend}
             disabled={busy || selected.size === 0}
           >
-            {busy ? 'Skickar…' : `Utmana ${selected.size || ''}`.trim()}
+            {busy
+              ? 'Skickar…'
+              : mode === 'live'
+                ? '⚡ Starta live'
+                : `Utmana ${selected.size || ''}`.trim()}
           </button>
         </div>
       </div>

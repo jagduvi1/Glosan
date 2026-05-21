@@ -24,13 +24,18 @@ if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('Warning: ANTHROPIC_API_KEY not set — /api/ai/* routes will return 503.');
 }
 
+const http = require('http');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
+const { initSockets } = require('./src/socket');
 
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
-  app.listen(PORT, () => {
+  // Egen HTTP-server så vi kan dela porten mellan Express och Socket.IO.
+  const server = http.createServer(app);
+  initSockets(server);
+  server.listen(PORT, () => {
     console.log(`Glosan backend running on port ${PORT}`);
   });
 });
