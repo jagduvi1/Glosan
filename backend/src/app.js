@@ -15,6 +15,7 @@ const categoriesRoute = require('./routes/categories');
 const friendsRoute = require('./routes/friends');
 const coopStreaksRoute = require('./routes/coopStreaks');
 const duelsRoute = require('./routes/duels');
+const leaderboardsRoute = require('./routes/leaderboards');
 const adminRoute = require('./routes/admin');
 
 const app = express();
@@ -82,6 +83,7 @@ app.use('/api/categories', categoriesRoute);
 app.use('/api/me', friendsRoute);
 app.use('/api/me', coopStreaksRoute);
 app.use('/api/duels', duelsRoute);
+app.use('/api/me', leaderboardsRoute);
 app.use('/api/admin', adminRoute);
 
 app.use((req, res) => {
