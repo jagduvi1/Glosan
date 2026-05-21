@@ -26,6 +26,30 @@ function loadOwnedList(paramName = 'id') {
   };
 }
 
+// Same som loadOwnedList men accepterar även listor som någon annan delat
+// med req.user (genom sharedWith). Sätter `req.list` plus `req.listIsOwner`
+// så route-handlern kan välja mellan owner-only och read-only-beteende.
+function loadReadableList(paramName = 'id') {
+  return async (req, res, next) => {
+    const id = req.params[paramName];
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ error: 'Invalid list id' });
+    }
+    try {
+      const list = await GlosList.findOne({
+        _id: id,
+        $or: [{ user: req.user.id }, { sharedWith: req.user.id }]
+      });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+      req.list = list;
+      req.listIsOwner = list.user.toString() === req.user.id;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
 // Load a Glos by req.params.id and verify req.user owns the parent list.
 // On success, attaches the glos to req.glos.
 async function loadOwnedGlos(req, res, next) {
@@ -61,4 +85,4 @@ async function loadOwnedCategory(req, res, next) {
   }
 }
 
-module.exports = { loadOwnedList, loadOwnedGlos, loadOwnedCategory };
+module.exports = { loadOwnedList, loadReadableList, loadOwnedGlos, loadOwnedCategory };

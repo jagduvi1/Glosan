@@ -43,6 +43,15 @@ const glosListSchema = new mongoose.Schema({
     default: null,
     index: true
   },
+  // Kompisar som ägaren har delat listan med. Ger läsbar access + möjlighet
+  // att köra quiz för egen XP. Skrivningar (glosor, titel, kategori, score,
+  // riktning, radering) sker fortfarande bara av ägaren — mottagaren kan
+  // inte förorena ägarens rekord eller per-glos-mastery.
+  sharedWith: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  }],
   bestScore: {
     correct: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
