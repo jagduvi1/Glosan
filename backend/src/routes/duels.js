@@ -41,6 +41,9 @@ function shapeDuel(duel, viewerId, options = {}) {
   const { includeQuestions = false } = options;
   const obj = {
     _id: duel._id,
+    kind: duel.kind || 'duel',
+    title: duel.title || '',
+    goal: duel.goal,
     list: duel.list?._id ? { _id: duel.list._id, title: duel.list.title } : duel.list,
     createdBy: duel.createdBy?._id || duel.createdBy,
     reversed: duel.reversed,
@@ -124,6 +127,94 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('Duel create error:', err);
     res.status(500).json({ error: 'Failed to create duel' });
+  }
+});
+
+// POST /api/duels/goal — utmana med handplockade glosor och ett mål.
+// Body: { glosIds: [string], opponentIds: [string], goal: number, title?, reversed? }
+// glosor måste komma från listor som A har läs-access till (egna eller delade).
+router.post('/goal', async (req, res) => {
+  const { glosIds, opponentIds, goal, title, reversed } = req.body;
+  if (!Array.isArray(glosIds) || glosIds.length === 0) {
+    return res.status(400).json({ error: 'glosIds måste vara en lista med minst ett ID' });
+  }
+  if (glosIds.length > MAX_QUESTIONS) {
+    return res.status(400).json({ error: `Max ${MAX_QUESTIONS} glosor per utmaning` });
+  }
+  if (!Array.isArray(opponentIds) || opponentIds.length === 0) {
+    return res.status(400).json({ error: 'opponentIds måste vara en lista med minst ett ID' });
+  }
+  const validGlosIds = glosIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const validOpponents = opponentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  if (validGlosIds.length === 0 || validOpponents.length === 0) {
+    return res.status(400).json({ error: 'Inga giltiga ID:n' });
+  }
+  const goalNum = Number(goal);
+  if (!Number.isInteger(goalNum) || goalNum < 1 || goalNum > validGlosIds.length) {
+    return res.status(400).json({ error: `Målet måste vara mellan 1 och ${validGlosIds.length}` });
+  }
+
+  try {
+    // Validera att alla glosor finns och kommer från listor jag har access till.
+    const glosor = await Glos.find({ _id: { $in: validGlosIds } }).populate('list', 'user sharedWith').lean();
+    if (glosor.length !== validGlosIds.length) {
+      return res.status(400).json({ error: 'Några glosor hittades inte.' });
+    }
+    for (const g of glosor) {
+      if (!g.list) {
+        return res.status(400).json({ error: 'En glosa hör till en raderad lista.' });
+      }
+      const isOwner = g.list.user.toString() === req.user.id;
+      const isShared = (g.list.sharedWith || []).some((u) => u.toString() === req.user.id);
+      if (!isOwner && !isShared) {
+        return res.status(403).json({ error: 'Du har inte access till alla valda glosor.' });
+      }
+    }
+
+    // Konfirmera att alla motståndare är kompisar.
+    const friendships = await Friendship.find({
+      user: req.user.id,
+      friend: { $in: validOpponents }
+    }, 'friend').lean();
+    const confirmedFriends = new Set(friendships.map((f) => f.friend.toString()));
+    const opponents = validOpponents.filter((id) => confirmedFriends.has(id));
+    if (opponents.length === 0) {
+      return res.status(400).json({ error: 'Du måste vara kompis för att utmana.' });
+    }
+
+    // Behåll ordningen i originalanropet (snapshot).
+    const glosByid = new Map(glosor.map((g) => [g._id.toString(), g]));
+    const questions = validGlosIds
+      .filter((id) => glosByid.has(id))
+      .map((id) => {
+        const g = glosByid.get(id);
+        return {
+          glosId: g._id,
+          source: g.source,
+          target: g.target,
+          notes: g.notes || ''
+        };
+      });
+
+    const duel = await Duel.create({
+      kind: 'goal',
+      list: null,
+      goal: goalNum,
+      title: (title || '').trim() || 'Klarar du den här?',
+      createdBy: req.user.id,
+      questions,
+      reversed: reversed !== undefined ? !!reversed : true,
+      participants: [
+        { user: req.user.id, status: 'pending' },
+        ...opponents.map((id) => ({ user: id, status: 'pending' }))
+      ]
+    });
+    const populated = await Duel.findById(duel._id)
+      .populate('participants.user', 'username avatar');
+    res.status(201).json({ duel: shapeDuel(populated, req.user.id) });
+  } catch (err) {
+    console.error('Goal challenge create error:', err);
+    res.status(500).json({ error: 'Failed to create challenge' });
   }
 });
 

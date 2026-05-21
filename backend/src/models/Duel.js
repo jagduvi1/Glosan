@@ -14,7 +14,17 @@ const participantSchema = new mongoose.Schema({
 }, { _id: false });
 
 const duelSchema = new mongoose.Schema({
-  list: { type: mongoose.Schema.Types.ObjectId, ref: 'GlosList', required: true, index: true },
+  // 'duel' = slumpade frågor från en hel lista, vinnare = flest rätt.
+  // 'goal' = handplockade glosor från en eller flera listor, mål att klara.
+  kind: { type: String, enum: ['duel', 'goal'], default: 'duel' },
+  // En "goal"-utmaning kan blanda glosor från flera listor, så list får
+  // vara null. För 'duel' krävs den.
+  list: { type: mongoose.Schema.Types.ObjectId, ref: 'GlosList', default: null, index: true },
+  // För kind='goal': antal rätt som krävs för att lyckas. Null = ingen mål.
+  goal: { type: Number, default: null, min: 0 },
+  // Valfri rubrik på utmaningen ("V20-läxan", "Hård test"). Bara goal-typer
+  // sätter denna; duels får list-titeln som rubrik via populate.
+  title: { type: String, default: '', maxlength: 100, trim: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   // Frigjorda fält för glos-frågorna så vi inte beror på att glos-listan är
   // intakt vid spel-tid: en raderad glosa skulle annars få en deltagare att
