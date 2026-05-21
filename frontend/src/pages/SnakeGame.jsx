@@ -257,14 +257,12 @@ export default function SnakeGame() {
         }
         const { dx, dy } = dirRef.current;
         const head = cur[cur.length - 1];
-        const nextHead = { x: head.x + dx, y: head.y + dy };
-
-        // Vägg-krock
-        if (nextHead.x < 0 || nextHead.x >= COLS || nextHead.y < 0 || nextHead.y >= ROWS) {
-          handleCrash();
-          return cur;
-        }
-        // Själv-krock
+        // Wrap-around: åk ut ena kanten och kom in från den motsatta
+        const nextHead = {
+          x: (head.x + dx + COLS) % COLS,
+          y: (head.y + dy + ROWS) % ROWS
+        };
+        // Själv-krock dödar fortfarande
         if (cur.some((c) => c.x === nextHead.x && c.y === nextHead.y)) {
           handleCrash();
           return cur;
