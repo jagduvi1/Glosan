@@ -81,6 +81,29 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 /* list detail action-rad (Dela / Utmana / Starta öva) */
 .list-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+/* Flashcards-grid: 5 kort per sida, auto-fit så vi får 1 kolumn på mobil,
+   2 på tablet, 2-3 på desktop beroende på viewport. Korten är klickbara
+   knappar med flip-state. */
+.flashcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.flashcard {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--dur-fast, 0.18s) ease, box-shadow var(--dur-fast, 0.18s) ease;
+}
+.flashcard:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 0 var(--ink);
+}
+.flashcard:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 0 var(--ink);
+}
+
 /* add-glosa-formuläret på ListDetail: input → arrow → input → notes → knapp */
 .add-glos-form {
   display: grid;
