@@ -1,18 +1,14 @@
-import { io } from 'socket.io-client';
-
-// En per-tab socket-anslutning. Vi behåller en lazy singleton så
-// flera komponenter kan dela samma anslutning utan att vi öppnar två
-// stycken samtidigt. Stänger om token försvinner (logout).
-let socket = null;
+// Lazy singleton för Socket.IO-anslutningen. socket.io-client (~40 KB gz)
+// laddas dynamiskt så att appen inte drar in det i main-chunken — bara
+// LiveDuel-sidan triggar import. Återanvänd via getSocket(token) som
+// returnerar en Promise.
+let socketPromise = null;
 let lastToken = null;
+let socket = null;
 
-export function getSocket(token) {
+export async function getSocket(token) {
   if (!token) {
-    if (socket) {
-      socket.disconnect();
-      socket = null;
-      lastToken = null;
-    }
+    closeSocket();
     return null;
   }
   if (socket && lastToken === token && socket.connected) {
@@ -21,22 +17,30 @@ export function getSocket(token) {
   if (socket) {
     socket.disconnect();
     socket = null;
+    socketPromise = null;
   }
-  socket = io({
-    path: '/api/socket.io',
-    auth: { token },
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5
-  });
-  lastToken = token;
-  return socket;
+  if (!socketPromise) {
+    socketPromise = (async () => {
+      const { io } = await import('socket.io-client');
+      socket = io({
+        path: '/api/socket.io',
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5
+      });
+      lastToken = token;
+      return socket;
+    })();
+  }
+  return socketPromise;
 }
 
 export function closeSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
-    lastToken = null;
   }
+  socketPromise = null;
+  lastToken = null;
 }

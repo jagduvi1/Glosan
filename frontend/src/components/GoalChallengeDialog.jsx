@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchFriends } from '../api/friends';
 import { fetchLists, fetchList } from '../api/lists';
 import { createGoalChallenge } from '../api/duels';
+import { useModalFocus } from '../utils/modalFocus';
 import AvatarDisplay from './AvatarDisplay';
 import GloAvatar from './GloAvatar';
 
@@ -15,6 +16,7 @@ const MAX_GLOSOR = 20;
 export default function GoalChallengeDialog({ onClose }) {
   const { apiFetch } = useAuth();
   const navigate = useNavigate();
+  const ref = useModalFocus(onClose);
 
   const [friends, setFriends] = useState([]);
   const [lists, setLists] = useState([]);
@@ -44,11 +46,7 @@ export default function GoalChallengeDialog({ onClose }) {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Escape + focus-trap hanteras av useModalFocus-hooken ovan.
 
   // Default-mål = 80 % av antal valda, alltid minst 1, alltid ≤ antal valda.
   useEffect(() => {
@@ -115,7 +113,14 @@ export default function GoalChallengeDialog({ onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={() => !busy && onClose()}>
-      <div className="modal" style={{ maxWidth: 620, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className="modal"
+        style={{ maxWidth: 620, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-header">
           <div className="row" style={{ gap: 12 }}>
             <GloAvatar size={40} mood="wink" tilt={-6} />

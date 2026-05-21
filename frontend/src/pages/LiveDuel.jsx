@@ -28,71 +28,83 @@ export default function LiveDuel() {
 
   useEffect(() => {
     if (!token) return undefined;
-    const socket = getSocket(token);
-    socketRef.current = socket;
+    let cancelled = false;
+    let cleanup = null;
 
-    const onConnect = () => {
-      setPhase('connecting');
-      socket.emit('live:join', { duelId: id });
-    };
-    const onLobby = (data) => {
-      setLobby(data);
-      setPhase((p) => (p === 'round' || p === 'starting' ? p : 'lobby'));
-    };
-    const onLobbyUpdate = (data) => {
-      setLobby((cur) => cur ? { ...cur, participants: cur.participants.map((p) => ({ ...p, ready: data.ready.includes(String(p.userId)) })) } : cur);
-    };
-    const onStart = () => {
-      setPhase('starting');
-      setFeedback(null);
-    };
-    const onRound = (data) => {
-      setPhase('round');
-      setRound(data);
-      setFeedback(null);
-      setAnswer('');
-      setSubmitting(false);
-    };
-    const onRoundResult = (data) => {
-      setFeedback(data);
-      setScores(data.scores);
-    };
-    const onGameOver = () => {
-      setPhase('result');
-      // Navigera till samma result-sida som async-duell
-      setTimeout(() => navigate(`/duels/${id}/result`, { replace: true }), 600);
-    };
-    const onOpponentLeft = ({ userId }) => {
-      if (String(userId) !== String(myId)) setOpponentLeft(true);
-    };
-    const onError = (msg) => {
-      setError(typeof msg === 'string' ? msg : 'Något gick fel.');
-      setPhase('error');
-    };
+    (async () => {
+      const socket = await getSocket(token);
+      if (cancelled || !socket) return;
+      socketRef.current = socket;
 
-    socket.on('connect', onConnect);
-    socket.on('live:lobby', onLobby);
-    socket.on('live:lobby-update', onLobbyUpdate);
-    socket.on('live:start', onStart);
-    socket.on('live:round', onRound);
-    socket.on('live:round-result', onRoundResult);
-    socket.on('live:game-over', onGameOver);
-    socket.on('live:opponent-left', onOpponentLeft);
-    socket.on('live:error', onError);
-    socket.on('connect_error', (err) => onError(err.message));
+      const onConnect = () => {
+        setPhase('connecting');
+        socket.emit('live:join', { duelId: id });
+      };
+      const onLobby = (data) => {
+        setLobby(data);
+        setPhase((p) => (p === 'round' || p === 'starting' ? p : 'lobby'));
+      };
+      const onLobbyUpdate = (data) => {
+        setLobby((cur) => cur ? { ...cur, participants: cur.participants.map((p) => ({ ...p, ready: data.ready.includes(String(p.userId)) })) } : cur);
+      };
+      const onStart = () => {
+        setPhase('starting');
+        setFeedback(null);
+      };
+      const onRound = (data) => {
+        setPhase('round');
+        setRound(data);
+        setFeedback(null);
+        setAnswer('');
+        setSubmitting(false);
+      };
+      const onRoundResult = (data) => {
+        setFeedback(data);
+        setScores(data.scores);
+      };
+      const onGameOver = () => {
+        setPhase('result');
+        setTimeout(() => navigate(`/duels/${id}/result`, { replace: true }), 600);
+      };
+      const onOpponentLeft = ({ userId }) => {
+        if (String(userId) !== String(myId)) setOpponentLeft(true);
+      };
+      const onError = (msg) => {
+        setError(typeof msg === 'string' ? msg : 'Något gick fel.');
+        setPhase('error');
+      };
+      const onConnectError = (err) => onError(err.message);
 
-    if (socket.connected) onConnect();
+      socket.on('connect', onConnect);
+      socket.on('live:lobby', onLobby);
+      socket.on('live:lobby-update', onLobbyUpdate);
+      socket.on('live:start', onStart);
+      socket.on('live:round', onRound);
+      socket.on('live:round-result', onRoundResult);
+      socket.on('live:game-over', onGameOver);
+      socket.on('live:opponent-left', onOpponentLeft);
+      socket.on('live:error', onError);
+      socket.on('connect_error', onConnectError);
+
+      if (socket.connected) onConnect();
+
+      cleanup = () => {
+        socket.off('connect', onConnect);
+        socket.off('live:lobby', onLobby);
+        socket.off('live:lobby-update', onLobbyUpdate);
+        socket.off('live:start', onStart);
+        socket.off('live:round', onRound);
+        socket.off('live:round-result', onRoundResult);
+        socket.off('live:game-over', onGameOver);
+        socket.off('live:opponent-left', onOpponentLeft);
+        socket.off('live:error', onError);
+        socket.off('connect_error', onConnectError);
+      };
+    })();
 
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('live:lobby', onLobby);
-      socket.off('live:lobby-update', onLobbyUpdate);
-      socket.off('live:start', onStart);
-      socket.off('live:round', onRound);
-      socket.off('live:round-result', onRoundResult);
-      socket.off('live:game-over', onGameOver);
-      socket.off('live:opponent-left', onOpponentLeft);
-      socket.off('live:error', onError);
+      cancelled = true;
+      if (cleanup) cleanup();
     };
   }, [id, token, myId, navigate]);
 
