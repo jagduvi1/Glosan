@@ -105,6 +105,8 @@ export default function SnakeGame() {
   const submittingRef = useRef(false);
   const fetchingPoolRef = useRef(false);     // hindrar parallella fetches
   const poolExhaustedRef = useRef(false);    // satt när kategorin inte har fler ord
+  const pausedRef = useRef(false);           // game-loop tickar inte när true
+  const [pauseCountdown, setPauseCountdown] = useState(0); // 3..2..1..0 = ingen paus
 
   useDocumentTitle(list ? `Orm · ${list.title}` : 'Orm');
 
@@ -157,6 +159,8 @@ export default function SnakeGame() {
     setFeedback(null);
     fetchingPoolRef.current = false;
     poolExhaustedRef.current = false;
+    pausedRef.current = true;
+    setPauseCountdown(3);
     const initialPool = shuffle(glosor);
     setPool(initialPool);
     const firstGlos = initialPool[0];
@@ -165,6 +169,18 @@ export default function SnakeGame() {
     setFoods(placeFoods(startSnake, f));
     setPhase('playing');
   }, [glosor, reversed]);
+
+  // Nedräknings-timer som pausar ormens rörelse. Sätt pauseCountdown till
+  // ett tal > 0 så räknas det ner till 0 och pausedRef synkas automatiskt.
+  useEffect(() => {
+    if (pauseCountdown <= 0) {
+      pausedRef.current = false;
+      return undefined;
+    }
+    pausedRef.current = true;
+    const timer = setTimeout(() => setPauseCountdown((n) => Math.max(0, n - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [pauseCountdown]);
 
   // Tangentbordskontroll: pilar / WASD. Buffrar nästa riktning så man inte
   // kan tvärvända (180°) som dödar ormen direkt.
@@ -191,10 +207,12 @@ export default function SnakeGame() {
   }, [phase]);
 
   // Game-loop: var TICK_MS flyttas ormen ett steg i nuvarande riktning,
-  // efter att eventuell köad ny riktning applicerats.
+  // efter att eventuell köad ny riktning applicerats. Pausad mellan rundor
+  // så spelaren hinner läsa orden i sidopanelen.
   useEffect(() => {
     if (phase !== 'playing') return undefined;
     const tick = () => {
+      if (pausedRef.current) return;
       setSnake((cur) => {
         // Applicera buffrad riktning
         if (pendingDirRef.current) {
@@ -299,6 +317,10 @@ export default function SnakeGame() {
           return s;
         });
       }, 0);
+
+      // Pausa ormen 3 sekunder så spelaren hinner läsa det nya ordet
+      pausedRef.current = true;
+      setPauseCountdown(3);
 
       // Trigga ev. förladdning av fler ord från kategorin (best-effort)
       maybeFetchMore(curIdx);
@@ -512,6 +534,14 @@ export default function SnakeGame() {
                 />
               );
             })}
+            {pauseCountdown > 0 && (
+              <div className="snake-pause-overlay" aria-live="polite">
+                <div className="snake-pause-card">
+                  <p className="t-hand" style={{ margin: 0, fontSize: 14 }}>Nytt ord</p>
+                  <div className="snake-pause-count">{pauseCountdown}</div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pil-knappar för mobil */}
