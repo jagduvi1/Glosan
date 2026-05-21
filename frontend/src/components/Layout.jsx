@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { StreakPill, XpPill, QuotaPill } from './Pill';
 import AvatarDisplay from './AvatarDisplay';
 import ConfettiBurst from './ConfettiBurst';
+import EmojiBurst from './EmojiBurst';
+import EasterEggListModal from './EasterEggListModal';
 import { useKonamiCode } from '../utils/useKonamiCode';
 import { useLogoOutfit } from '../utils/useLogoOutfit';
 import { useSeasonalTheme } from '../utils/useSeasonalTheme';
+import { useTextSequence } from '../utils/useTextSequence';
+import { markEggFound } from '../utils/easterEggs';
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -16,14 +20,59 @@ export default function Layout({ children }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [starTrigger, setStarTrigger] = useState(0);
+  const [magicTrigger, setMagicTrigger] = useState(0);
+  const [showEggList, setShowEggList] = useState(false);
+  const xpClicksRef = useRef(0);
+  const footerClicksRef = useRef(0);
   const { onClick: onLogoClick, outfit } = useLogoOutfit();
-  const { accessory: seasonAccessory, message: seasonMessage, lateNight } = useSeasonalTheme();
+  const { season, accessory: seasonAccessory, message: seasonMessage, lateNight } = useSeasonalTheme();
 
   // Säsongs-accessory tar över användarens valda outfit under helgdagen
   const headAccessory = seasonAccessory || outfit;
 
   // Påskägg: Konami-koden ger en regnbåge-konfetti över sidan
-  useKonamiCode(() => setConfettiTrigger((t) => t + 1));
+  useKonamiCode(() => {
+    setConfettiTrigger((t) => t + 1);
+    markEggFound('konami');
+  });
+
+  // Påskägg: skriv "abracadabra" var som helst → magiska gnistor
+  useTextSequence('abracadabra', () => {
+    setMagicTrigger((t) => t + 1);
+    markEggFound('abracadabra');
+  });
+
+  // Logga säsongs- och nattlägets-egg när de upptäcks visuellt
+  useEffect(() => {
+    if (season) markEggFound('season');
+    if (lateNight && !season) markEggFound('night-mode');
+  }, [season, lateNight]);
+
+  // Logga outfit-egg och gyllene streak när villkoren uppfylls
+  useEffect(() => { if (outfit) markEggFound('logo-outfit'); }, [outfit]);
+  useEffect(() => {
+    if (profile?.streak?.current >= 30) markEggFound('streak-30');
+  }, [profile?.streak?.current]);
+
+  const onXpPillClick = () => {
+    xpClicksRef.current += 1;
+    if (xpClicksRef.current >= 20) {
+      xpClicksRef.current = 0;
+      setStarTrigger((t) => t + 1);
+      markEggFound('xp-burst');
+    }
+  };
+
+  const onFooterClick = (e) => {
+    footerClicksRef.current += 1;
+    if (footerClicksRef.current >= 7) {
+      e.preventDefault();
+      footerClicksRef.current = 0;
+      setShowEggList(true);
+      markEggFound('footer-list');
+    }
+  };
 
   // Stäng menyn när vi navigerar bort
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
@@ -43,6 +92,9 @@ export default function Layout({ children }) {
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
       <ConfettiBurst trigger={confettiTrigger} />
+      <EmojiBurst trigger={starTrigger} emoji={['⭐', '✨']} count={30} duration={2800} />
+      <EmojiBurst trigger={magicTrigger} emoji={['✨', '💫', '🪄', '⭐']} count={36} duration={3200} />
+      {showEggList && <EasterEggListModal onClose={() => setShowEggList(false)} />}
       <nav className="navbar">
         <div className="nav-inner">
           <Link to="/lists" className="nav-logo" aria-label="Glosan startsida" onClick={onLogoClick}>
@@ -77,7 +129,11 @@ export default function Layout({ children }) {
               </Link>
             )}
             {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} />}
-            {profile && profile.xp > 0 && <span className="nav-pill-link"><XpPill n={profile.xp} /></span>}
+            {profile && profile.xp > 0 && (
+              <span className="nav-pill-link" onClick={onXpPillClick} style={{ cursor: 'pointer' }}>
+                <XpPill n={profile.xp} />
+              </span>
+            )}
             <button className="btn btn-sm btn-ghost nav-logout-desktop" onClick={handleLogout}>Logga ut</button>
             {user && (
               <Link to="/profile" aria-label={`Profil för ${user.username}`} title={user.username} style={{ display: 'inline-flex', cursor: 'pointer' }}>
@@ -113,7 +169,13 @@ export default function Layout({ children }) {
       </nav>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
-        <Link to="/integritet" style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>Integritetspolicy</Link>
+        <Link
+          to="/integritet"
+          style={{ color: 'var(--ink-soft)', fontWeight: 400 }}
+          onClick={onFooterClick}
+        >
+          Integritetspolicy
+        </Link>
       </footer>
     </div>
   );

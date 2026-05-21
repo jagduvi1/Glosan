@@ -17,6 +17,7 @@ import Sparkle from '../components/Sparkle';
 import EmojiBurst from '../components/EmojiBurst';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import { markEggFound } from '../utils/easterEggs';
 
 const LAST_MODE_KEY = 'glosan:lastMode';
 const FIKA_PATTERN = /\b(fika|kanelbulle|kanelbullar)\b/i;
@@ -163,6 +164,7 @@ export default function ListDetail() {
       // Påskägg: skriv "fika" eller "kanelbulle" så regnar kanelbullar
       if (FIKA_PATTERN.test(`${source} ${target} ${notes}`)) {
         setFikaTrigger((t) => t + 1);
+        markEggFound('fika-rain');
       }
     } catch (err) {
       setError(err.message);
@@ -261,6 +263,7 @@ export default function ListDetail() {
   const canEdit = isOwner || list.shareMode === 'edit';
 
   const isGloList = list?.title?.trim().toLowerCase() === 'glo';
+  useEffect(() => { if (isGloList) markEggFound('glo-title'); }, [isGloList]);
 
   return (
     <div>

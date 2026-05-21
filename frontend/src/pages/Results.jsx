@@ -7,6 +7,7 @@ import { fetchCategoryPool, fetchCategories } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import ConfettiBurst from '../components/ConfettiBurst';
+import { markEggFound } from '../utils/easterEggs';
 
 const REPETITION_THRESHOLD = 0.8;
 const REPETITION_LIMIT = 5;
@@ -35,6 +36,7 @@ export default function Results() {
         const cur = result?.streak?.current ?? 0;
         if (cur > 0 && cur % 7 === 0 && (result.streakChange === 'started' || result.streakChange === 'continued')) {
           setStreakConfettiTrigger((t) => t + 1);
+          markEggFound('streak-7');
         }
       })
       .catch((err) => console.error('Quiz-complete failed:', err));
@@ -120,6 +122,7 @@ export default function Results() {
   const best = list?.bestScore;
   // Påskägg: noll rätt på en hel runda → Glo bjuder på en kram istället för triumf
   const isZeroRun = total > 0 && correct === 0;
+  useEffect(() => { if (isZeroRun) markEggFound('zero-hug'); }, [isZeroRun]);
   const playAgain = () => {
     if (mode === 'galge') navigate(`/lists/${id}/galge`);
     else if (mode === 'ordfall') navigate(`/lists/${id}/ordfall`);
