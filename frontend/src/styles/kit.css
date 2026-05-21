@@ -81,15 +81,60 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 /* list detail action-rad (Dela / Utmana / Starta öva) */
 .list-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-/* Snake-spelet (orm) — spelplan-grid + dpad-knappar för mobil */
+/* Snake-spelet (orm) — sidopanel med färgade ord + större spelplan med
+   färgade matrutor (utan text). Sidopanel till vänster på desktop,
+   stackad ovanför planen på mobil. */
+.snake-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.snake-wordlist {
+  position: sticky;
+  top: 14px;
+  padding: 18px;
+}
+.snake-wordlist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.snake-wordlist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 2px 2px 0 0 var(--ink);
+  min-width: 0;
+}
+.snake-wordlist-swatch {
+  width: 26px; height: 26px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  flex: none;
+  box-shadow: 1px 1px 0 0 var(--ink);
+}
+.snake-wordlist-text {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 16px;
+  word-break: break-word;
+  line-height: 1.2;
+}
 .snake-board-wrap {
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   touch-action: none;
+  min-width: 0;
 }
 .snake-board {
   display: grid;
-  width: min(560px, 95vw);
-  aspect-ratio: 14 / 11;
+  width: 100%;
+  max-width: min(640px, 95vw);
+  aspect-ratio: 16 / 12;
   border: 3px solid var(--ink);
   border-radius: 14px;
   background: var(--paper-deep);
@@ -98,28 +143,15 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 }
 .snake-cell {
   border: 0.5px solid rgba(31, 27, 22, 0.04);
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-body); font-weight: 800;
-  font-size: clamp(10px, 1.6vw, 14px);
-  text-align: center;
+  display: block;
   transition: background 120ms ease;
-  overflow: hidden;
 }
 .snake-cell.snake-body { background: var(--leaf); }
 .snake-cell.snake-head { background: var(--leaf-deep); border-radius: 4px; }
 .snake-cell.snake-food {
-  background: var(--mustard);
   border: 2px solid var(--ink);
-  border-radius: 8px;
-  color: var(--ink);
-  padding: 0 4px;
-}
-.snake-food-text {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-radius: 6px;
+  box-shadow: inset 1px 1px 0 0 rgba(255, 255, 255, 0.35);
 }
 .snake-dpad { display: none; flex-direction: column; align-items: center; gap: 8px; margin-top: 8px; }
 .snake-dpad-btn {
@@ -132,6 +164,12 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
   -webkit-tap-highlight-color: transparent;
 }
 .snake-dpad-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 0 var(--ink); }
+@media (max-width: 900px) {
+  .snake-layout { grid-template-columns: 1fr; gap: 14px; }
+  .snake-wordlist { position: static; padding: 14px; }
+  .snake-wordlist-items { flex-direction: row; flex-wrap: wrap; }
+  .snake-wordlist-item { flex: 1 1 calc(50% - 4px); min-width: 0; }
+}
 @media (max-width: 720px) { .snake-dpad { display: flex; } }
 
 /* Flashcards-grid: 5 kort per sida, auto-fit så vi får 1 kolumn på mobil,
