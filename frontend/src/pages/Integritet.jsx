@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import GloAvatar from '../components/GloAvatar';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 
@@ -12,6 +13,11 @@ export default function Integritet() {
   useDocumentTitle('Integritetspolicy');
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <Helmet>
+        <title>Integritetspolicy — Glosan</title>
+        <meta name="description" content="Så här behandlar Glosan dina personuppgifter. GDPR-kompatibel, transparent och med möjlighet att exportera eller radera ditt konto när som helst." />
+        <link rel="canonical" href="https://glosan.app/integritet" />
+      </Helmet>
       <div className="row" style={{ gap: 14, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
         <GloAvatar size={72} float tilt={-4} />
         <div>

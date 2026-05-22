@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
@@ -49,6 +50,11 @@ export default function Register() {
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
+      <Helmet>
+        <title>Skapa konto — Glosan glos-app med AI</title>
+        <meta name="description" content="Skapa ett gratis Glosan-konto. Skapa egna ordlistor, öva med sex spellägen och utmana kompisar — utan reklam och utan kakor." />
+        <link rel="canonical" href="https://glosan.app/register" />
+      </Helmet>
       <nav className="navbar" style={{ background: 'transparent', borderBottom: 'none' }}>
         <div className="nav-inner">
           <img src="/assets/logo-wordmark.svg" height={44} alt="Glosan" />
