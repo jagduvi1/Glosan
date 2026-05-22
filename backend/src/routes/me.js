@@ -514,42 +514,71 @@ router.get('/export', async (req, res) => {
 // CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode. Pull också ut mig
 // från andras GlosList.sharedWith så jag inte syns kvar i deras "delade
 // med dig"-sektion.
+//
+// Vi försöker köra alla rensningarna i en MongoDB-transaktion för att
+// garantera all-or-nothing. Om Mongo körs som standalone (utan replica
+// set) stöds inte transactions och vi faller tillbaka på sekventiell
+// körning med User.deleteOne sist — då är användaren "kvar" tills allt
+// annat har rensats, så ett misslyckat anrop kan köras igen.
 router.delete('/', async (req, res) => {
-  try {
-    const userId = new mongoose.Types.ObjectId(req.user.id);
-    const Duel = require('../models/Duel');
-    const InviteCode = require('../models/InviteCode');
+  const userId = new mongoose.Types.ObjectId(req.user.id);
+  const Duel = require('../models/Duel');
+  const InviteCode = require('../models/InviteCode');
 
-    const userLists = await GlosList.find({ user: userId }, '_id').lean();
+  async function runOps(session) {
+    const opts = session ? { session } : {};
+    const userLists = await GlosList.find({ user: userId }, '_id', opts).lean();
     const listIds = userLists.map((l) => l._id);
 
     if (listIds.length > 0) {
-      await Glos.deleteMany({ list: { $in: listIds } });
+      await Glos.deleteMany({ list: { $in: listIds } }, opts);
       // QuizRunEvent kan referera mina listor; raderas via user-filter nedan,
       // men list-refen tas också bort när listan dör.
-      await GlosList.deleteMany({ _id: { $in: listIds } });
+      await GlosList.deleteMany({ _id: { $in: listIds } }, opts);
     }
     // Pull ut mig från andras shared-listor (annars syns mitt user-ID
     // som dangling ref i deras "delade med dig"-sektion).
     await GlosList.updateMany(
       { sharedWith: userId },
-      { $pull: { sharedWith: userId } }
+      { $pull: { sharedWith: userId } },
+      opts
     );
-    await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] });
-    await CoopStreak.deleteMany({ users: userId });
+    await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] }, opts);
+    await CoopStreak.deleteMany({ users: userId }, opts);
     // Duels jag deltagit i raderas i sin helhet — alternativ vore att
     // anonymisera mitt namn men för en hobby-app är hård delete cleaner.
-    await Duel.deleteMany({ 'participants.user': userId });
-    await XpEvent.deleteMany({ user: userId });
-    await QuizRunEvent.deleteMany({ user: userId });
-    await InviteCode.deleteMany({ user: userId });
+    await Duel.deleteMany({ 'participants.user': userId }, opts);
+    await XpEvent.deleteMany({ user: userId }, opts);
+    await QuizRunEvent.deleteMany({ user: userId }, opts);
+    await InviteCode.deleteMany({ user: userId }, opts);
     // Förbruka använda invites där jag var usedBy så de inte refererar mig
     await InviteCode.updateMany(
       { usedBy: userId },
-      { $set: { usedBy: null } }
+      { $set: { usedBy: null } },
+      opts
     );
 
-    await User.deleteOne({ _id: userId });
+    await User.deleteOne({ _id: userId }, opts);
+  }
+
+  let session = null;
+  try {
+    try {
+      session = await mongoose.startSession();
+      await session.withTransaction(async () => {
+        await runOps(session);
+      });
+    } catch (txnErr) {
+      const isStandalone = /transaction|replica\s*set|replSet/i.test(txnErr.message || '');
+      if (isStandalone) {
+        console.warn('[gdpr-delete] MongoDB i standalone-läge — kör sekventiell delete. För full atomicity, konfigurera Mongo som replica set.');
+        await runOps(null);
+      } else {
+        throw txnErr;
+      }
+    } finally {
+      if (session) await session.endSession();
+    }
 
     res.clearCookie('refreshToken', {
       httpOnly: true,

@@ -27,6 +27,20 @@ function requireEnabled(req, res) {
   return true;
 }
 
+// Kort, fyrkantig längdvalidering så ingen kan trycka in megabytes av
+// text i prompts och blåsa upp Anthropic-anrop. Returnerar true (och
+// 400-svar) om något fält är för långt; den anropande routen ska
+// returnera tidigt i det fallet.
+function rejectIfTooLong(res, fields) {
+  for (const [name, spec] of Object.entries(fields)) {
+    if (typeof spec.value === 'string' && spec.value.length > spec.max) {
+      res.status(400).json({ error: `${name} is too long (max ${spec.max} characters)` });
+      return true;
+    }
+  }
+  return false;
+}
+
 // POST /api/ai/generate-list
 // Body: { topic, sourceLang, targetLang, count }
 // Returns: { glosor: [{ source, target }] }
@@ -36,6 +50,11 @@ router.post('/generate-list', async (req, res) => {
   if (!topic || !sourceLang || !targetLang) {
     return res.status(400).json({ error: 'topic, sourceLang and targetLang are required' });
   }
+  if (rejectIfTooLong(res, {
+    topic: { value: topic, max: 200 },
+    sourceLang: { value: sourceLang, max: 32 },
+    targetLang: { value: targetLang, max: 32 }
+  })) return;
   const n = Math.min(Math.max(Number(count) || 10, 1), 30);
 
   try {
@@ -113,6 +132,10 @@ router.post('/parse-list', async (req, res) => {
   if (text.length > 8000) {
     return res.status(400).json({ error: 'text is too long (max 8000 characters)' });
   }
+  if (rejectIfTooLong(res, {
+    sourceLang: { value: sourceLang, max: 32 },
+    targetLang: { value: targetLang, max: 32 }
+  })) return;
 
   const langHint = sourceLang && targetLang
     ? `The source language is "${sourceLang}" and the target language is "${targetLang}".`
@@ -152,6 +175,10 @@ router.post('/example-sentence', async (req, res) => {
   if (!requireEnabled(req, res)) return;
   const { word, lang } = req.body;
   if (!word || !lang) return res.status(400).json({ error: 'word and lang are required' });
+  if (rejectIfTooLong(res, {
+    word: { value: word, max: 100 },
+    lang: { value: lang, max: 32 }
+  })) return;
 
   try {
     const system = `You write one short, natural example sentence using a given word. Reply with valid JSON only. Schema: {"sentence":"..."}.`;
@@ -179,6 +206,11 @@ router.post('/translate', async (req, res) => {
   if (!word || !sourceLang || !targetLang) {
     return res.status(400).json({ error: 'word, sourceLang and targetLang are required' });
   }
+  if (rejectIfTooLong(res, {
+    word: { value: word, max: 100 },
+    sourceLang: { value: sourceLang, max: 32 },
+    targetLang: { value: targetLang, max: 32 }
+  })) return;
 
   try {
     const system = `You translate single words or short phrases between languages. Reply with valid JSON only. Schema: {"translation":"..."}.`;
