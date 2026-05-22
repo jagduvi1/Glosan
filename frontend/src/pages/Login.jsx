@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -25,6 +26,11 @@ export default function Login() {
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
+      <Helmet>
+        <title>Logga in — Glosan</title>
+        <meta name="description" content="Logga in på Glosan och fortsätt öva dina glosor, samla XP och utmana kompisar i live-dueller." />
+        <link rel="canonical" href="https://glosan.app/login" />
+      </Helmet>
       <nav className="navbar" style={{ background: 'transparent', borderBottom: 'none' }}>
         <div className="nav-inner">
           <img src="/assets/logo-wordmark.svg" height={44} alt="Glosan" />

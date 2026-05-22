@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import GloAvatar from '../components/GloAvatar';
 import Sparkle from '../components/Sparkle';
 
 export default function Landing() {
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
+      <Helmet>
+        <title>Glosan — Lär dig glosor smart med AI och kompis-utmaningar</title>
+        <meta name="description" content="Glosan är en gratis svensk glos-app med AI. Skapa egna ordlistor, öva med sex spellägen, utmana kompisar i live-dueller och samla streaks." />
+        <link rel="canonical" href="https://glosan.app/" />
+      </Helmet>
       <nav className="navbar" style={{ background: 'transparent', borderBottom: 'none' }}>
         <div className="nav-inner">
           <img src="/assets/logo-wordmark.svg" height={44} alt="Glosan" />
@@ -15,7 +21,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      <section style={{ maxWidth: 1080, margin: '0 auto', padding: '48px 24px 80px' }}>
+      <main style={{ maxWidth: 1080, margin: '0 auto', padding: '48px 24px 80px' }}>
         <div className="auth-grid" style={{ padding: 0, gap: 56, maxWidth: 'none' }}>
           <div>
             <span className="pill tilt-l" style={{ background: 'var(--mustard)', marginBottom: 22 }}>
@@ -26,7 +32,7 @@ export default function Landing() {
               Plugg som inte&nbsp;suger.
             </h1>
             <p style={{ fontSize: 19, color: 'var(--ink-soft)', maxWidth: 480, margin: '0 0 24px' }}>
-              Klistra in glosorna från din läxa — Glo tolkar formatet, bygger listan och nöter med dig. Tre quiz-lägen. Inga annonser. Inget rotande i menyer.
+              Klistra in glosorna från din läxa — Glo tolkar formatet, bygger listan och nöter med dig. Sex spellägen och kompis-utmaningar. Inga annonser. Inget rotande i menyer.
             </p>
             <div className="row" style={{ gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
               <Link to="/register"><button className="btn btn-primary btn-lg">Börja öva nu →</button></Link>
@@ -101,7 +107,7 @@ export default function Landing() {
             />
           </div>
         </div>
-      </section>
+      </main>
 
       <section
         id="hur-funkar-det"
@@ -126,9 +132,9 @@ export default function Landing() {
             </div>
             <div className="card card-lg tilt-r" style={{ background: 'var(--leaf-soft)' }}>
               <div className="t-hand muted" style={{ fontSize: 14 }}>02</div>
-              <h3 style={{ margin: '4px 0 10px' }}>Öva på tre sätt</h3>
+              <h3 style={{ margin: '4px 0 10px' }}>Öva på sex sätt</h3>
               <p style={{ margin: 0 }}>
-                Skriv översättningen, välj av fyra, eller bara nöt med flashkort. Du växlar per session. Glo accepterar synonymer som "söt/gullig".
+                Flashkort, skriv översättningen, välj av fyra, glos-galge, ordfall eller orm-spel. Du växlar per session. Glo accepterar synonymer som "söt/gullig".
               </p>
             </div>
             <div className="card card-lg tilt-l" style={{ background: 'var(--sky-soft)' }}>
