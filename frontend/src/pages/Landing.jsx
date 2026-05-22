@@ -40,9 +40,6 @@ export default function Landing() {
                 <button className="btn btn-lg">Hur funkar det?</button>
               </a>
             </div>
-            <p className="t-hand muted" style={{ fontSize: 15 }}>
-              Self-hosted MERN. Din data, din server, din vinst.
-            </p>
           </div>
 
           <div style={{ position: 'relative', minHeight: 380 }}>
