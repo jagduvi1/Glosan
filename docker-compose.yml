@@ -61,7 +61,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "web"
-      traefik.http.routers.glosan.rule: "Host(`glosan.jeklund.dev`)"
+      traefik.http.routers.glosan.rule: "Host(`glosan.app`) || Host(`glosan.jeklund.dev`)"
       traefik.http.routers.glosan.entrypoints: "web"
       traefik.http.services.glosan.loadbalancer.server.port: "80"
     depends_on:

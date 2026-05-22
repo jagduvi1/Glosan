@@ -34,7 +34,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - ACCESS_TOKEN_EXPIRES_IN=${ACCESS_TOKEN_EXPIRES_IN:-15m}
       - PORT=5000
-      - FRONTEND_URL=${FRONTEND_URL:-https://glosan.jeklund.dev}
+      - FRONTEND_URL=${FRONTEND_URL:-https://glosan.app,https://glosan.jeklund.dev}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
@@ -58,7 +58,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "web"
-      traefik.http.routers.glosan.rule: "Host(`glosan.jeklund.dev`)"
+      traefik.http.routers.glosan.rule: "Host(`glosan.app`) || Host(`glosan.jeklund.dev`)"
       traefik.http.routers.glosan.entrypoints: "websecure"
       traefik.http.routers.glosan.tls: "true"
       traefik.http.services.glosan.loadbalancer.server.port: "80"

@@ -43,7 +43,15 @@ app.use(compression());
 app.use(cookieParser());
 app.use(express.json({ limit: '64kb' }));
 
-const corsOrigin = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? false : 'http://localhost:3000');
+// FRONTEND_URL kan vara en enstaka URL eller en kommaseparerad lista —
+// stödet för flera origins behövs när appen serveras från fler domäner
+// (t.ex. glosan.app + glosan.jeklund.dev under en migrationsperiod).
+const corsOrigin = (() => {
+  const raw = process.env.FRONTEND_URL;
+  if (!raw) return process.env.NODE_ENV === 'production' ? false : 'http://localhost:3000';
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length === 1 ? list[0] : list;
+})();
 if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
   console.warn('[security] FRONTEND_URL is not set — CORS will block cross-origin requests in production');
 }
