@@ -1,2 +1,10 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /profile
+Disallow: /lists
+Disallow: /kompisar
+Disallow: /duels
+
+Sitemap: https://glosan.app/sitemap.xml
