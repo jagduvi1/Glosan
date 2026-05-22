@@ -42,4 +42,9 @@ const glosSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Index för repetitionsläget — vi sorterar/filtrerar på lastReviewedAt
+// när vi plockar fram glosor som inte övats på ett tag. Utan index blir
+// query:n O(n) per lista.
+glosSchema.index({ list: 1, 'stats.lastReviewedAt': 1 });
+
 module.exports = mongoose.model('Glos', glosSchema);

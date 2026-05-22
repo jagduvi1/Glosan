@@ -51,11 +51,23 @@ router.get('/plans', (req, res) => {
   });
 });
 
-// GET /api/admin/users — full list, newest first. Small app, no pagination yet.
+// GET /api/admin/users — paginerad lista, newest first.
+// Query: ?offset=0&limit=50 (max 200). Returnerar { users, total, offset, limit }
+// så UI kan göra paging utan att gissa.
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find({}).sort({ createdAt: -1 }).lean();
-    res.json({ users: users.map(shapeUserForAdmin) });
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const [users, total] = await Promise.all([
+      User.find({}).sort({ createdAt: -1 }).skip(offset).limit(limit).lean(),
+      User.countDocuments({})
+    ]);
+    res.json({
+      users: users.map(shapeUserForAdmin),
+      total,
+      offset,
+      limit
+    });
   } catch (err) {
     console.error('Admin list users error:', err);
     res.status(500).json({ error: 'Failed to load users' });
