@@ -1,0 +1,116 @@
+# Produktions-compose för Glosan på jeklund.dev-VM:n.
+#
+# Bygger inte själv — pullar pre-byggda images från ghcr.io som pushades
+# av .github/workflows/release.yml vid senaste GitHub-releasen. Säkert
+# att köra parallellt med Drillstack på samma host: container-namnen
+# är prefixade med "glosan-", projektnamnet är "glosan" och Traefik
+# routar bara baserat på Host()-headern.
+#
+# Deploy på VM:n:
+#   1. Pull senaste images:   docker compose -f docker-compose.prod.yml pull
+#   2. Starta om stacken:      docker compose -f docker-compose.prod.yml up -d
+#   3. Verifiera:              docker compose -f docker-compose.prod.yml ps
+name: glosan
+services:
+  mongo:
+    image: mongo:7
+    container_name: glosan-mongo
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/jagduvi1/glosan-backend:latest
+    container_name: glosan-backend
+    restart: unless-stopped
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/glosan
+      - JWT_SECRET=${JWT_SECRET}
+      - ACCESS_TOKEN_EXPIRES_IN=${ACCESS_TOKEN_EXPIRES_IN:-15m}
+      - PORT=5000
+      - FRONTEND_URL=${FRONTEND_URL:-https://glosan.jeklund.dev}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - NODE_ENV=${NODE_ENV:-production}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    image: ghcr.io/jagduvi1/glosan-frontend:latest
+    container_name: glosan-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - web
+      - default
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "web"
+      traefik.http.routers.glosan.rule: "Host(`glosan.jeklund.dev`)"
+      traefik.http.routers.glosan.entrypoints: "websecure"
+      traefik.http.routers.glosan.tls: "true"
+      traefik.http.services.glosan.loadbalancer.server.port: "80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Umami — privacy-friendly self-hosted analytics. Inert utan env vars.
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: glosan-umami
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@umami-db:5432/umami
+      - DATABASE_TYPE=postgresql
+      - APP_SECRET=${UMAMI_APP_SECRET:-replace-with-random-string-in-production}
+    expose:
+      - "3000"
+    networks:
+      - web
+      - default
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "web"
+      traefik.http.routers.glosan-umami.rule: "Host(`analytics.glosan.jeklund.dev`)"
+      traefik.http.routers.glosan-umami.entrypoints: "websecure"
+      traefik.http.routers.glosan-umami.tls: "true"
+      traefik.http.services.glosan-umami.loadbalancer.server.port: "3000"
+    depends_on:
+      umami-db:
+        condition: service_healthy
+
+  umami-db:
+    image: postgres:16-alpine
+    container_name: glosan-umami-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=umami
+      - POSTGRES_USER=umami
+      - POSTGRES_PASSWORD=${UMAMI_DB_PASSWORD:-umami}
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
+  umami-db-data:
+
+networks:
+  web:
+    external: true
