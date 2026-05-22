@@ -5,7 +5,7 @@ import { useDocumentTitle } from '../utils/useDocumentTitle';
 // Integritetspolicy. Personuppgiftsansvarig + kontaktuppgifter ska
 // fyllas i av Majkens vårdnadshavare innan publik produktion.
 const LAST_UPDATED = '2026-05-21';
-const CONTACT_EMAIL = null;
+const CONTACT_EMAIL = 'info@glosan.app';
 const CONTROLLER_NAME = 'Glosan';
 
 export default function Integritet() {
