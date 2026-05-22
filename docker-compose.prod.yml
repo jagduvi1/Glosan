@@ -83,7 +83,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: "web"
-      traefik.http.routers.glosan-umami.rule: "Host(`analytics.glosan.jeklund.dev`)"
+      traefik.http.routers.glosan-umami.rule: "Host(`analyticsglosan.jeklund.dev`)"
       traefik.http.routers.glosan-umami.entrypoints: "websecure"
       traefik.http.routers.glosan-umami.tls: "true"
       traefik.http.services.glosan-umami.loadbalancer.server.port: "3000"
