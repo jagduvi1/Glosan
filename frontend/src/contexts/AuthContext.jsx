@@ -1,4 +1,4 @@
-import { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
+import { createContext, useState, useContext, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createApiFetch } from '../utils/apiFetch';
 
 const AuthContext = createContext(null);
@@ -51,10 +51,13 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const apiFetch = useCallback(
-    createApiFetch(() => tokenRef.current, handleRefresh, logout),
-    []
+  // useMemo (inte useCallback) eftersom createApiFetch returnerar en
+  // ny funktion vi vill cacha — annars skapas en ny apiFetch vid varje
+  // render. handleRefresh och logout är memoiserade med tom dep-array
+  // så de är stabila och apiFetch byggs i praktiken bara en gång.
+  const apiFetch = useMemo(
+    () => createApiFetch(() => tokenRef.current, handleRefresh, logout),
+    [handleRefresh, logout]
   );
 
   const fetchUserProfile = useCallback(async (authToken) => {
