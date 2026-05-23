@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const healthRoute = require('./routes/health');
 const authRoute = require('./routes/auth');
 const listsRoute = require('./routes/lists');
+const listInvitesRoute = require('./routes/listInvites');
 const glosorRoute = require('./routes/glosor');
 const aiRoute = require('./routes/ai');
 const meRoute = require('./routes/me');
@@ -84,6 +85,9 @@ app.use('/api/', writeLimiter);
 app.use('/api/health', healthRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/lists', listsRoute);
+// listInvites monteras på /api/ eftersom routes har paths som
+// /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)
+app.use('/api', listInvitesRoute);
 app.use('/api', glosorRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/me', meRoute);
