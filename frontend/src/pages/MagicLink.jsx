@@ -26,9 +26,14 @@ export default function MagicLink() {
   useEffect(() => {
     if (!token || triedRef.current) return;
     triedRef.current = true;
+    if (!applyExternalToken) {
+      setError('Inloggning misslyckades — auth-kontext saknas. Ladda om sidan.');
+      setStatus('bad');
+      return;
+    }
     consumeMagicLink(token)
       .then(({ token: accessToken, user }) => {
-        applyExternalToken?.(accessToken, user);
+        applyExternalToken(accessToken, user);
         navigate('/lists', { replace: true });
       })
       .catch((err) => {

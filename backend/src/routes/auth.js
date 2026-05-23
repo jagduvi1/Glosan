@@ -62,11 +62,15 @@ async function createEmailToken({ user, kind, ttlMs }) {
 async function consumeEmailToken({ token, kind }) {
   if (!token || typeof token !== 'string') return null;
   const tokenHash = hashEmailToken(token);
-  const doc = await Token.findOne({ tokenHash, kind, usedAt: null });
-  if (!doc || doc.expiresAt < new Date()) return null;
-  doc.usedAt = new Date();
-  await doc.save();
-  return doc;
+  // findOneAndUpdate i en enda atomic operation så två parallella
+  // requests inte kan båda konsumera samma token. expiresAt > now
+  // gör utgångna tokens automatiskt unmatchade.
+  const doc = await Token.findOneAndUpdate(
+    { tokenHash, kind, usedAt: null, expiresAt: { $gt: new Date() } },
+    { $set: { usedAt: new Date() } },
+    { new: true }
+  );
+  return doc || null;
 }
 
 // Använd första FRONTEND_URL (om kommaseparerad) som canonical länk i
@@ -94,6 +98,28 @@ async function sendVerifyEmail(user) {
   return true;
 }
 
+// Skickas EFTER att lösenord faktiskt ändrats — best practice (OWASP).
+// Om en angripare lyckats kapa kontot och bytt lösenord ser den
+// riktiga ägaren mailet och kan agera. Inget token i mailet, bara
+// information + länk för att rapportera obehörig ändring.
+async function sendPasswordChangedNotice(user) {
+  if (!emailService.isEnabled()) return false;
+  const supportUrl = `${canonicalFrontendUrl()}/forgot-password`;
+  await emailService.send({
+    to: user.email,
+    subject: 'Ditt Glosan-lösenord har ändrats',
+    html: emailService.wrapTemplate({
+      title: 'Lösenord ändrat',
+      intro: `Vi vill bara säga till att lösenordet för ${user.email} just har ändrats. Om det var du — bra! Du behöver inte göra något. Om det INTE var du, byt direkt via knappen nedan och kontakta info@glosan.app.`,
+      ctaUrl: supportUrl,
+      ctaLabel: 'Det var inte jag — återställ igen',
+      footer: 'Du får det här mailet eftersom någon ändrade lösenordet på ett Glosan-konto kopplat till din email.'
+    }),
+    text: `Ditt Glosan-lösenord har just ändrats.\n\nOm det var du behöver du inte göra något. Om det INTE var du: gå till ${supportUrl} och återställ lösenordet igen, sen kontakta info@glosan.app.\n\nGlosan · ${canonicalFrontendUrl()}`
+  });
+  return true;
+}
+
 async function sendResetPasswordEmail(user) {
   if (!emailService.isEnabled()) return false;
   const raw = await createEmailToken({ user, kind: 'reset-password', ttlMs: RESET_PASSWORD_TTL_MS });
@@ -110,6 +136,14 @@ async function sendResetPasswordEmail(user) {
     text: `Återställ ditt lösenord på Glosan.\n\nKlicka på länken nedan (giltig i 60 min):\n${url}\n\nVar det inte du? Ignorera mailet.\n\nGlosan · ${canonicalFrontendUrl()}`
   });
   return true;
+}
+
+// Random delay för att jämna ut svarstid mellan email-finns och email-
+// finns-inte i forgot-password / magic-link. Annars kan en angripare
+// kartlägga registrerade email-adresser via timing-skillnad.
+function noopJitter() {
+  const ms = 80 + Math.floor(Math.random() * 120); // 80-200ms
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function sendMagicLinkEmail(user) {
@@ -278,10 +312,13 @@ router.post('/resend-verification', requireAuth, emailLimiter, async (req, res) 
 // Returnerar alltid 200 även om emailen inte finns — anti-enumeration.
 // Strikt rate-limit eftersom det skickar mail.
 router.post('/forgot-password', emailLimiter, async (req, res) => {
+  const ack = { message: 'Om kontot finns har vi skickat ett mail med återställningslänk.' };
   try {
     const { email } = req.body;
-    const ack = { message: 'Om kontot finns har vi skickat ett mail med återställningslänk.' };
-    if (!email || typeof email !== 'string') return res.json(ack);
+    if (!email || typeof email !== 'string') {
+      await noopJitter();
+      return res.json(ack);
+    }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (user && emailService.isEnabled()) {
@@ -293,11 +330,14 @@ router.post('/forgot-password', emailLimiter, async (req, res) => {
         console.error('Reset-password mail failed:', mailErr.message);
         // Logga men returnera ändå 200 så vi inte avslöjar om email finns
       }
+    } else {
+      // Jämna ut svarstid så timing inte avslöjar om email finns i DB
+      await noopJitter();
     }
     res.json(ack);
   } catch (err) {
     console.error('Forgot-password error:', err);
-    res.json({ message: 'Om kontot finns har vi skickat ett mail med återställningslänk.' });
+    res.json(ack);
   }
 });
 
@@ -327,6 +367,12 @@ router.post('/reset-password', authLimiter, async (req, res) => {
       user.emailVerifiedAt = new Date();
     }
     await user.save();
+    // Skicka bekräftelse efter ändring (best-effort). Om angripare kapat
+    // konto via stulen reset-token får riktiga ägaren ändå mail om att
+    // lösenord just ändrades.
+    sendPasswordChangedNotice(user).catch((mailErr) => {
+      console.error('Password-changed notice failed (non-fatal):', mailErr.message);
+    });
     res.json({ message: 'Lösenord uppdaterat. Logga in med det nya.' });
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -341,10 +387,13 @@ router.post('/reset-password', authLimiter, async (req, res) => {
 // POST /api/auth/magic-link — body { email }
 // Returnerar alltid 200, anti-enumeration som forgot-password.
 router.post('/magic-link', emailLimiter, async (req, res) => {
+  const ack = { message: 'Om kontot finns har vi skickat en inloggningslänk.' };
   try {
     const { email } = req.body;
-    const ack = { message: 'Om kontot finns har vi skickat en inloggningslänk.' };
-    if (!email || typeof email !== 'string') return res.json(ack);
+    if (!email || typeof email !== 'string') {
+      await noopJitter();
+      return res.json(ack);
+    }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (user && emailService.isEnabled()) {
@@ -354,11 +403,13 @@ router.post('/magic-link', emailLimiter, async (req, res) => {
       } catch (mailErr) {
         console.error('Magic-link mail failed:', mailErr.message);
       }
+    } else {
+      await noopJitter();
     }
     res.json(ack);
   } catch (err) {
     console.error('Magic-link error:', err);
-    res.json({ message: 'Om kontot finns har vi skickat en inloggningslänk.' });
+    res.json(ack);
   }
 });
 
