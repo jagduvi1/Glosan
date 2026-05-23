@@ -119,13 +119,39 @@ router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
     invite.usedAt = now;
     await invite.save();
 
+    // Belöna båda: 100 XP var + räkna upp referralCount för den som
+    // skapade koden. Tröskelvärden låser upp rewards (badges/outfits).
+    const REFERRAL_XP = 100;
+    const REWARD_THRESHOLDS = [
+      { count: 3,  key: 'student-hat' },   // 🎓 Studentmössa
+      { count: 10, key: 'ambassador' }     // ⭐ Ambassadör-badge
+    ];
+
+    target.xp = (target.xp || 0) + REFERRAL_XP;
+    target.referralCount = (target.referralCount || 0) + 1;
+    const newlyUnlocked = [];
+    for (const t of REWARD_THRESHOLDS) {
+      if (target.referralCount >= t.count && !target.unlockedRewards.includes(t.key)) {
+        target.unlockedRewards.push(t.key);
+        newlyUnlocked.push(t.key);
+      }
+    }
+    await target.save();
+
+    // Lägg till XP för den nya kompisen (req.user)
+    await User.updateOne(
+      { _id: req.user.id },
+      { $inc: { xp: REFERRAL_XP } }
+    );
+
     res.json({
       friend: {
         _id: target._id,
         username: target.username,
         avatar: target.avatar || { kind: 'initial', value: '' },
         addedAt: now
-      }
+      },
+      reward: { xp: REFERRAL_XP, newlyUnlocked }
     });
   } catch (err) {
     console.error('Add friend error:', err);

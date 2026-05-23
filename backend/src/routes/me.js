@@ -114,6 +114,8 @@ router.get('/profile', async (req, res) => {
       totalGlosor,
       totalCorrect,
       totalWrong,
+      referralCount: user.referralCount ?? 0,
+      unlockedRewards: user.unlockedRewards || [],
       plan: {
         id: plan.id,
         label: plan.label,

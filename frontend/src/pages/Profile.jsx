@@ -298,7 +298,46 @@ export default function Profile() {
           label="rätt-procent"
           color="var(--mustard-soft)"
         />
+        {profile.referralCount > 0 && (
+          <StatTile
+            value={profile.referralCount}
+            label={profile.referralCount === 1 ? 'kompis bjuden' : 'kompisar bjudna'}
+            color="var(--plum-soft)"
+          />
+        )}
       </div>
+
+      {(profile.unlockedRewards?.length > 0 || profile.referralCount > 0) && (
+        <div className="card" style={{ background: 'var(--plum-soft)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: 10 }}>🎁 Belöningar för inbjudna kompisar</h3>
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <span
+              className="pill"
+              style={{
+                background: profile.unlockedRewards?.includes('student-hat') ? 'var(--mustard)' : 'var(--paper-deep)',
+                opacity: profile.unlockedRewards?.includes('student-hat') ? 1 : 0.6
+              }}
+              title="3 inbjudna kompisar"
+            >
+              🎓 Studentmössa {profile.unlockedRewards?.includes('student-hat') ? '✓' : `(${Math.min(profile.referralCount, 3)}/3)`}
+            </span>
+            <span
+              className="pill"
+              style={{
+                background: profile.unlockedRewards?.includes('ambassador') ? 'var(--coral)' : 'var(--paper-deep)',
+                color: profile.unlockedRewards?.includes('ambassador') ? 'var(--paper)' : 'var(--ink)',
+                opacity: profile.unlockedRewards?.includes('ambassador') ? 1 : 0.6
+              }}
+              title="10 inbjudna kompisar"
+            >
+              ⭐ Ambassadör {profile.unlockedRewards?.includes('ambassador') ? '✓' : `(${Math.min(profile.referralCount, 10)}/10)`}
+            </span>
+          </div>
+          <p className="t-hand muted" style={{ fontSize: 14, margin: '10px 0 0' }}>
+            Bjud in fler via dina engångskoder under <a href="/kompisar">Kompisar</a> — ni får båda 100 XP per kompis.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <div className="row between" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>

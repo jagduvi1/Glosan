@@ -69,6 +69,12 @@ const userSchema = new mongoose.Schema({
   // kan visa "verifierad <datum>" i admin-vyn.
   emailVerified: { type: Boolean, default: false },
   emailVerifiedAt: { type: Date, default: null },
+  // Referral-belöningar: spårar hur många kompisar jag bjudit in via
+  // mina invite-codes och vilka rewards jag låst upp. Tröskelvärdena
+  // är hårdkodade i routes/friends.js (3 → studentmössa, 10 →
+  // ambassadör). Lägg till nya rewards där.
+  referralCount: { type: Number, default: 0, min: 0 },
+  unlockedRewards: { type: [String], default: [] },
   aiUsage: {
     count: { type: Number, default: 0, min: 0 },
     monthKey: { type: String, default: '' }
