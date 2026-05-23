@@ -207,8 +207,9 @@ export default function Friends() {
           <div className="grow" style={{ minWidth: 200 }}>
             <h3 style={{ margin: 0 }}>🔒 Dina inbjudningskoder</h3>
             <p className="t-hand muted" style={{ fontSize: 15, margin: '4px 0 0' }}>
-              Skapa en kod, skicka till en specifik kompis. Funkar i 7 dagar och bara en gång —
-              ingen kan sprida den vidare.
+              Skapa en kod, skicka till en specifik kompis. Funkar i 7 dagar och bara en gång.
+              {' '}<strong style={{ color: 'var(--coral-deep)' }}>När hen använder koden får ni båda 100 XP! 🎁</strong>
+              {' '}Bjud in 3 kompisar → studentmössa till Glo. 10 kompisar → Ambassadör-badge.
             </p>
           </div>
           <button className="btn btn-primary" onClick={onCreateInvite} disabled={inviteBusy}>
