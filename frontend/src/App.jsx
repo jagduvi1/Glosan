@@ -28,6 +28,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const MagicLink = lazy(() => import('./pages/MagicLink'));
+const JoinList = lazy(() => import('./pages/JoinList'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -58,6 +59,7 @@ function AppRoutes() {
         <Route path="/forgot-password" element={user ? <Navigate to="/lists" replace /> : <ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
+        <Route path="/j/:code" element={<JoinList />} />
 
         <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 

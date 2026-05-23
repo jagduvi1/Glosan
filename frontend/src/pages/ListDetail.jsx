@@ -9,6 +9,7 @@ import ImportModal from '../components/ImportModal';
 import ModePicker from '../components/ModePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ShareDialog from '../components/ShareDialog';
+import QrShareModal from '../components/QrShareModal';
 import ChallengeDialog from '../components/ChallengeDialog';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
@@ -74,6 +75,7 @@ export default function ListDetail() {
   const [isOwner, setIsOwner] = useState(true);
   const [sharedBy, setSharedBy] = useState(null);
   const [showShare, setShowShare] = useState(false);
+  const [showQrShare, setShowQrShare] = useState(false);
   const [showChallenge, setShowChallenge] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
@@ -349,13 +351,23 @@ export default function ListDetail() {
           </div>
           <div className="list-actions">
             {isOwner && (
-              <button
-                className="btn"
-                onClick={() => setShowShare(true)}
-                title="Dela listan med en kompis"
-              >
-                Dela med kompis
-              </button>
+              <>
+                <button
+                  className="btn"
+                  onClick={() => setShowShare(true)}
+                  title="Dela listan med en kompis"
+                >
+                  Dela med kompis
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => setShowQrShare(true)}
+                  title="Generera en QR-kod så hela klassen kan scanna"
+                  style={{ background: 'var(--mustard-soft)' }}
+                >
+                  📱 QR-kod för klassen
+                </button>
+              </>
             )}
             <button
               className="btn"
@@ -650,6 +662,13 @@ export default function ListDetail() {
           initialMode={list.shareMode || 'read'}
           onClose={() => setShowShare(false)}
           onChanged={load}
+        />
+      )}
+      {showQrShare && (
+        <QrShareModal
+          listId={id}
+          listTitle={list.title}
+          onClose={() => setShowQrShare(false)}
         />
       )}
 

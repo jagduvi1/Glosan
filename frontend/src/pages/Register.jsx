@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
@@ -28,6 +28,8 @@ export default function Register() {
   useDocumentTitle('Skapa konto');
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const inviteCode = params.get('invite');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,8 +44,11 @@ export default function Register() {
     setBusy(true);
     const result = await register(username, email, password, ageConsent);
     setBusy(false);
-    if (result.success) navigate('/lists');
-    else setError(result.error);
+    if (result.success) {
+      navigate(inviteCode ? `/j/${inviteCode}` : '/lists');
+    } else {
+      setError(result.error);
+    }
   };
 
   const filled = strengthSegments(password);
