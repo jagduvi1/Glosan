@@ -12,14 +12,16 @@ import { useLogoOutfit } from '../utils/useLogoOutfit';
 import { useSeasonalTheme } from '../utils/useSeasonalTheme';
 import { useTextSequence } from '../utils/useTextSequence';
 import { markEggFound } from '../utils/easterEggs';
+import { resendVerification } from '../api/email';
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, apiFetch } = useAuth();
   const { profile } = useGamification();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [verifyBanner, setVerifyBanner] = useState({ visible: true, busy: false, message: null });
   const [starTrigger, setStarTrigger] = useState(0);
   const [magicTrigger, setMagicTrigger] = useState(0);
   const [partyTrigger, setPartyTrigger] = useState(0);
@@ -103,6 +105,17 @@ export default function Layout({ children }) {
   // Stäng menyn när vi navigerar bort
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
+  const onResendVerify = async () => {
+    setVerifyBanner((b) => ({ ...b, busy: true, message: null }));
+    try {
+      const result = await resendVerification(apiFetch);
+      setVerifyBanner((b) => ({ ...b, busy: false, message: result.message || 'Mail skickat!' }));
+    } catch (err) {
+      setVerifyBanner((b) => ({ ...b, busy: false, message: err.message }));
+    }
+  };
+  const showVerifyBanner = user && user.emailVerified === false && verifyBanner.visible;
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -117,6 +130,44 @@ export default function Layout({ children }) {
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
+      {showVerifyBanner && (
+        <div
+          role="status"
+          style={{
+            background: 'var(--mustard-soft)',
+            borderBottom: '2px solid var(--ink)',
+            padding: '10px 16px',
+            fontSize: 14
+          }}
+        >
+          <div
+            className="row between"
+            style={{ maxWidth: 1200, margin: '0 auto', gap: 10, flexWrap: 'wrap' }}
+          >
+            <span>
+              📧 <strong>Bekräfta din email</strong> — vi skickade en länk till {user.email}.
+              {verifyBanner.message && <em style={{ marginLeft: 8 }}>{verifyBanner.message}</em>}
+            </span>
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                className="btn btn-sm"
+                onClick={onResendVerify}
+                disabled={verifyBanner.busy}
+              >
+                {verifyBanner.busy ? 'Skickar…' : 'Skicka ny länk'}
+              </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setVerifyBanner((b) => ({ ...b, visible: false }))}
+                aria-label="Dölj"
+                title="Dölj tills nästa inloggning"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfettiBurst trigger={confettiTrigger} />
       <EmojiBurst trigger={starTrigger} emoji={['⭐', '✨']} count={30} duration={2800} />
       <EmojiBurst trigger={magicTrigger} emoji={['✨', '💫', '🪄', '⭐']} count={36} duration={3200} />
