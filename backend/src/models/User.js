@@ -63,6 +63,12 @@ const userSchema = new mongoose.Schema({
   // Befintliga konton (registrerade innan kravet infördes) har false —
   // vi kräver bekräftelse bara vid nya registreringar.
   ageConsent: { type: Boolean, default: false },
+  // Email-verifiering är mjuk: nya konton skapas med false och får en
+  // banner i UI som påminner om att klicka i mailet, men de kan logga
+  // in och använda allt direkt. emailVerifiedAt sätts samtidigt så vi
+  // kan visa "verifierad <datum>" i admin-vyn.
+  emailVerified: { type: Boolean, default: false },
+  emailVerifiedAt: { type: Date, default: null },
   aiUsage: {
     count: { type: Number, default: 0, min: 0 },
     monthKey: { type: String, default: '' }

@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+const Token = require('../models/Token');
+const emailService = require('../services/email');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,6 +25,72 @@ const refreshLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'Too many refresh attempts, please try again later' })
 });
+
+// Striktare limit för endpoints som triggar email-skickning så ingen
+// kan spamma våra Resend-kostnader genom att hamra knappen.
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Vänta en stund innan du begär ett nytt mail.' })
+});
+
+// Email-token-helpers: råa token-strängen visas bara i email-länken,
+// DB-en innehåller endast SHA-256-hash så en kompromiss av Token-
+// collection inte räcker för att verifiera någons email.
+const EMAIL_TOKEN_BYTES = 32;
+const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function hashEmailToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+async function createEmailToken({ user, kind, ttlMs }) {
+  const raw = crypto.randomBytes(EMAIL_TOKEN_BYTES).toString('hex');
+  await Token.create({
+    user: user._id,
+    kind,
+    tokenHash: hashEmailToken(raw),
+    expiresAt: new Date(Date.now() + ttlMs)
+  });
+  return raw;
+}
+
+async function consumeEmailToken({ token, kind }) {
+  if (!token || typeof token !== 'string') return null;
+  const tokenHash = hashEmailToken(token);
+  const doc = await Token.findOne({ tokenHash, kind, usedAt: null });
+  if (!doc || doc.expiresAt < new Date()) return null;
+  doc.usedAt = new Date();
+  await doc.save();
+  return doc;
+}
+
+// Använd första FRONTEND_URL (om kommaseparerad) som canonical länk i
+// email-mallar.
+function canonicalFrontendUrl() {
+  const raw = process.env.FRONTEND_URL || 'https://glosan.app';
+  return raw.split(',')[0].trim().replace(/\/$/, '');
+}
+
+async function sendVerifyEmail(user) {
+  if (!emailService.isEnabled()) return false;
+  const raw = await createEmailToken({ user, kind: 'verify-email', ttlMs: VERIFY_EMAIL_TTL_MS });
+  const url = `${canonicalFrontendUrl()}/verify-email?token=${raw}`;
+  await emailService.send({
+    to: user.email,
+    subject: 'Bekräfta din email — Glosan',
+    html: emailService.wrapTemplate({
+      title: 'Välkommen till Glosan!',
+      intro: `Klicka på knappen nedan för att bekräfta att ${user.email} tillhör dig. Länken är giltig i 24 timmar.`,
+      ctaUrl: url,
+      ctaLabel: 'Bekräfta min email'
+    }),
+    text: `Välkommen till Glosan!\n\nBekräfta din email genom att klicka på länken nedan (giltig i 24h):\n${url}\n\nGlosan · ${canonicalFrontendUrl()}`
+  });
+  return true;
+}
 
 const generateAccessToken = (user) => {
   const roles = user.roles && user.roles.length > 0 ? user.roles : ['user'];
@@ -108,6 +176,12 @@ router.post('/register', authLimiter, async (req, res) => {
     const user = new User({ username, email, password, roles: ['user'], ageConsent: true });
     const accessToken = await issueTokens(user, res);
 
+    // Skicka verify-email best-effort — om Resend krånglar ska register
+    // fortfarande lyckas; användaren kan begära en ny länk via banner.
+    sendVerifyEmail(user).catch((err) => {
+      console.error('Verify-email send failed (non-fatal):', err.message);
+    });
+
     res.status(201).json({ token: accessToken, user: user.toJSON() });
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -116,6 +190,49 @@ router.post('/register', authLimiter, async (req, res) => {
     }
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// POST /api/auth/verify-email — body { token }
+// Konsumerar en email-verify-token och markerar user.emailVerified = true.
+router.post('/verify-email', authLimiter, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const doc = await consumeEmailToken({ token, kind: 'verify-email' });
+    if (!doc) {
+      return res.status(400).json({ error: 'Länken är ogiltig eller har gått ut.' });
+    }
+    await User.updateOne(
+      { _id: doc.user },
+      { $set: { emailVerified: true, emailVerifiedAt: new Date() } }
+    );
+    res.json({ message: 'Email verified' });
+  } catch (err) {
+    console.error('Verify-email error:', err);
+    res.status(500).json({ error: 'Verify failed' });
+  }
+});
+
+// POST /api/auth/resend-verification — kräver auth.
+// Invaliderar tidigare oanvända verify-tokens för denna user och skickar
+// ett nytt mail. Striktare rate-limit (5/timme) så ingen kan spamma
+// email-skickning.
+router.post('/resend-verification', requireAuth, emailLimiter, async (req, res) => {
+  try {
+    if (!emailService.isEnabled()) {
+      return res.status(503).json({ error: 'Email-tjänsten är inte konfigurerad på servern.' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Din email är redan bekräftad.' });
+    }
+    await Token.deleteMany({ user: user._id, kind: 'verify-email', usedAt: null });
+    await sendVerifyEmail(user);
+    res.json({ message: 'Verifieringsmail skickat. Kolla din inbox.' });
+  } catch (err) {
+    console.error('Resend-verification error:', err);
+    res.status(502).json({ error: 'Kunde inte skicka mail just nu.' });
   }
 });
 

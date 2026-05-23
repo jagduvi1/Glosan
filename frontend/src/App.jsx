@@ -24,6 +24,7 @@ const Galge     = lazy(() => import('./pages/Galge'));
 const Ordfall   = lazy(() => import('./pages/Ordfall'));
 const SnakeGame = lazy(() => import('./pages/SnakeGame'));
 const Integritet = lazy(() => import('./pages/Integritet'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="/login"    element={user ? <Navigate to="/lists" replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
 
         <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 
