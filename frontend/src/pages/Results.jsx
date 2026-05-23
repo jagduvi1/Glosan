@@ -7,7 +7,9 @@ import { fetchCategoryPool, fetchCategories } from '../api/categories';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import ConfettiBurst from '../components/ConfettiBurst';
+import ShareModal from '../components/ShareModal';
 import { markEggFound } from '../utils/easterEggs';
+import { shareResult, buildShareText } from '../utils/shareResult';
 
 const REPETITION_THRESHOLD = 0.8;
 const REPETITION_LIMIT = 5;
@@ -22,6 +24,8 @@ export default function Results() {
   const [repetition, setRepetition] = useState(null); // { categoryName, poolSize } | null
   const submittedRef = useRef(false);
   const [streakConfettiTrigger, setStreakConfettiTrigger] = useState(0);
+  const [showShareFallback, setShowShareFallback] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (!state || submittedRef.current) return;
@@ -284,10 +288,47 @@ export default function Results() {
         </div>
       )}
 
-      <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
+      <div className="row" style={{ justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={playAgain}>En till runda</button>
+        <button
+          className="btn"
+          onClick={async () => {
+            if (sharing) return;
+            setSharing(true);
+            try {
+              const payload = {
+                correct,
+                total,
+                listTitle: list?.title,
+                streak: xpInfo?.streak?.current || 0,
+                isPerfect: total > 0 && correct === total
+              };
+              const result = await shareResult(payload);
+              if (result.method === 'fallback') setShowShareFallback(true);
+            } finally {
+              setSharing(false);
+            }
+          }}
+          disabled={sharing || total === 0}
+        >
+          {sharing ? 'Skapar bild…' : '📤 Dela'}
+        </button>
         <Link to={`/lists/${id}`}><button className="btn">Tillbaka till listan →</button></Link>
       </div>
+
+      {showShareFallback && (
+        <ShareModal
+          text={buildShareText({
+            correct,
+            total,
+            listTitle: list?.title,
+            streak: xpInfo?.streak?.current || 0,
+            isPerfect: total > 0 && correct === total
+          })}
+          url="https://glosan.app"
+          onClose={() => setShowShareFallback(false)}
+        />
+      )}
     </div>
   );
 }
