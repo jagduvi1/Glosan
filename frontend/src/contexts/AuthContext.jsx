@@ -128,7 +128,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const value = { user, token, loading, register, login, logout, apiFetch };
+  // Applicera tokens från ett externt login-flöde (t.ex. magic-link
+   // som redan har anropat backend och fått tillbaka { token, user }).
+  const applyExternalToken = useCallback((accessToken, externalUser) => {
+    storeToken(accessToken);
+    setUser(externalUser);
+    setLoading(false);
+  }, []);
+
+  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

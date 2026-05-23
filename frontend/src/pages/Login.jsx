@@ -77,7 +77,12 @@ export default function Login() {
             {busy ? 'Loggar in…' : 'Logga in →'}
           </button>
 
-          <p className="t-hand muted" style={{ marginTop: 20, fontSize: 15, textAlign: 'center' }}>
+          <p className="t-hand muted" style={{ marginTop: 14, fontSize: 14, textAlign: 'center' }}>
+            <Link to="/forgot-password">Glömt lösenord?</Link>
+            {' · '}
+            <Link to="/magic-link">Logga in med länk istället</Link>
+          </p>
+          <p className="t-hand muted" style={{ marginTop: 8, fontSize: 15, textAlign: 'center' }}>
             Inget konto? <Link to="/register">Skapa ett här →</Link>
           </p>
         </form>

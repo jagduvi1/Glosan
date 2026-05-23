@@ -25,6 +25,9 @@ const Ordfall   = lazy(() => import('./pages/Ordfall'));
 const SnakeGame = lazy(() => import('./pages/SnakeGame'));
 const Integritet = lazy(() => import('./pages/Integritet'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const MagicLink = lazy(() => import('./pages/MagicLink'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -52,6 +55,9 @@ function AppRoutes() {
         <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/forgot-password" element={user ? <Navigate to="/lists" replace /> : <ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
 
         <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 
