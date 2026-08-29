@@ -1,0 +1,20 @@
+[Unit]
+Description=Glosan nightly backup (MongoDB -> restic/Storage Box)
+Documentation=https://github.com/jagduvi1/Glosan/blob/main/docs/backup.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johan/apps/glosan/scripts/backup
+ExecStart=/home/johan/apps/glosan/scripts/backup/backup.sh
+# backup.sh runs `docker exec`, so it needs Docker access — johan is in the
+# `docker` group. Do not run this as root; it does not need to be.
+User=johan
+# Don't let a slow upload hang forever — fail (and alert) after 2h instead.
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
