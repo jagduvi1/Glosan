@@ -8,6 +8,16 @@
 #
 set -euo pipefail
 
+# restic is installed as a static binary in ~/bin (see docs/backup.md). systemd
+# runs services with a minimal PATH that does not include it, and a
+# non-interactive shell never sources ~/.bashrc — so put it on PATH here rather
+# than depending on however this script happened to be invoked.
+export PATH="$HOME/bin:$PATH"
+command -v restic >/dev/null || {
+  echo "restic not found on PATH ($PATH) — see docs/backup.md" >&2
+  exit 1
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${BACKUP_ENV:-$SCRIPT_DIR/backup.env}"
 if [ ! -f "$ENV_FILE" ]; then
