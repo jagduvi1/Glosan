@@ -58,3 +58,6 @@ desktop.ini
 
 # ── Claude Code workspace ─────────────────────────────────────────────────────
 .claude/
+
+# Backup config — holds the restic repository password
+scripts/backup/backup.env

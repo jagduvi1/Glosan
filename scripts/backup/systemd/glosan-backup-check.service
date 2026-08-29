@@ -1,0 +1,16 @@
+[Unit]
+Description=Glosan weekly backup integrity check (restic check)
+Documentation=https://github.com/jagduvi1/Glosan/blob/main/docs/backup.md
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johan/apps/glosan/scripts/backup
+ExecStart=/home/johan/apps/glosan/scripts/backup/check.sh
+User=johan
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
