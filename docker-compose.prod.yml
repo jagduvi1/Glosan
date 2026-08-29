@@ -11,11 +11,18 @@
 #   2. Starta om stacken:      docker compose -f docker-compose.prod.yml up -d
 #   3. Verifiera:              docker compose -f docker-compose.prod.yml ps
 name: glosan
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   mongo:
     image: mongo:7
     container_name: glosan-mongo
     restart: unless-stopped
+    logging: *default-logging
     command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
     volumes:
       - mongo-data:/data/db
@@ -29,6 +36,7 @@ services:
     image: ghcr.io/jagduvi1/glosan-backend:latest
     container_name: glosan-backend
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - MONGO_URI=mongodb://mongo:27017/glosan
       - JWT_SECRET=${JWT_SECRET}
@@ -52,6 +60,7 @@ services:
     image: ghcr.io/jagduvi1/glosan-frontend:latest
     container_name: glosan-frontend
     restart: unless-stopped
+    logging: *default-logging
     expose:
       - "80"
     networks:
@@ -73,6 +82,7 @@ services:
     image: ghcr.io/umami-software/umami:postgresql-latest
     container_name: glosan-umami
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@umami-db:5432/umami
       - DATABASE_TYPE=postgresql
@@ -97,6 +107,7 @@ services:
     image: postgres:16-alpine
     container_name: glosan-umami-db
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - POSTGRES_DB=umami
       - POSTGRES_USER=umami
