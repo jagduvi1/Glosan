@@ -1,0 +1,5 @@
+# Shell scripts and systemd units are executed on the Linux VM. Checking them
+# out with CRLF on a Windows clone produces a broken shebang ("bad interpreter")
+# the moment they are copied to the server, so pin them to LF everywhere.
+*.sh text eol=lf
+scripts/backup/systemd/* text eol=lf
