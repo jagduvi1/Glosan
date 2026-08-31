@@ -1,24 +1,29 @@
 // Plan tiers and per-plan AI-call quotas. Single source of truth for both
 // quota enforcement (middleware/aiQuota.js) and admin / user UIs (which
 // display the labels + limits).
+//
+// aiCallsPerMonth: null still means "unlimited" and every consumer handles it
+// (aiQuota.js, Pill.jsx, Admin.jsx, Profile.jsx). No plan uses it right now —
+// Premium is a finite 100 — but the sentinel is kept so an unlimited tier can
+// be reintroduced by changing this file alone.
 
 const PLANS = {
   free: {
     id: 'free',
     label: 'Gratis',
-    aiCallsPerMonth: 30,
+    aiCallsPerMonth: 10,
     color: 'paper-deep'
   },
   basic: {
     id: 'basic',
     label: 'Bas',
-    aiCallsPerMonth: 200,
+    aiCallsPerMonth: 50,
     color: 'sky'
   },
   premium: {
     id: 'premium',
     label: 'Premium',
-    aiCallsPerMonth: null, // null = unlimited
+    aiCallsPerMonth: 100,
     color: 'mustard'
   }
 };
