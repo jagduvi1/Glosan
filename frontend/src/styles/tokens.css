@@ -3,7 +3,7 @@
    colors, type, spacing, radii, shadows, motion
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Lilita+One&family=Nunito:wght@400;600;700;800;900&family=Patrick+Hand&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;700;800;900&family=Patrick+Hand&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
   /* paper & ink */
@@ -59,7 +59,7 @@
   --info:         var(--sky);
 
   /* type families */
-  --font-display: 'Caveat Brush', 'Bradley Hand', cursive;
+  --font-display: 'Nunito', system-ui, -apple-system, sans-serif;
   --font-headline:'Lilita One', 'Arial Rounded MT Bold', sans-serif;
   --font-hand:    'Patrick Hand', 'Comic Sans MS', cursive;
   --font-body:    'Nunito', system-ui, -apple-system, sans-serif;

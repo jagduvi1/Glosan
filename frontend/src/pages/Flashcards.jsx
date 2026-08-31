@@ -186,7 +186,7 @@ export default function Flashcards() {
               </span>
               <div
                 style={{
-                  fontFamily: 'var(--font-display)',
+                  fontFamily: 'var(--font-display)', fontWeight: 800,
                   fontSize: 28,
                   lineHeight: 1.15,
                   marginTop: 30,

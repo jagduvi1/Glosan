@@ -317,7 +317,7 @@ export default function Ordfall() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontFamily: 'var(--font-display)',
+                fontFamily: 'var(--font-display)', fontWeight: 800,
                 fontSize: 32,
                 color: 'var(--ink-soft)'
               }}
@@ -331,7 +331,7 @@ export default function Ordfall() {
               left: '50%',
               top: fallY,
               transform: 'translate(-50%, -50%)',
-              fontFamily: 'var(--font-display)',
+              fontFamily: 'var(--font-display)', fontWeight: 800,
               fontSize: 44,
               lineHeight: 1,
               whiteSpace: 'nowrap',

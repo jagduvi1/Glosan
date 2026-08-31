@@ -311,7 +311,7 @@ export default function Galge() {
               <div className="t-hand muted" style={{ fontSize: 16 }}>
                 {promptLang} · översätt och gissa bokstäverna
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 44, lineHeight: 1.1, margin: '8px 0 4px' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, lineHeight: 1.1, margin: '8px 0 4px' }}>
                 {promptWord}
               </div>
               {current.notes && (
@@ -339,7 +339,7 @@ export default function Galge() {
                         minWidth: guess ? 32 : 12,
                         borderBottom: guess ? '3px solid var(--ink)' : 'none',
                         padding: '6px 4px',
-                        fontFamily: 'var(--font-display)',
+                        fontFamily: 'var(--font-display)', fontWeight: 800,
                         fontSize: 36,
                         lineHeight: 1,
                         color: showOnLoss ? 'var(--berry-deep)' : 'var(--ink)',

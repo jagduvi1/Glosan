@@ -358,7 +358,7 @@ export default function CategoryQuiz() {
               🔊 lyssna
             </button>
           )}
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 96, lineHeight: 1 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 96, lineHeight: 1 }}>
             {promptWord}
           </div>
           {current.notes && (

@@ -546,7 +546,7 @@ export default function SnakeGame() {
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 2px' }}>
             Hitta översättningen av:
           </p>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1.05, marginBottom: 14, wordBreak: 'break-word' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 30, lineHeight: 1.05, marginBottom: 14, wordBreak: 'break-word' }}>
             {promptWord}
           </div>
           <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
