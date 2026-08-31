@@ -174,11 +174,11 @@ export default function Dictionary() {
               </div>
               <div className="row" style={{ gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
                 {LANG_TO_FLAG[result.source] && <Flag code={LANG_TO_FLAG[result.source]} />}
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 36, lineHeight: 1 }}>{result.word}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36, lineHeight: 1 }}>{result.word}</span>
               </div>
               <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
                 {LANG_TO_FLAG[result.target] && <Flag code={LANG_TO_FLAG[result.target]} />}
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 36, lineHeight: 1, color: 'var(--leaf-deep)' }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36, lineHeight: 1, color: 'var(--leaf-deep)' }}>
                   {result.translation}
                 </span>
               </div>

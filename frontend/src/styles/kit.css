@@ -175,6 +175,7 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 }
 .snake-pause-count {
   font-family: var(--font-display, var(--font-headline));
+  font-weight: 800;
   font-size: 56px;
   line-height: 1;
   margin-top: 2px;
@@ -373,6 +374,7 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
   padding: 14px 22px;
   box-shadow: 5px 5px 0 0 var(--ink);
   font-family: var(--font-display, var(--font-headline));
+  font-weight: 800;
   font-size: 22px;
   z-index: 50;
   text-align: center;

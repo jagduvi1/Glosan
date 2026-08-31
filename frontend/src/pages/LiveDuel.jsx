@@ -213,7 +213,7 @@ export default function LiveDuel() {
 
         <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
           <div className="card card-lg" style={{ padding: 36 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 80, lineHeight: 1 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 80, lineHeight: 1 }}>
               {round.question.prompt}
             </div>
             {round.question.notes && (

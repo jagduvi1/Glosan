@@ -128,7 +128,7 @@ export default function Landing() {
                 style={{ position: 'absolute', top: -18, right: -10, transform: 'rotate(18deg)', zIndex: 3 }}
               />
               <div className="t-hand muted" style={{ fontSize: 15, marginTop: 12 }}>Översätt till svenska</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 76, lineHeight: 1, margin: '14px 0' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 76, lineHeight: 1, margin: '14px 0' }}>
                 maison
               </div>
               <input

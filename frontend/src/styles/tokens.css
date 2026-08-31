@@ -3,7 +3,7 @@
    colors, type, spacing, radii, shadows, motion
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Lilita+One&family=Nunito:wght@400;600;700;800;900&family=Patrick+Hand&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;700;800;900&family=Patrick+Hand&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
   /* paper & ink */
@@ -59,7 +59,7 @@
   --info:         var(--sky);
 
   /* type families */
-  --font-display: 'Caveat Brush', 'Bradley Hand', cursive;
+  --font-display: 'Nunito', system-ui, -apple-system, sans-serif;
   --font-headline:'Lilita One', 'Arial Rounded MT Bold', sans-serif;
   --font-hand:    'Patrick Hand', 'Comic Sans MS', cursive;
   --font-body:    'Nunito', system-ui, -apple-system, sans-serif;
@@ -130,7 +130,7 @@ body {
   background-position: 0 0, 2px 2px;
 }
 
-.t-display { font-family: var(--font-display); font-size: var(--t-display); line-height: var(--lh-tight); letter-spacing: 0.5px; font-weight: 400; }
+.t-display { font-family: var(--font-display); font-size: var(--t-display); line-height: var(--lh-tight); letter-spacing: 0.5px; font-weight: 800; }
 h1, .t-h1 { font-family: var(--font-headline); font-size: var(--t-h1); line-height: var(--lh-tight); font-weight: 400; letter-spacing: -0.5px; margin: 0; }
 h2, .t-h2 { font-family: var(--font-headline); font-size: var(--t-h2); line-height: var(--lh-snug); font-weight: 400; margin: 0; }
 h3, .t-h3 { font-family: var(--font-headline); font-size: var(--t-h3); line-height: var(--lh-snug); font-weight: 400; margin: 0; }
