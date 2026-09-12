@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 export default function Login() {
@@ -66,6 +67,8 @@ export default function Login() {
         <form className="card card-lg" onSubmit={onSubmit} style={{ padding: 36 }}>
           <h1 style={{ fontSize: 38, marginBottom: 4 }}>Välkommen tillbaka</h1>
           <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 24px' }}>Logga in och kör vidare.</p>
+
+          <GoogleLoginButton redirectTo={inviteCode ? `/j/${inviteCode}` : undefined} />
 
           <label className="field" style={{ marginBottom: 16 }}>
             <span className="field-label">Användarnamn eller e-post</span>

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 import Sparkle from '../components/Sparkle';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 
@@ -108,6 +109,8 @@ export default function Register() {
         <form className="card card-lg" onSubmit={onSubmit} style={{ padding: 32 }}>
           <h2 style={{ marginBottom: 4 }}>Hoppa in</h2>
           <p className="t-hand muted" style={{ fontSize: 17, margin: '0 0 22px' }}>tre fält. Inget mer.</p>
+
+          <GoogleLoginButton redirectTo={inviteCode ? `/j/${inviteCode}` : undefined} />
 
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="field-label">Användarnamn</span>
