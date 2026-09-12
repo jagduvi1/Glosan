@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 
 const healthRoute = require('./routes/health');
 const authRoute = require('./routes/auth');
+const oauthRoute = require('./routes/oauth');
 const listsRoute = require('./routes/lists');
 const listInvitesRoute = require('./routes/listInvites');
 const glosorRoute = require('./routes/glosor');
@@ -84,6 +85,10 @@ app.use('/api/', writeLimiter);
 
 app.use('/api/health', healthRoute);
 app.use('/api/auth', authRoute);
+// SSO-/OAuth-endpoints (Google) bor under samma /api/auth-prefix. Monteras
+// efter authRoute; subpaths (/google, /sso/providers) krockar inte med
+// lösenordsrouterna.
+app.use('/api/auth', oauthRoute);
 app.use('/api/lists', listsRoute);
 // listInvites monteras på /api/ eftersom routes har paths som
 // /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)
