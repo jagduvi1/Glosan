@@ -31,6 +31,19 @@ export async function parseList(apiFetch, body) {
   return data;
 }
 
+// Samma svarskontrakt som parseList — bara indata skiljer. body:
+// { image (base64), mediaType, sourceLang?, targetLang? }
+export async function parseImage(apiFetch, body) {
+  const res = await apiFetch('/api/ai/parse-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'AI-tolkning av bilden misslyckades');
+  return data;
+}
+
 export async function exampleSentence(apiFetch, body) {
   const res = await apiFetch('/api/ai/example-sentence', {
     method: 'POST',

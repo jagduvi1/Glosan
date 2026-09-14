@@ -168,6 +168,102 @@ router.post('/parse-list', async (req, res) => {
   }
 });
 
+// Tillåtna bildformat — samma lista som Messages API accepterar.
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Taket gäller den AVKODADE bilden, inte base64-strängen. Klienten skickar
+// normalt ~300 kB (nerskalat), så det här är rejält tilltaget — men det
+// ligger under body-parserns egen gräns i app.js, så en för stor bild får
+// ett begripligt felmeddelande i stället för ett rått 413.
+const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
+
+// base64 kodar 3 bytes per 4 tecken; padding ('=') räknas bort.
+function decodedBase64Bytes(b64) {
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
+// Klienten skickar rå base64, men en data-URL ("data:image/jpeg;base64,...")
+// är ett lätt misstag att göra — strippa prefixet i stället för att skicka
+// skräp till Anthropic.
+function stripDataUrlPrefix(value) {
+  const match = /^data:([a-z/+-]+);base64,(.*)$/is.exec(value);
+  return match ? { mediaType: match[1].toLowerCase(), data: match[2] } : { mediaType: null, data: value };
+}
+
+// POST /api/ai/parse-image
+// Body: { image (base64), mediaType, sourceLang?, targetLang? }
+// Returns: { glosor: [{source, target}], sourceLang, targetLang }
+//
+// Exakt samma svarskontrakt som /parse-list — bara indata skiljer, så
+// ImportModal kan återanvända hela gransknings- och sparsteget. Bilden
+// sparas ALDRIG: den går till Anthropic och slängs när svaret kommit.
+router.post('/parse-image', async (req, res) => {
+  if (!requireEnabled(req, res)) return;
+  const { image, sourceLang, targetLang } = req.body;
+
+  if (!image || typeof image !== 'string') {
+    return res.status(400).json({ error: 'image is required' });
+  }
+  if (rejectIfTooLong(res, {
+    sourceLang: { value: sourceLang, max: 32 },
+    targetLang: { value: targetLang, max: 32 }
+  })) return;
+
+  const stripped = stripDataUrlPrefix(image.trim());
+  const data = stripped.data;
+  const mediaType = (stripped.mediaType || req.body.mediaType || '').toLowerCase();
+
+  if (!ALLOWED_IMAGE_TYPES.includes(mediaType)) {
+    return res.status(400).json({ error: 'mediaType must be one of image/jpeg, image/png, image/webp, image/gif' });
+  }
+  // Validera base64 innan storleksberäkningen — annars mäter vi skräp.
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+    return res.status(400).json({ error: 'image is not valid base64' });
+  }
+  if (decodedBase64Bytes(data) > MAX_IMAGE_BYTES) {
+    return res.status(413).json({ error: 'Bilden är för stor. Ta en ny bild eller beskär den.' });
+  }
+
+  const langHint = sourceLang && targetLang
+    ? `The source language is "${sourceLang}" and the target language is "${targetLang}".`
+    : 'Detect the source and target languages yourself based on the content.';
+
+  try {
+    const system = `You read a photographed or scanned vocabulary sheet — the kind a teacher hands out — and extract the source/target word pairs. The photo may be taken at an angle, be unevenly lit, or contain handwriting. Columns may be separated by whitespace, dots, dashes or table rules; pairs may also run left-to-right across two columns per line. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs you can actually read in the image — never invent a translation, and never guess at a word you cannot make out: skip it instead, the user reviews the result and would rather add one than find a wrong one. Skip headings, dates, page numbers, names and instructions.`;
+    const user = [
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
+      { type: 'text', text: `${langHint}\n\nExtract the vocabulary pairs from this sheet.` }
+    ];
+
+    const aiText = await anthropic.complete({
+      system,
+      user,
+      maxTokens: 4096,
+      model: anthropic.VISION_MODEL
+    });
+    const parsed = anthropic.extractJSON(aiText);
+    if (!parsed || !Array.isArray(parsed.glosor)) {
+      return res.status(502).json({ error: 'AI response was not valid JSON' });
+    }
+    await incrementAiUsage(req.user.id);
+    res.json({
+      glosor: parsed.glosor.filter((g) => g && g.source && g.target),
+      sourceLang: parsed.sourceLang || sourceLang || '',
+      targetLang: parsed.targetLang || targetLang || ''
+    });
+  } catch (error) {
+    console.error('AI parse-image error:', error.message);
+    if (error.status === 529 || error.status === 503) {
+      return res.status(503).json({ error: 'Anthropic is temporarily overloaded — please try again in a moment.' });
+    }
+    if (error.status === 429) {
+      return res.status(429).json({ error: 'Anthropic rate limit hit — please wait a few seconds and retry.' });
+    }
+    res.status(502).json({ error: 'AI request failed' });
+  }
+});
+
 // POST /api/ai/example-sentence
 // Body: { word, lang }
 // Returns: { sentence }
@@ -230,3 +326,10 @@ router.post('/translate', async (req, res) => {
 });
 
 module.exports = router;
+
+// Exporterade för enhetstest — ren validerings-/mattelogik utan DB eller
+// nätverk, och det är just den som avgör om en för stor bild stoppas.
+module.exports.decodedBase64Bytes = decodedBase64Bytes;
+module.exports.stripDataUrlPrefix = stripDataUrlPrefix;
+module.exports.MAX_IMAGE_BYTES = MAX_IMAGE_BYTES;
+module.exports.ALLOWED_IMAGE_TYPES = ALLOWED_IMAGE_TYPES;

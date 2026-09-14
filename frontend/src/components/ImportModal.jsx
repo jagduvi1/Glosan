@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { parseList } from '../api/ai';
+import { useRef, useState } from 'react';
+import { parseList, parseImage } from '../api/ai';
+import { downscaleImage } from '../utils/image';
 import { useGamification } from '../contexts/GamificationContext';
 import GloAvatar from './GloAvatar';
 
@@ -14,6 +15,13 @@ export default function ImportModal({
   const { refresh: refreshGamification } = useGamification();
   const [step, setStep] = useState('input');
   const [text, setText] = useState('');
+  // 'text' = klistra in, 'image' = fota/välj bild. Efter tolkningen är
+  // flödet identiskt — samma granskningstabell, samma sparsteg.
+  const [source, setSource] = useState('text');
+  const [image, setImage] = useState(null); // { base64, mediaType, bytes }
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageBusy, setImageBusy] = useState(false);
+  const fileInputRef = useRef(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [sourceLang, setSourceLang] = useState(defaultSourceLang);
@@ -23,8 +31,12 @@ export default function ImportModal({
 
   const onParse = async () => {
     setError('');
-    if (!text.trim()) {
+    if (source === 'text' && !text.trim()) {
       setError('Klistra in text först.');
+      return;
+    }
+    if (source === 'image' && !image) {
+      setError('Välj eller ta en bild först.');
       return;
     }
     if (mode === 'new' && !title.trim()) {
@@ -33,10 +45,14 @@ export default function ImportModal({
     }
     setStep('loading');
     try {
-      const payload = { text };
+      const payload = source === 'image'
+        ? { image: image.base64, mediaType: image.mediaType }
+        : { text };
       if (sourceLang) payload.sourceLang = sourceLang;
       if (targetLang) payload.targetLang = targetLang;
-      const result = await parseList(apiFetch, payload);
+      const result = source === 'image'
+        ? await parseImage(apiFetch, payload)
+        : await parseList(apiFetch, payload);
       if (mode === 'new') {
         if (result.sourceLang && !sourceLang) setSourceLang(result.sourceLang);
         if (result.targetLang && !targetLang) setTargetLang(result.targetLang);
@@ -47,6 +63,26 @@ export default function ImportModal({
     } catch (e) {
       setError(e.message);
       setStep('input');
+    }
+  };
+
+  // Bilden skalas ner direkt vid valet, inte vid skickandet: då ser
+  // användaren förhandsvisningen av exakt det som skickas, och väntan
+  // ligger före knapptrycket i stället för efter.
+  const onPickImage = async (file) => {
+    if (!file) return;
+    setError('');
+    setImageBusy(true);
+    try {
+      const scaled = await downscaleImage(file);
+      setImage(scaled);
+      setImagePreview(`data:${scaled.mediaType};base64,${scaled.base64}`);
+    } catch (e) {
+      setImage(null);
+      setImagePreview('');
+      setError(e.message);
+    } finally {
+      setImageBusy(false);
     }
   };
 
@@ -124,18 +160,75 @@ export default function ImportModal({
                   </div>
                 </>
               )}
-              <label className="field">
-                <span className="field-label">Klistra in glosorna — Glo hanterar tabbar, mellanslag, streck</span>
-                <textarea
-                  className="inp"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  rows={12}
-                  style={{ minHeight: '220px', fontFamily: 'var(--font-mono)' }}
-                  maxLength={8000}
-                />
-              </label>
-              <p className="t-hand muted" style={{ fontSize: 13 }}>{text.length} / 8000 tecken</p>
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm${source === 'text' ? ' btn-primary' : ''}`}
+                  onClick={() => { setSource('text'); setError(''); }}
+                >
+                  Klistra in text
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm${source === 'image' ? ' btn-primary' : ''}`}
+                  onClick={() => { setSource('image'); setError(''); }}
+                >
+                  Ta bild
+                </button>
+              </div>
+
+              {source === 'text' ? (
+                <>
+                  <label className="field">
+                    <span className="field-label">Klistra in glosorna — Glo hanterar tabbar, mellanslag, streck</span>
+                    <textarea
+                      className="inp"
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      rows={12}
+                      style={{ minHeight: '220px', fontFamily: 'var(--font-mono)' }}
+                      maxLength={8000}
+                    />
+                  </label>
+                  <p className="t-hand muted" style={{ fontSize: 13 }}>{text.length} / 8000 tecken</p>
+                </>
+              ) : (
+                <div className="stack">
+                  {/* capture="environment" öppnar kameran direkt på mobilen;
+                      på datorn blir exakt samma kontroll en filväljare. */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      onPickImage(e.target.files?.[0]);
+                      // Nollställ så att samma fil kan väljas igen.
+                      e.target.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-lg btn-block"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={imageBusy}
+                  >
+                    {imageBusy ? 'Förbereder bilden…' : image ? 'Välj en annan bild' : 'Ta kort eller välj bild'}
+                  </button>
+                  {imagePreview && (
+                    <img
+                      src={imagePreview}
+                      alt="Vald bild"
+                      style={{ width: '100%', borderRadius: 12, border: '2px solid var(--ink)' }}
+                    />
+                  )}
+                  <p className="t-hand muted" style={{ fontSize: 13 }}>
+                    Fota glosbladet rakt ovanifrån i bra ljus — då blir tolkningen bäst.
+                    Du får granska allt innan något sparas.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -143,7 +236,7 @@ export default function ImportModal({
             <div style={{ textAlign: 'center', padding: 32 }}>
               <GloAvatar size={100} float />
               <p className="t-hand muted" style={{ fontSize: 17, marginTop: 12 }}>
-                Glo läser texten…
+                {source === 'image' ? 'Glo tittar på bilden…' : 'Glo läser texten…'}
               </p>
             </div>
           )}

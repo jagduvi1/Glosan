@@ -140,6 +140,7 @@ cd backend && npm test
 - **Middleware:** [backend/src/middleware/auth.js](backend/src/middleware/auth.js) exports `requireAuth`, `optionalAuth`, `requireAdmin`. All non-public routes use `requireAuth`.
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.
+- **Image import:** `POST /api/ai/parse-image` takes a base64 image and returns the *same* shape as `/parse-list`, so [ImportModal](frontend/src/components/ImportModal.jsx) reuses the whole review-and-save step. The client downscales to 1600px JPEG first ([utils/image.js](frontend/src/utils/image.js)) — a phone photo is 2–12 MB raw, ~300 kB scaled. The image is never stored. Body limits are raised **only** for that one route (app.js + nginx.conf); the rest of the API stays at 64 kB.
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
 - **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
 
@@ -148,7 +149,9 @@ cd backend && npm test
 ## Working with Anthropic
 
 Default model: `claude-haiku-4-5-20251001` — fast and cheap for short vocab tasks.
-For longer/harder tasks (e.g. nuanced explanations) bump to `claude-sonnet-4-6`.
+For longer/harder tasks bump to `claude-sonnet-5` — newer *and* cheaper than
+sonnet-4-6 ($2/$10 vs $3/$15 per MTok). Image parsing already uses it:
+`anthropic.VISION_MODEL`.
 
 The service expects the model to respond with JSON. Always:
 1. Set a hard `max_tokens` ceiling (e.g. 1024).
