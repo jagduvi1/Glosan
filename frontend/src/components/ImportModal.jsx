@@ -86,13 +86,62 @@ export default function ImportModal({
     }
   };
 
+  // Tar bort rättningsmarkeringen för ett fält. Används både när
+  // användaren ångrar en rättning och när hen skriver om ordet själv —
+  // i båda fallen är 'rättat från X' inte längre en sann beskrivning.
+  const dropCorrection = (glos, field) => {
+    if (!glos.corrections?.[field]) return glos.corrections;
+    const rest = { ...glos.corrections };
+    delete rest[field];
+    return Object.keys(rest).length > 0 ? rest : undefined;
+  };
+
   const updateGlos = (id, field, value) => {
-    setGlosor((cur) => cur.map((g) => (g.id === id ? { ...g, [field]: value } : g)));
+    setGlosor((cur) => cur.map((g) => (
+      g.id === id ? { ...g, [field]: value, corrections: dropCorrection(g, field) } : g
+    )));
+  };
+
+  // Återställ ordet så som det faktiskt stod i underlaget.
+  const revertCorrection = (id, field) => {
+    setGlosor((cur) => cur.map((g) => (
+      g.id === id && g.corrections?.[field]
+        ? { ...g, [field]: g.corrections[field], corrections: dropCorrection(g, field) }
+        : g
+    )));
   };
 
   const removeGlos = (id) => {
     setGlosor((cur) => cur.filter((g) => g.id !== id));
   };
+
+  // Rättade ord MARKERAS i stället för att bytas tyst. En felläsning som
+  // AI:n snyggat till ett trovärdigt ord går annars inte att upptäcka i
+  // granskningen — och det är precis den sortens fel som gör mest skada,
+  // eftersom den ser rätt ut.
+  const renderCell = (g, field) => (
+    <>
+      <input
+        className="inp"
+        value={g[field]}
+        onChange={(e) => updateGlos(g.id, field, e.target.value)}
+        style={{ boxShadow: 'none', padding: '8px 10px' }}
+      />
+      {g.corrections?.[field] && (
+        <div className="t-hand muted" style={{ fontSize: 12, marginTop: 4 }}>
+          rättat från ”{g.corrections[field]}”{' '}
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            style={{ padding: '0 6px', fontSize: 12 }}
+            onClick={() => revertCorrection(g.id, field)}
+          >
+            ångra
+          </button>
+        </div>
+      )}
+    </>
+  );
 
   const onSave = async () => {
     setError('');
@@ -119,6 +168,7 @@ export default function ImportModal({
   };
 
   const busy = step === 'loading' || step === 'saving';
+  const correctedCount = glosor.filter((g) => g.corrections && Object.keys(g.corrections).length > 0).length;
 
   return (
     <div className="modal-backdrop">
@@ -246,6 +296,12 @@ export default function ImportModal({
               <p className="t-hand muted" style={{ fontSize: 15 }}>
                 Glo hittade {glosor.length} glosor ({sourceLang || '?'} → {targetLang || '?'}). Justera om något blev fel.
               </p>
+              {correctedCount > 0 && (
+                <p className="t-hand" style={{ fontSize: 14, margin: 0 }}>
+                  Glo rättade stavningen på {correctedCount} {correctedCount === 1 ? 'glosa' : 'glosor'} —
+                  de är markerade nedan, och du kan ångra varje enskild.
+                </p>
+              )}
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <table className="glos-table">
                   <thead>
@@ -258,8 +314,8 @@ export default function ImportModal({
                   <tbody>
                     {glosor.map((g) => (
                       <tr key={g.id}>
-                        <td><input className="inp" value={g.source} onChange={(e) => updateGlos(g.id, 'source', e.target.value)} style={{ boxShadow: 'none', padding: '8px 10px' }} /></td>
-                        <td><input className="inp" value={g.target} onChange={(e) => updateGlos(g.id, 'target', e.target.value)} style={{ boxShadow: 'none', padding: '8px 10px' }} /></td>
+                        <td>{renderCell(g, 'source')}</td>
+                        <td>{renderCell(g, 'target')}</td>
                         <td style={{ textAlign: 'right' }}>
                           <button
                             className="btn btn-sm btn-ghost"

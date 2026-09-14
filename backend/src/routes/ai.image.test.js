@@ -89,3 +89,69 @@ describe('ALLOWED_IMAGE_TYPES', () => {
     expect(ALLOWED_IMAGE_TYPES).not.toContain('application/pdf');
   });
 });
+
+describe('sanitizeGlosor', () => {
+  const { sanitizeGlosor } = require('./ai');
+
+  test('behåller en äkta rättning', () => {
+    expect(sanitizeGlosor([{ source: 'hej', target: 'hello', corrections: { target: 'hallo' } }]))
+      .toEqual([{ source: 'hej', target: 'hello', corrections: { target: 'hallo' } }]);
+  });
+
+  test('släpper en "rättning" som är identisk med resultatet', () => {
+    // Modellen rapporterar ibland en rättning som inte ändrar något. Visas
+    // den som en ändring i UI:t slutar användaren lita på markeringen.
+    expect(sanitizeGlosor([{ source: 'katt', target: 'cat', corrections: { target: 'cat' } }]))
+      .toEqual([{ source: 'katt', target: 'cat' }]);
+  });
+
+  test('rättning på källsidan fungerar likadant', () => {
+    const out = sanitizeGlosor([{ source: 'hund', target: 'dog', corrections: { source: 'hnud' } }]);
+    expect(out[0].corrections).toEqual({ source: 'hnud' });
+  });
+
+  test('båda sidorna kan vara rättade samtidigt', () => {
+    const out = sanitizeGlosor([
+      { source: 'bil', target: 'car', corrections: { source: 'bill', target: 'carr' } },
+    ]);
+    expect(out[0].corrections).toEqual({ source: 'bill', target: 'carr' });
+  });
+
+  test('trimmar blanksteg', () => {
+    expect(sanitizeGlosor([{ source: '  hund  ', target: ' dog ' }]))
+      .toEqual([{ source: 'hund', target: 'dog' }]);
+  });
+
+  test('kastar par utan källa eller mål', () => {
+    expect(sanitizeGlosor([
+      { source: 'hej', target: '' },
+      { source: '', target: 'hello' },
+      { source: '   ', target: 'hello' },
+    ])).toEqual([]);
+  });
+
+  test('överlever skräp i AI-svaret', () => {
+    expect(sanitizeGlosor([null, undefined, 'sträng', 42, { source: 'a', target: 'b' }]))
+      .toEqual([{ source: 'a', target: 'b' }]);
+    expect(sanitizeGlosor(null)).toEqual([]);
+    expect(sanitizeGlosor('inte en array')).toEqual([]);
+  });
+
+  test('en trasig corrections-nyckel fäller inte hela glosan', () => {
+    expect(sanitizeGlosor([{ source: 'a', target: 'b', corrections: 'trasig' }]))
+      .toEqual([{ source: 'a', target: 'b' }]);
+    expect(sanitizeGlosor([{ source: 'a', target: 'b', corrections: { target: 42 } }]))
+      .toEqual([{ source: 'a', target: 'b' }]);
+  });
+
+  test('kapar orimligt långa strängar', () => {
+    const out = sanitizeGlosor([{ source: 'x'.repeat(500), target: 'y'.repeat(500) }]);
+    expect(out[0].source).toHaveLength(200);
+    expect(out[0].target).toHaveLength(200);
+  });
+
+  test('lägger aldrig till en tom corrections-nyckel', () => {
+    const out = sanitizeGlosor([{ source: 'hej', target: 'hello' }]);
+    expect(Object.prototype.hasOwnProperty.call(out[0], 'corrections')).toBe(false);
+  });
+});

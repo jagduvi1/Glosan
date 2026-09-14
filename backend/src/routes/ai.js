@@ -41,6 +41,43 @@ function rejectIfTooLong(res, fields) {
   return false;
 }
 
+// Max längd på en glosa. AI-svaret är inte användarinput, men det är
+// heller inget vi litar blint på — en skenande modell ska inte kunna
+// fylla databasen med en roman.
+const MAX_GLOS_LEN = 200;
+
+const cleanString = (v) => (typeof v === 'string' ? v.trim().slice(0, MAX_GLOS_LEN) : '');
+
+// Normaliserar glos-listan ur AI-svaret och behåller bara rättningar som
+// FAKTISKT skiljer sig från det vi landade i. Modellen rapporterar ibland
+// en "rättning" identisk med resultatet; visas den som en ändring i UI:t
+// tappar markeringen sin innebörd och användaren slutar titta på den.
+function sanitizeGlosor(list) {
+  if (!Array.isArray(list)) return [];
+  return list.reduce((acc, g) => {
+    if (!g || typeof g !== 'object') return acc;
+    const source = cleanString(g.source);
+    const target = cleanString(g.target);
+    if (!source || !target) return acc;
+
+    const out = { source, target };
+    const corrections = {};
+    for (const field of ['source', 'target']) {
+      const original = cleanString(g.corrections?.[field]);
+      if (original && original !== out[field]) corrections[field] = original;
+    }
+    if (Object.keys(corrections).length > 0) out.corrections = corrections;
+    acc.push(out);
+    return acc;
+  }, []);
+}
+
+// Rättstavningsregeln, ordagrant likadan i båda tolkningsprompterna så
+// text- och bildimport beter sig identiskt. Rättningen ska SYNAS: den
+// rapporteras tillbaka och markeras i granskningstabellen, så att en
+// felläsning som "rättats" till ett trovärdigt ord går att upptäcka.
+const SPELLING_RULE = `If a word is a clear misspelling of a real word in that language, write the correct spelling AND record what was actually written in a "corrections" object on that pair, e.g. {"source":"hej","target":"hello","corrections":{"target":"hallo"}}. Correct ONLY when you are confident which word was intended. A spelling that is valid in its language is never a misspelling — leave regional variants, archaic forms and a teacher's deliberate choice exactly as they are. Never change a word into a different word, and never treat a word you cannot read as a misspelling.`;
+
 // POST /api/ai/generate-list
 // Body: { topic, sourceLang, targetLang, count }
 // Returns: { glosor: [{ source, target }] }
@@ -142,7 +179,7 @@ router.post('/parse-list', async (req, res) => {
     : 'Detect the source and target languages yourself based on the content.';
 
   try {
-    const system = `You parse pasted vocabulary lists into structured source/target pairs. Input may be tab-separated, multi-space-aligned, dash-separated, comma-separated, table-format, or any other layout a teacher might produce. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs that actually appear in the input — never invent. Skip headings, dates, page numbers, and instructions.`;
+    const system = `You parse pasted vocabulary lists into structured source/target pairs. Input may be tab-separated, multi-space-aligned, dash-separated, comma-separated, table-format, or any other layout a teacher might produce. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs that actually appear in the input — never invent. Skip headings, dates, page numbers, and instructions. ${SPELLING_RULE}`;
     const user = `${langHint}\n\nText:\n<<<\n${text}\n>>>`;
 
     const aiText = await anthropic.complete({ system, user, maxTokens: 4096 });
@@ -152,7 +189,7 @@ router.post('/parse-list', async (req, res) => {
     }
     await incrementAiUsage(req.user.id);
     res.json({
-      glosor: data.glosor.filter((g) => g && g.source && g.target),
+      glosor: sanitizeGlosor(data.glosor),
       sourceLang: data.sourceLang || sourceLang || '',
       targetLang: data.targetLang || targetLang || ''
     });
@@ -230,7 +267,7 @@ router.post('/parse-image', async (req, res) => {
     : 'Detect the source and target languages yourself based on the content.';
 
   try {
-    const system = `You read a photographed or scanned vocabulary sheet — the kind a teacher hands out — and extract the source/target word pairs. The photo may be taken at an angle, be unevenly lit, or contain handwriting. Columns may be separated by whitespace, dots, dashes or table rules; pairs may also run left-to-right across two columns per line. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs you can actually read in the image — never invent a translation, and never guess at a word you cannot make out: skip it instead, the user reviews the result and would rather add one than find a wrong one. Skip headings, dates, page numbers, names and instructions.`;
+    const system = `You read a photographed or scanned vocabulary sheet — the kind a teacher hands out — and extract the source/target word pairs. The photo may be taken at an angle, be unevenly lit, or contain handwriting. Columns may be separated by whitespace, dots, dashes or table rules; pairs may also run left-to-right across two columns per line. Reply with valid JSON only — no prose, no markdown fences. Schema: {"sourceLang":"<ISO 639-1 code>","targetLang":"<ISO 639-1 code>","glosor":[{"source":"...","target":"..."}]}. Preserve punctuation, apostrophes, accents, and slash-separated alternatives (e.g. "söt/gullig"). Only include pairs you can actually read in the image — never invent a translation, and never guess at a word you cannot make out: skip it instead, the user reviews the result and would rather add one than find a wrong one. Skip headings, dates, page numbers, names and instructions. ${SPELLING_RULE}`;
     const user = [
       { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
       { type: 'text', text: `${langHint}\n\nExtract the vocabulary pairs from this sheet.` }
@@ -248,7 +285,7 @@ router.post('/parse-image', async (req, res) => {
     }
     await incrementAiUsage(req.user.id);
     res.json({
-      glosor: parsed.glosor.filter((g) => g && g.source && g.target),
+      glosor: sanitizeGlosor(parsed.glosor),
       sourceLang: parsed.sourceLang || sourceLang || '',
       targetLang: parsed.targetLang || targetLang || ''
     });
@@ -329,6 +366,7 @@ module.exports = router;
 
 // Exporterade för enhetstest — ren validerings-/mattelogik utan DB eller
 // nätverk, och det är just den som avgör om en för stor bild stoppas.
+module.exports.sanitizeGlosor = sanitizeGlosor;
 module.exports.decodedBase64Bytes = decodedBase64Bytes;
 module.exports.stripDataUrlPrefix = stripDataUrlPrefix;
 module.exports.MAX_IMAGE_BYTES = MAX_IMAGE_BYTES;
