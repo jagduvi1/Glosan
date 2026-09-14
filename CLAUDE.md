@@ -188,3 +188,9 @@ Glosan is licensed under **GNU Affero General Public License v3.0 or later**
 (AGPL-3.0-or-later). Full text in [LICENSE](LICENSE). Both `backend/package.json`
 and `frontend/package.json` carry the SPDX identifier; new source files don't
 need an additional header.
+
+The four bundled fonts in [frontend/src/assets/fonts/](frontend/src/assets/fonts/)
+(Nunito, Lilita One, Patrick Hand, JetBrains Mono) are **SIL OFL-1.1**, not AGPL —
+see `LICENSE.txt` in that directory. They are self-hosted deliberately: the CSP
+allows only `self` for styles and fonts, so a Google Fonts `@import` is blocked in
+production, and self-hosting also keeps users’ IP addresses away from Google.
