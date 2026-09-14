@@ -168,3 +168,42 @@ describe('POST /api/ai/parse-image — avvisade requests', () => {
     expect(res.body.error).toMatch(/overloaded/i);
   });
 });
+
+describe('POST /api/ai/parse-image — stavningsrättning', () => {
+  test('rättningen följer med i svaret så UI:t kan markera den', async () => {
+    anthropic.complete.mockResolvedValue(JSON.stringify({
+      sourceLang: 'sv',
+      targetLang: 'en',
+      glosor: [{ source: 'hej', target: 'hello', corrections: { target: 'hallo' } }],
+    }));
+
+    const res = await request(app)
+      .post('/api/ai/parse-image')
+      .send({ image: jpegBase64(), mediaType: 'image/jpeg' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.glosor).toEqual([
+      { source: 'hej', target: 'hello', corrections: { target: 'hallo' } },
+    ]);
+  });
+
+  test('en rättning som inte ändrar något filtreras bort', async () => {
+    anthropic.complete.mockResolvedValue(JSON.stringify({
+      glosor: [{ source: 'hej', target: 'hello', corrections: { target: 'hello' } }],
+    }));
+
+    const res = await request(app)
+      .post('/api/ai/parse-image')
+      .send({ image: jpegBase64(), mediaType: 'image/jpeg' });
+
+    expect(res.body.glosor).toEqual([{ source: 'hej', target: 'hello' }]);
+  });
+
+  test('prompten instruerar modellen att rapportera rättningar', async () => {
+    await request(app).post('/api/ai/parse-image').send({ image: jpegBase64(), mediaType: 'image/jpeg' });
+    const system = anthropic.complete.mock.calls[0][0].system;
+    expect(system).toContain('corrections');
+    // Den viktiga skyddsregeln: ett oläsligt ord är inte ett stavfel.
+    expect(system).toContain('never treat a word you cannot read as a misspelling');
+  });
+});
