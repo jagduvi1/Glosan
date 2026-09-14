@@ -11,7 +11,7 @@ const PLANS = {
   free: {
     id: 'free',
     label: 'Gratis',
-    aiCallsPerMonth: 10,
+    aiCallsPerMonth: 5,
     color: 'paper-deep'
   },
   basic: {
