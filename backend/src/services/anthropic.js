@@ -2,6 +2,12 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 
+// Bildtolkning går på Sonnet 5 i stället för Haiku. Ett fotat glosblad är
+// snett, skuggat och ibland handskrivet — precis den sortens uppgift där
+// CLAUDE.md säger att vi ska gå upp en nivå. Textflödena ligger kvar på
+// Haiku, som är snabbare och billigare och klarar ren text bra.
+const VISION_MODEL = 'claude-sonnet-5';
+
 let client = null;
 
 function getClient() {
@@ -32,6 +38,9 @@ function extractJSON(text) {
   }
 }
 
+// `user` är antingen en sträng eller en array av content-block (t.ex.
+// [{type:"image",...},{type:"text",...}] för bildtolkning) — Messages API
+// tar emot båda formerna i samma fält.
 async function complete({ system, user, maxTokens = 1024, model = DEFAULT_MODEL }) {
   const c = getClient();
   if (!c) throw new Error('Anthropic API key not configured');
@@ -47,4 +56,4 @@ async function complete({ system, user, maxTokens = 1024, model = DEFAULT_MODEL 
   return textBlock ? textBlock.text : '';
 }
 
-module.exports = { isEnabled, complete, extractJSON, DEFAULT_MODEL };
+module.exports = { isEnabled, complete, extractJSON, DEFAULT_MODEL, VISION_MODEL };

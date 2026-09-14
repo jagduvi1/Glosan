@@ -43,6 +43,12 @@ app.use(helmet({
 
 app.use(compression());
 app.use(cookieParser());
+// Bildimporten skickar en nerskalad JPEG som base64 och spränger därför
+// 64 kB-taket nedan. Den högre gränsen gäller BARA den routen — resten av
+// API:t ligger kvar på 64 kB, vilket är ett medvetet skydd mot uppsvällda
+// requests. Monterad FÖRE den globala parsern: body-parser sätter req._body
+// och den globala hoppar då över en redan parsad body.
+app.use('/api/ai/parse-image', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '64kb' }));
 
 // FRONTEND_URL kan vara en enstaka URL eller en kommaseparerad lista —
