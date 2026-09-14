@@ -66,6 +66,12 @@ export default function ImportModal({
     }
   };
 
+  // Kameran öppnas direkt när man väljer bild-läget — målgruppen är barn
+  // som aldrig laddar upp filer, och ett extra knapptryck på vägen dit är
+  // ett steg för mycket. capture="environment" gör att mobilen går rakt
+  // till kameran i stället för filväljaren.
+  const openCamera = () => fileInputRef.current?.click();
+
   // Bilden skalas ner direkt vid valet, inte vid skickandet: då ser
   // användaren förhandsvisningen av exakt det som skickas, och väntan
   // ligger före knapptrycket i stället för efter.
@@ -210,6 +216,25 @@ export default function ImportModal({
                   </div>
                 </>
               )}
+              {/* Alltid monterad, även i text-läget: knappen nedan öppnar
+                  kameran i samma klick som den byter läge, och då måste
+                  input:en redan finnas i DOM:en — en ref till något som
+                  renderas först efter state-uppdateringen är null just när
+                  vi behöver den. Klicket måste dessutom ske i samma
+                  användargest, annars blockerar webbläsaren filväljaren. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  onPickImage(e.target.files?.[0]);
+                  // Nollställ så att samma fil kan väljas igen.
+                  e.target.value = '';
+                }}
+              />
+
               <div className="row" style={{ gap: 8 }}>
                 <button
                   type="button"
@@ -221,7 +246,7 @@ export default function ImportModal({
                 <button
                   type="button"
                   className={`btn btn-sm${source === 'image' ? ' btn-primary' : ''}`}
-                  onClick={() => { setSource('image'); setError(''); }}
+                  onClick={() => { setSource('image'); setError(''); openCamera(); }}
                 >
                   Ta bild
                 </button>
@@ -244,34 +269,33 @@ export default function ImportModal({
                 </>
               ) : (
                 <div className="stack">
-                  {/* capture="environment" öppnar kameran direkt på mobilen;
-                      på datorn blir exakt samma kontroll en filväljare. */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      onPickImage(e.target.files?.[0]);
-                      // Nollställ så att samma fil kan väljas igen.
-                      e.target.value = '';
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-lg btn-block"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={imageBusy}
-                  >
-                    {imageBusy ? 'Förbereder bilden…' : image ? 'Välj en annan bild' : 'Ta kort eller välj bild'}
-                  </button>
-                  {imagePreview && (
-                    <img
-                      src={imagePreview}
-                      alt="Vald bild"
-                      style={{ width: '100%', borderRadius: 12, border: '2px solid var(--ink)' }}
-                    />
+                  {imagePreview ? (
+                    <>
+                      <img
+                        src={imagePreview}
+                        alt="Bilden du tog"
+                        style={{ width: '100%', borderRadius: 12, border: '2px solid var(--ink)' }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-block"
+                        onClick={openCamera}
+                        disabled={imageBusy}
+                      >
+                        {imageBusy ? 'Förbereder bilden…' : 'Ta om'}
+                      </button>
+                    </>
+                  ) : (
+                    // Syns bara om kameran stängdes utan att något togs —
+                    // annars har man redan en bild när man kommer hit.
+                    <button
+                      type="button"
+                      className="btn btn-lg btn-block"
+                      onClick={openCamera}
+                      disabled={imageBusy}
+                    >
+                      {imageBusy ? 'Förbereder bilden…' : 'Öppna kameran'}
+                    </button>
                   )}
                   <p className="t-hand muted" style={{ fontSize: 13 }}>
                     Fota glosbladet rakt ovanifrån i bra ljus — då blir tolkningen bäst.
