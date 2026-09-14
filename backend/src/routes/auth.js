@@ -1,5 +1,4 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
@@ -7,6 +6,15 @@ const User = require('../models/User');
 const Token = require('../models/Token');
 const emailService = require('../services/email');
 const { requireAuth } = require('../middleware/auth');
+// Token-utgivningen bor i en service så Google-SSO-flödet (routes/oauth.js)
+// skapar exakt samma sessioner som lösenordsflödet här.
+const {
+  issueTokens,
+  rotateRefreshSecret,
+  parseRefreshToken,
+  hashSecret,
+  refreshCookieOptions
+} = require('../services/authTokens');
 
 const router = express.Router();
 
@@ -163,66 +171,6 @@ async function sendMagicLinkEmail(user) {
   });
   return true;
 }
-
-const generateAccessToken = (user) => {
-  const roles = user.roles && user.roles.length > 0 ? user.roles : ['user'];
-  return jwt.sign(
-    { id: user._id, roles },
-    process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || '15m' }
-  );
-};
-
-// Refresh-token formatas som "family.secret" i cookien. Server slår upp
-// användaren via family och jämför hash av secret med lagrade. Vid mismatch
-// på sercret men träff på family → replay → revokera hela familjen.
-const FAMILY_LEN = 32; // 16 bytes hex = 32 chars
-const SECRET_LEN = 64; // 32 bytes hex = 64 chars
-
-const generateRefreshTokenParts = () => ({
-  family: crypto.randomBytes(16).toString('hex'),
-  secret: crypto.randomBytes(32).toString('hex')
-});
-
-const hashSecret = (secret) => crypto.createHash('sha256').update(secret).digest('hex');
-
-const parseRefreshToken = (token) => {
-  if (!token || typeof token !== 'string') return null;
-  if (token.length !== FAMILY_LEN + 1 + SECRET_LEN) return null;
-  if (token[FAMILY_LEN] !== '.') return null;
-  const family = token.slice(0, FAMILY_LEN);
-  const secret = token.slice(FAMILY_LEN + 1);
-  if (!/^[a-f0-9]+$/.test(family) || !/^[a-f0-9]+$/.test(secret)) return null;
-  return { family, secret };
-};
-
-const refreshCookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000
-};
-
-// Initial issue (login / register): nytt family-ID och secret.
-const issueTokens = async (user, res) => {
-  const { family, secret } = generateRefreshTokenParts();
-  user.refreshTokenFamily = family;
-  user.refreshTokenHash = hashSecret(secret);
-  await user.save();
-  res.cookie('refreshToken', `${family}.${secret}`, refreshCookieOptions);
-  return generateAccessToken(user);
-};
-
-// Rotate (refresh): behåll family-ID, rotera bara secret. Att family består
-// är det som gör replay-detection möjlig — när ett *gammalt* secret kommer
-// in med rätt family är det bevisat att någon spelar upp en stulen token.
-const rotateRefreshSecret = async (user, res) => {
-  const { secret } = generateRefreshTokenParts();
-  user.refreshTokenHash = hashSecret(secret);
-  await user.save();
-  res.cookie('refreshToken', `${user.refreshTokenFamily}.${secret}`, refreshCookieOptions);
-  return generateAccessToken(user);
-};
 
 router.post('/register', authLimiter, async (req, res) => {
   try {
@@ -450,9 +398,11 @@ router.post('/login', authLimiter, async (req, res) => {
       $or: [{ username: username.toLowerCase() }, { email: username.toLowerCase() }]
     });
 
-    // Run bcrypt.compare even when user is missing to prevent timing-based enumeration
+    // Run bcrypt.compare even when user is missing to prevent timing-based
+    // enumeration. SSO-only accounts (Google) have no password at all — the
+    // dummy hash covers them too, so they get a clean 401 instead of a crash.
     const DUMMY_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
-    const isMatch = await bcrypt.compare(password, user ? user.password : DUMMY_HASH);
+    const isMatch = await bcrypt.compare(password, user && user.password ? user.password : DUMMY_HASH);
 
     if (!user || !isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });

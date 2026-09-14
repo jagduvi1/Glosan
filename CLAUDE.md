@@ -64,8 +64,8 @@ Glosan/
 │       ├── config/db.js
 │       ├── middleware/auth.js
 │       ├── models/{User,GlosList,Glos}.js
-│       ├── routes/{health,auth,lists,glosor,ai}.js
-│       └── services/anthropic.js
+│       ├── routes/{health,auth,oauth,lists,glosor,ai}.js
+│       └── services/{anthropic,authTokens,oauthStateStore,email}.js
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, vite.config.js, index.html
 │   └── src/
@@ -102,6 +102,9 @@ Copy `.env.example` → `.env` and set:
 | `PORT` | No | `5000` |
 | `FRONTEND_URL` | No | `http://localhost` |
 | `ANTHROPIC_API_KEY` | No (required for AI routes) | — |
+| `GOOGLE_CLIENT_ID` | No (required for Google login) | — |
+| `GOOGLE_CLIENT_SECRET` | No (required for Google login) | — |
+| `GOOGLE_CALLBACK_URL` | No | `<first FRONTEND_URL>/api/auth/google/callback` |
 
 ---
 
@@ -132,7 +135,8 @@ cd backend && npm test
 
 ## Architectural Patterns
 
-- **Auth:** Access token (JWT, 15m) in `Authorization: Bearer <token>`. Refresh token (random 64 bytes, hashed in DB) in an httpOnly cookie. `apiFetch` in [frontend/src/utils/apiFetch.js](frontend/src/utils/apiFetch.js) auto-refreshes on 401 and retries the request.
+- **Auth:** Access token (JWT, 15m) in `Authorization: Bearer <token>`. Refresh token (random 64 bytes, hashed in DB) in an httpOnly cookie. `apiFetch` in [frontend/src/utils/apiFetch.js](frontend/src/utils/apiFetch.js) auto-refreshes on 401 and retries the request. Token issuing lives in [backend/src/services/authTokens.js](backend/src/services/authTokens.js), shared by password login and SSO.
+- **Google SSO:** [backend/src/routes/oauth.js](backend/src/routes/oauth.js) — mirrored from Cellarion (passport-google-oauth20, PKCE + cookie state store, account linking on verified email). Opt-in: inert without `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; the frontend button probes `GET /api/auth/sso/providers` at runtime, so enabling needs no frontend rebuild.
 - **Middleware:** [backend/src/middleware/auth.js](backend/src/middleware/auth.js) exports `requireAuth`, `optionalAuth`, `requireAdmin`. All non-public routes use `requireAuth`.
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.

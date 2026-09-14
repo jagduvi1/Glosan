@@ -9,6 +9,7 @@ import Analytics from './components/Analytics';
 
 const Landing    = lazy(() => import('./pages/Landing'));
 const Login      = lazy(() => import('./pages/Login'));
+const LoginCallback = lazy(() => import('./pages/LoginCallback'));
 const Register   = lazy(() => import('./pages/Register'));
 const Lists      = lazy(() => import('./pages/Lists'));
 const ListDetail = lazy(() => import('./pages/ListDetail'));
@@ -53,6 +54,9 @@ function AppRoutes() {
     <Suspense fallback={<div className="container"><p>Laddar…</p></div>}>
       <Routes>
         <Route path="/login"    element={user ? <Navigate to="/lists" replace /> : <Login />} />
+        {/* Landning efter Google-rundresan — navigerar själv utifrån user/error,
+            så den gateas inte på user som /login. */}
+        <Route path="/login/callback" element={<LoginCallback />} />
         <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
         <Route path="/verify-email" element={<VerifyEmail />} />

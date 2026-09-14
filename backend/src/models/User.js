@@ -20,13 +20,41 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     match: [/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, 'Please enter a valid email']
   },
+  // Lokalt lösenord. Krävs för klassiska konton men VALFRITT för konton
+  // skapade via Google-inloggning — de har en post i `authProviders` och
+  // inget lösenord. `required` är en funktion så kravet bara slår till när
+  // kontot saknar länkad provider. Ett lösenordskonto kan även länka Google
+  // senare (lösenordet blir kvar), och ett Google-konto kan sätta lösenord
+  // i efterhand via glömt-lösenord-flödet.
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: [
+      function () { return !Array.isArray(this.authProviders) || this.authProviders.length === 0; },
+      'Password is required'
+    ],
     validate: {
-      validator: (v) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/.test(v),
+      // Hoppa över komplexitetskravet när lösenord saknas (SSO-konto);
+      // explicit guard så en tom sträng aldrig slinker igenom.
+      validator: (v) => v == null || /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/.test(v),
       message: 'Password must be at least 10 characters and include an uppercase letter, lowercase letter, and number'
     }
+  },
+  // Externa identitetsleverantörer länkade till kontot (SSO). Varje post
+  // knyter providerns stabila användar-id till kontot så en återkommande
+  // användare matchas till samma Glosan-konto. Tom för klassiska konton.
+  // Enum:en utökas om fler providers än Google någonsin läggs till.
+  authProviders: {
+    type: [
+      new mongoose.Schema(
+        {
+          provider: { type: String, enum: ['google'], required: true },
+          providerId: { type: String, required: true },
+          linkedAt: { type: Date, default: Date.now }
+        },
+        { _id: false }
+      )
+    ],
+    default: []
   },
   roles: {
     type: [String],
@@ -97,6 +125,10 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Google-login slår upp kontot via (provider, providerId) vid varje
+// inloggning — indexera så det inte blir en collection-scan.
+userSchema.index({ 'authProviders.provider': 1, 'authProviders.providerId': 1 });
+
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   try {
@@ -108,12 +140,21 @@ userSchema.pre('save', async function (next) {
   }
 });
 
+// Returnerar false för SSO-konton utan lokalt lösenord i stället för att
+// bcrypt.compare ska kasta på undefined.
 userSchema.methods.comparePassword = function (candidate) {
+  if (!this.password) return Promise.resolve(false);
   return bcrypt.compare(candidate, this.password);
 };
 
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
+  // false = SSO-konto utan lösenord, så UI kan skilja på "byt lösenord" och
+  // "skaffa ett lösenord via glömt-lösenord-flödet".
+  obj.hasPassword = !!obj.password;
+  // Bara provider-NAMNEN (t.ex. ['google']) — aldrig råa provider-id:n.
+  obj.linkedProviders = Array.isArray(obj.authProviders) ? obj.authProviders.map((p) => p.provider) : [];
+  delete obj.authProviders;
   delete obj.password;
   delete obj.refreshTokenHash;
   delete obj.refreshTokenFamily;
