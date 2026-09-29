@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyOverview } from '../api/study';
 import GloAvatar from '../components/GloAvatar';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import '../styles/study.css';
 
 // Plugga — startsidan för skolämnena (dold bakom flaggan 'study').
-// Fas 0: ämnen per termin med antal områden. Områden, genomgångar, kort,
-// övningar och prov kommer i nästa fas — de skapas av användarens egen AI via
-// MCP (se docs/plugga.md).
+// Ämnen per termin, "dags att repetera" och hur man skapar sitt första
+// område med sin AI. Innehållet skapas via MCP (docs/plugga.md).
 
 // Ämnen utan grupp först (Matte överst), sedan NO- och SO-blocken.
 function groupSubjects(subjects, groups) {
@@ -19,15 +20,19 @@ function groupSubjects(subjects, groups) {
   ].filter((g) => g.subjects.length > 0);
 }
 
-function SubjectCard({ subject }) {
+function SubjectCard({ subject, term }) {
   const empty = subject.unitCount === 0;
   return (
-    <div
+    <Link
+      to={`/plugga/amne/${subject.key}?term=${term}`}
       className="card"
       style={{
         padding: 16,
+        display: 'block',
+        color: 'inherit',
+        textDecoration: 'none',
         background: empty ? 'var(--bg-elev)' : `var(--${subject.color}-soft, var(--bg-elev))`,
-        opacity: empty ? 0.75 : 1
+        opacity: empty ? 0.8 : 1
       }}
     >
       <div style={{ fontSize: 30 }} aria-hidden="true">{subject.emoji}</div>
@@ -35,6 +40,28 @@ function SubjectCard({ subject }) {
       <p className="t-hand muted" style={{ margin: 0, fontSize: 14 }}>
         {empty ? 'Inga områden än' : `${subject.unitCount} ${subject.unitCount === 1 ? 'område' : 'områden'}`}
       </p>
+    </Link>
+  );
+}
+
+function HowToCreate() {
+  return (
+    <div className="card card-lg" style={{ background: 'var(--paper-edge)' }}>
+      <div className="row" style={{ gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <GloAvatar size={72} mood="wink" tilt={-6} />
+        <div className="grow" style={{ minWidth: 240 }}>
+          <h2 style={{ margin: '0 0 6px' }}>Så skapar du ditt första område</h2>
+          <ol style={{ margin: '0 0 8px', paddingLeft: 22, lineHeight: 1.7 }}>
+            <li>Koppla din AI (t.ex. Claude) till Glosan under <Link to="/profile">Profil → Koppla din AI</Link>.</li>
+            <li>Fota sidorna i boken — gärna både lätta och svåra uppgifter.</li>
+            <li>Skicka bilderna till Claude och skriv <em>"Hjälp mig plugga på det här i Glosan"</em>.</li>
+            <li>Claude frågar vilken årskurs du går i, föreslår vad som ska skapas och lägger in allt här.</li>
+          </ol>
+          <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
+            Snart kan kompisar dela sina områden med dig — då behöver du ingen egen AI.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -43,7 +70,8 @@ export default function Plugga() {
   useDocumentTitle('Plugga');
   const { apiFetch } = useAuth();
   const [data, setData] = useState(null);
-  const [term, setTerm] = useState(null);
+  const [params] = useSearchParams();
+  const [term, setTerm] = useState(params.get('term'));
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -60,7 +88,7 @@ export default function Plugga() {
   if (error) return <p className="error">{error}</p>;
   if (!data) return <p className="t-hand muted">Glo letar fram dina ämnen…</p>;
 
-  const totalUnits = data.subjects.reduce((n, s) => n + s.unitCount, 0);
+  const termUnits = data.subjects.reduce((n, s) => n + s.unitCount, 0);
 
   return (
     <div className="stack" style={{ gap: 24 }}>
@@ -86,19 +114,21 @@ export default function Plugga() {
         </label>
       </div>
 
-      {totalUnits === 0 && (
-        <div className="card card-lg" style={{ background: 'var(--paper-edge)' }}>
-          <div className="row" style={{ gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            <GloAvatar size={72} mood="wink" tilt={-6} />
-            <div className="grow" style={{ minWidth: 240 }}>
-              <h2 style={{ margin: '0 0 6px' }}>Inga områden {data.term === data.currentTerm ? 'den här terminen' : `under ${data.termLabel}`} än</h2>
-              <p style={{ margin: 0 }}>
-                Snart kan du fota sidor ur boken och be din AI (t.ex. Claude med Glosan kopplat) skapa ett område:
-                genomgång, plugg-kort, övningar på olika nivåer och övningsprov — allt hamnar här, sorterat per ämne och termin.
-              </p>
-            </div>
+      {data.due > 0 && (
+        <div className="card row between" style={{ background: 'var(--sky-soft)', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22 }}>🔁 Dags att repetera: {data.due}</h2>
+            <p className="t-hand muted" style={{ margin: '2px 0 0' }}>Kort och övningar som är redo att komma tillbaka — från alla ämnen.</p>
           </div>
+          <Link to="/plugga/ova?mode=due&count=20&back=/plugga" className="btn btn-primary">Repetera nu →</Link>
         </div>
+      )}
+
+      {data.totalUnits === 0 && <HowToCreate />}
+      {data.totalUnits > 0 && termUnits === 0 && (
+        <p className="t-hand muted" style={{ fontSize: 16, margin: 0 }}>
+          Inga områden {data.term === data.currentTerm ? 'den här terminen' : `under ${data.termLabel}`} — byt termin ovan för att se äldre.
+        </p>
       )}
 
       {groupSubjects(data.subjects, data.groups).map((group) => (
@@ -110,7 +140,7 @@ export default function Plugga() {
             </div>
           )}
           <div className="features-grid">
-            {group.subjects.map((s) => <SubjectCard key={s.key} subject={s} />)}
+            {group.subjects.map((s) => <SubjectCard key={s.key} subject={s} term={data.term} />)}
           </div>
         </div>
       ))}

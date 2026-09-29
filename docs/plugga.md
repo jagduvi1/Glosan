@@ -160,15 +160,36 @@ progress on them), account deletion and the GDPR export.
 - **Fas 0 — foundation (done, hidden):** feature flags end to end, subject
   catalogue and terms, the data model above, GDPR export/delete, the hidden
   Plugga page (subjects per term), this document.
-- **Fas 1 — create and practise:** the MCP tools and prompts (årskurs first,
-  levels from the book, codes), genomgång rendering (Markdown + KaTeX,
-  self-hosted for the CSP), flashcard and exercise players with per-user
-  progress, practising by level and scope, the paper flow, "rapportera fel",
-  activity tracking from the first session.
+- **Fas 1 — create and practise (done, hidden):** the MCP tools and prompts
+  (årskurs required, levels from the book, codes), genomgång rendering
+  (Markdown + KaTeX, self-hosted for the CSP), flashcard and exercise players
+  with per-user progress, practising by level and scope, the paper flow,
+  "rapportera fel", activity tracking, study XP and streaks.
 - **Fas 2 — share, test and "Min plugg":** sharing (friends, link/QR),
   practice tests (in the app and on paper, E/C/A points, grade estimate),
-  "Min plugg" for parents, folders, XP, the level ladder (start at E, step up
+  "Min plugg" for parents, folders, the level ladder (start at E, step up
   after a few right in a row, step down on repeated mistakes).
+
+## How Fas 1 works (code map)
+
+| Piece | Where |
+|---|---|
+| MCP tools, prompts, instructions | `mcp/tools/study.js`, `mcp/prompts.js`, `FEATURE_SECTIONS.study` in `mcp/instructions.js` |
+| Who may read / change what | `services/study/access.js` — read = own + shared units, change = creator only |
+| Grading (no AI) | `services/study/grading.js` — Swedish numbers (`3,5`, `7/2`, `3 1/2`, `1 000`, units), text with a small typo allowance (never for numbers/years), self-assessment for cards and open questions. Unreadable input is a 422, never "wrong". |
+| Spaced repetition + picking a session | `services/study/scheduler.js` — Leitner boxes; a session takes due → weak → new (book order) → the rest |
+| Sessions, attempts, XP | `services/study/practice.js` — XP 10 per right, 5 per nearly, +20 for a perfect session of 5+; paper attempts via `recordPaperAttempt` |
+| Lists and the unit page | `services/study/views.js` — the app payload never contains answers or solutions (only after answering); open questions carry the model answer, revealed on request |
+| XP and streaks | `services/gamification.js` — shared with the vocabulary quiz; study XP goes to `User.subjectXp` (and the leaderboards) |
+| REST | `routes/study.js` — practice calls are limited per user (a class shares one IP), exempt from the global per-IP limiters |
+| Frontend | `pages/Plugga*.jsx`, `components/StudyMarkdown.jsx`, `components/study/StudyBits.jsx` |
+
+Test it locally with Plugga on for everyone:
+
+```bash
+FEATURES_FOR_ALL=study FRONTEND_URL=http://localhost:8080 docker compose up --build -d
+cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
+```
 - **Fas 3 — extras:** generated maths problems (templates with variables — endless practice at no AI cost),
   timelines and matching for SO/NO, test-date planning, diagrams, then
   release to everyone.

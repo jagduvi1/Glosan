@@ -9,6 +9,7 @@ const StudyItemState = require('../models/StudyItemState');
 const StudyAttempt = require('../models/StudyAttempt');
 const StudySession = require('../models/StudySession');
 const StudyFolder = require('../models/StudyFolder');
+const StudyFlag = require('../models/StudyFlag');
 
 /**
  * Radera områden med genomgångar, kort/övningar och ALLAS progress på dem
@@ -22,6 +23,7 @@ async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   await StudyPage.deleteMany({ unit: inUnits }, opts);
   await StudyItem.deleteMany({ unit: inUnits }, opts);
   await StudyItemState.deleteMany({ unit: inUnits }, opts);
+  await StudyFlag.deleteMany({ unit: inUnits }, opts);
   await StudyFolder.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudySession.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudyUnit.deleteMany({ _id: inUnits }, opts);
@@ -35,6 +37,7 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   await StudyAttempt.deleteMany({ user: userId }, opts);
   await StudySession.deleteMany({ user: userId }, opts);
   await StudyFolder.deleteMany({ user: userId }, opts);
+  await StudyFlag.deleteMany({ reporter: userId }, opts);
   // Ur andras delningar, så jag inte ligger kvar som dangling ref.
   await StudyUnit.updateMany({ sharedWith: userId }, { $pull: { sharedWith: userId } }, opts);
 }
@@ -43,14 +46,15 @@ async function deleteStudyDataForUser(userId, opts = {}) {
 async function exportStudyData(userId) {
   const units = await StudyUnit.find({ user: userId }).lean();
   const unitIds = units.map((u) => u._id);
-  const [pages, items, sharedWithMe, folders, sessions, attempts, itemStates] = await Promise.all([
+  const [pages, items, sharedWithMe, folders, sessions, attempts, itemStates, flags] = await Promise.all([
     unitIds.length ? StudyPage.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyItem.find({ unit: { $in: unitIds } }).lean() : [],
     StudyUnit.find({ sharedWith: userId }, 'title subject term user').populate('user', 'username').lean(),
     StudyFolder.find({ user: userId }).lean(),
     StudySession.find({ user: userId }).lean(),
     StudyAttempt.find({ user: userId }).lean(),
-    StudyItemState.find({ user: userId }).lean()
+    StudyItemState.find({ user: userId }).lean(),
+    StudyFlag.find({ reporter: userId }, 'item unit note status resolutionNote resolvedAt createdAt').lean()
   ]);
   return {
     units: units.map((u) => ({
@@ -65,7 +69,8 @@ async function exportStudyData(userId) {
     folders,
     sessions,
     attempts,
-    itemStates
+    itemStates,
+    reportedErrors: flags
   };
 }
 

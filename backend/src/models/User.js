@@ -127,6 +127,10 @@ const userSchema = new mongoose.Schema({
   // Per-language XP: { fr: 120, de: 50, ... }. `xp` above stays as the
   // denormalized total (sum of values here) so avatar unlocks keep working.
   languageXp: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  // Per-subject XP from Plugga: { matematik: 80, historia: 30, ... }. Counts in
+  // the `xp` total (and leaderboards) but is kept apart from languageXp, so
+  // `xp` = sum(languageXp) + sum(subjectXp). See services/gamification.js.
+  subjectXp: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   streak: {
     current: { type: Number, default: 0, min: 0 },
     longest: { type: Number, default: 0, min: 0 },

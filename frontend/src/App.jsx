@@ -33,6 +33,9 @@ const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
 const Plugga = lazy(() => import('./pages/Plugga'));
+const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
+const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
+const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -128,6 +131,30 @@ function AppRoutes() {
           element={
             <FeatureRoute feature="study">
               <Layout><Plugga /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/amne/:subject"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaSubject /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/omrade/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaUnit /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/ova"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaPractice /></Layout>
             </FeatureRoute>
           }
         />

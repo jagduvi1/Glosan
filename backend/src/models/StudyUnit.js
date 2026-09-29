@@ -39,6 +39,10 @@ const studyUnitSchema = new mongoose.Schema({
   },
   examDate: { type: Date, default: null },
   sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true }],
+  // Löpnummer för områdets kort/övningar (MA3-1, MA3-2 …). Räknas upp
+  // atomärt när uppgifter läggs till och går aldrig bakåt — en raderad
+  // uppgifts nummer återanvänds inte, så en kod på ett papper pekar alltid rätt.
+  itemCounter: { type: Number, default: 0, min: 0 },
   archivedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -69,6 +73,20 @@ studyUnitSchema.statics.nextCode = async function (userId, subjectKey) {
   ).lean();
   if (!user) throw new Error('user not found');
   return `${subject.code}${user.studyCodeCounters[subject.code]}`;
+};
+
+/**
+ * Reservera `count` nya uppgiftsnummer i området, atomärt. Returnerar det
+ * första numret; numren är first … first + count - 1.
+ */
+studyUnitSchema.statics.reserveItemNumbers = async function (unitId, count) {
+  const unit = await this.findByIdAndUpdate(
+    unitId,
+    { $inc: { itemCounter: count } },
+    { new: true, projection: { itemCounter: 1 } }
+  ).lean();
+  if (!unit) throw new Error('unit not found');
+  return unit.itemCounter - count + 1;
 };
 
 module.exports = mongoose.model('StudyUnit', studyUnitSchema);
