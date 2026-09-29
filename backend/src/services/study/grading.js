@@ -142,6 +142,99 @@ function gradeText(input, spec) {
   return { result: 'wrong', expected };
 }
 
+// ── flerval med flera rätta ──────────────────────────────────────────────────
+
+/**
+ * Alla rätta och inga fel = rätt. Bara rätta men några saknas = nästan.
+ * Minst ett fel val = fel (annars lönar det sig att kryssa allt).
+ */
+function gradeMulti(input, spec) {
+  const n = Array.isArray(spec.choices) ? spec.choices.length : 0;
+  const picked = Array.isArray(input) ? input.map(Number) : null;
+  if (!picked || picked.length === 0) return { invalid: true, message: 'Välj minst ett alternativ.' };
+  if (picked.some((i) => !Number.isInteger(i) || i < 0 || i >= n) || new Set(picked).size !== picked.length) {
+    return { invalid: true, message: 'Välj bland alternativen.' };
+  }
+  const right = new Set(spec.correctIndices || []);
+  const expected = (spec.correctIndices || []).map((i) => spec.choices[i]).join(', ');
+  const hits = picked.filter((i) => right.has(i)).length;
+  const misses = picked.length - hits;
+  if (misses === 0 && hits === right.size) return { result: 'correct', expected };
+  if (misses === 0) {
+    const left = right.size - hits;
+    return { result: 'partial', expected, note: `Allt du valde stämmer — men ${left} alternativ till är rätt.` };
+  }
+  return { result: 'wrong', expected };
+}
+
+// ── ordna ────────────────────────────────────────────────────────────────────
+
+/** `input`: alternativen i elevens ordning (texterna). Rätt ordning = rätt. */
+function gradeOrder(input, spec) {
+  const want = (spec.choices || []).map(normalizeText);
+  const got = Array.isArray(input) ? input.map(normalizeText) : null;
+  const sameSet = got && got.length === want.length && [...got].sort().join('\u0000') === [...want].sort().join('\u0000');
+  if (!sameSet) return { invalid: true, message: 'Ordna alla alternativen.' };
+  const expected = spec.choices.join(' → ');
+  return { result: got.every((g, i) => g === want[i]) ? 'correct' : 'wrong', expected };
+}
+
+// ── faktorer ─────────────────────────────────────────────────────────────────
+
+const SUPERSCRIPT = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
+
+/**
+ * Faktorer som en elev skriver dem: "2·3·3·5", "3*2*5*3", "2 3 3 5",
+ * "2·3²·5", "2 · 3^2 · 5", "90 = 2·3·3·5". Returnerar talen eller null.
+ */
+function parseFactors(input) {
+  let s = String(input ?? '').trim();
+  if (!s || s.length > 120) return null;
+  if (s.includes('=')) s = s.slice(s.lastIndexOf('=') + 1);
+  s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => `^${[...m].map((c) => SUPERSCRIPT[c]).join('')}`)
+    .replace(/\s*\^\s*/g, '^')
+    .trim();
+  const parts = s.split(/\s*[·⋅•*×xX]\s*|\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const out = [];
+  for (const p of parts) {
+    const m = /^(\d{1,10})(?:\^(\d{1,2}))?$/.exec(p);
+    if (!m) return null;
+    const base = Number(m[1]);
+    const exp = m[2] ? Number(m[2]) : 1;
+    if (base < 2 || exp < 1) return null;
+    for (let i = 0; i < exp; i++) out.push(base);
+    if (out.length > 60) return null;
+  }
+  return out;
+}
+
+const formatFactors = (list) => [...list].sort((a, b) => a - b).join(' · ');
+
+/** Samma faktorer i valfri ordning = rätt. Rätt produkt med andra faktorer = nästan. */
+function gradeFactors(input, spec) {
+  const got = parseFactors(input);
+  if (!got) return { invalid: true, message: 'Skriv faktorerna med · eller * emellan, t.ex. 2·3·3·5 (3² eller 3^2 går också).' };
+  const want = [...(spec.factors || [])].sort((a, b) => a - b);
+  const expected = formatFactors(want);
+  const g = [...got].sort((a, b) => a - b);
+  if (g.length === want.length && g.every((x, i) => x === want[i])) return { result: 'correct', expected };
+  const product = (arr) => arr.reduce((p, x) => p * x, 1);
+  if (product(g) === product(want)) {
+    return { result: 'partial', expected, note: 'Produkten stämmer, men det är inte de faktorer som söks — dela upp dem mer.' };
+  }
+  return { result: 'wrong', expected };
+}
+
+/** Elevens svar som text, för historiken ("svar: 23, 29"). */
+function describeAnswer(item, answer) {
+  const a = item.answer || {};
+  if (a.type === 'choice') return a.choices?.[Number(answer)] ?? String(answer ?? '');
+  if (a.type === 'multi' && Array.isArray(answer)) return answer.map((i) => a.choices?.[Number(i)]).filter(Boolean).join(', ');
+  if (a.type === 'order' && Array.isArray(answer)) return answer.join(' → ');
+  return String(answer ?? '');
+}
+
 // ── självbedömning (kort och öppna frågor) ───────────────────────────────────
 
 function gradeSelf(self) {
@@ -163,11 +256,15 @@ function gradeAnswer(item, payload = {}) {
     case 'choice': return gradeChoice(payload.answer, spec);
     case 'text': return gradeText(payload.answer, spec);
     case 'self': return { ...gradeSelf(payload.self), expected: spec.modelAnswer };
+    case 'multi': return gradeMulti(payload.answer, spec);
+    case 'order': return gradeOrder(payload.answer, spec);
+    case 'factors': return gradeFactors(payload.answer, spec);
     default: return { invalid: true, message: 'Den här uppgiften kan inte rättas.' };
   }
 }
 
 module.exports = {
   parseNumber, formatNumber, normalizeUnit, gradeNumber, gradeChoice, gradeText, normalizeText,
-  levenshtein, gradeSelf, gradeAnswer, SELF_RESULTS
+  levenshtein, gradeSelf, gradeMulti, gradeOrder, parseFactors, formatFactors, gradeFactors, describeAnswer,
+  gradeAnswer, SELF_RESULTS
 };

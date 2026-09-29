@@ -22,7 +22,9 @@ const limitSchema = new mongoose.Schema({
 
 const questionSchema = new mongoose.Schema({
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem', required: true },
-  points: { type: pointsSchema, required: true }
+  points: { type: pointsSchema, required: true },
+  // Provdel, t.ex. "Del A — utan miniräknare" (som på de nationella proven).
+  part: { type: String, trim: true, maxlength: 60, default: '' }
 }, { _id: false });
 
 const studyTestSchema = new mongoose.Schema({

@@ -145,3 +145,66 @@ test('levenshtein', () => {
   expect(levenshtein('', 'abc')).toBe(3);
   expect(levenshtein('same', 'same')).toBe(0);
 });
+
+describe('several right (multi)', () => {
+  const spec = { type: 'multi', choices: ['21', '23', '27', '29'], correctIndices: [1, 3] };
+  const { gradeMulti } = require('./grading');
+
+  test('all the right ones and nothing else', () => {
+    expect(gradeMulti([3, 1], spec)).toMatchObject({ result: 'correct', expected: '23, 29' });
+  });
+
+  test('only right ones but one missing is nearly; a wrong pick is wrong', () => {
+    expect(gradeMulti([1], spec)).toMatchObject({ result: 'partial' });
+    expect(gradeMulti([1, 2, 3], spec)).toMatchObject({ result: 'wrong' });
+  });
+
+  test('nothing picked or nonsense is not counted', () => {
+    expect(gradeMulti([], spec).invalid).toBe(true);
+    expect(gradeMulti([9], spec).invalid).toBe(true);
+    expect(gradeMulti([1, 1], spec).invalid).toBe(true);
+    expect(gradeMulti('1', spec).invalid).toBe(true);
+  });
+});
+
+describe('order', () => {
+  const { gradeOrder } = require('./grading');
+  const spec = { type: 'order', choices: ['0,05', '0,5', '5'] };
+
+  test('right order is right, anything else wrong', () => {
+    expect(gradeOrder(['0,05', '0,5', '5'], spec)).toMatchObject({ result: 'correct', expected: '0,05 → 0,5 → 5' });
+    expect(gradeOrder(['0,5', '0,05', '5'], spec)).toMatchObject({ result: 'wrong' });
+  });
+
+  test('missing or foreign items are not counted', () => {
+    expect(gradeOrder(['0,05', '0,5'], spec).invalid).toBe(true);
+    expect(gradeOrder(['0,05', '0,5', '50'], spec).invalid).toBe(true);
+  });
+});
+
+describe('factors', () => {
+  const { parseFactors, gradeFactors, describeAnswer } = require('./grading');
+  const spec = { type: 'factors', factors: [2, 3, 3, 5] };
+
+  test('written the way students write them', () => {
+    for (const s of ['2·3·3·5', '3*2*5*3', '2·3²·5', '2 · 3^2 · 5', '90 = 2·3·3·5', '2 3 3 5', '2x3x3x5', '2 × 3 × 3 × 5']) {
+      expect([s, [...parseFactors(s)].sort((a, b) => a - b)]).toEqual([s, [2, 3, 3, 5]]);
+    }
+    expect(parseFactors('två gånger tre')).toBeNull();
+    expect(parseFactors('1·90')).toBeNull();
+  });
+
+  test('any order is right; the right product with other factors is nearly', () => {
+    expect(gradeFactors('5·3·2·3', spec)).toMatchObject({ result: 'correct', expected: '2 · 3 · 3 · 5' });
+    expect(gradeFactors('2·45', spec)).toMatchObject({ result: 'partial' });
+    expect(gradeFactors('2·3·5', spec)).toMatchObject({ result: 'wrong' });
+    expect(gradeFactors('nittio', spec).invalid).toBe(true);
+  });
+
+  test('the answer as text for the history', () => {
+    const multi = { answer: { type: 'multi', choices: ['21', '23', '27', '29'] } };
+    expect(describeAnswer(multi, [1, 3])).toBe('23, 29');
+    expect(describeAnswer({ answer: { type: 'order' } }, ['a', 'b'])).toBe('a → b');
+    expect(describeAnswer({ answer: { type: 'choice', choices: ['x', 'y'] } }, 1)).toBe('y');
+  });
+});

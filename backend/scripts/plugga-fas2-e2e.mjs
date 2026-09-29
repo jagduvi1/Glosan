@@ -301,6 +301,85 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}/deletions/${log.body.deletions[1].id}/restore`, A.token, { method: 'POST' })).status, 409);
     ok('bin: recipients can\'t delete; app and AI deletions are logged with who/where; undo brings MA1-1 back with its code and id');
 
+    // ── feedback från en riktig MCP-session ─────────────────────────────────
+    const dupUnit = await call(claude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'kapitel 4 — procent' });
+    assert.equal(dupUnit.error?.code, 'conflict', 'same title + subject + term is refused');
+    assert.match(dupUnit.error.message, new RegExp(unitId));
+    const drill = await call(claude, 'create_study_unit', { subject: 'matematik', grade_year: 7, title: 'Drill — tal' });
+    const drillId = drill.data.unit_id;
+    const exs = [
+      { prompt: 'Beräkna $10 / 3$ med alla decimaler', answer: { type: 'number', value: 3.3333333 }, solution: '3,333…', level: 'C' },
+      { prompt: 'Beräkna $0{,}043 \\cdot 1$', answer: { type: 'number', value: 0.043 }, solution: '0,043', level: 'E' },
+      { prompt: 'Vilka av talen är primtal?', answer: { type: 'multi', choices: ['21', '23', '27', '29'], correct_indices: [1, 3] }, solution: '23 och 29', level: 'C', skill: 'primtal' },
+      { prompt: 'Skriv talen i storleksordning, minst först', answer: { type: 'order', items: ['0,05', '0,5', '5'] }, solution: '0,05 < 0,5 < 5', level: 'E' },
+      { prompt: 'Primtalsfaktorisera 90', answer: { type: 'factors', factors: [2, 3, 3, 5] }, solution: '$90 = 2 \\cdot 3 \\cdot 3 \\cdot 5$', level: 'C', skill: 'primtal' },
+      {
+        prompt: 'Beräkna {{a}} · {{b}}\n\n```svg\n<svg viewBox="0 0 120 20" width="120"><line x1="0" y1="10" x2="120" y2="10" stroke="black"/></svg>\n```',
+        answer: { type: 'number', expr: 'a * b' }, solution: '{{a}} · {{b}} = {{ a * b }}', level: 'E', skill: 'multiplikation',
+        template: { vars: [{ name: 'a', int: [2, 9] }, { name: 'b', int: [2, 9] }], where: ['a != b'] }
+      }
+    ];
+    const added = await call(claude, 'add_exercises', { unit_id: drillId, exercises: exs });
+    assert.equal(added.isError, false, JSON.stringify(added));
+    assert.equal(added.warnings.length, 1, 'one summary warning, only for 3.3333333');
+    assert.match(added.warnings[0], /Exercise\(s\) 1:/);
+    assert.equal(added.data.template_examples[0].examples.length, 2);
+    const retry = await call(claude, 'add_exercises', { unit_id: drillId, exercises: exs });
+    assert.deepEqual(retry.data.codes, []);
+    assert.equal(retry.data.skipped_duplicates.length, 6, 'a retried call adds nothing');
+    const badSvg = await call(claude, 'add_exercises', { unit_id: drillId, exercises: [{ prompt: '```svg\n<svg onload="alert(1)"></svg>\n```', answer: { type: 'number', value: 1 }, solution: '1', level: 'E' }] });
+    assert.equal(badSvg.error?.code, 'invalid_input');
+    const badTpl = await call(claude, 'add_exercises', { unit_id: drillId, exercises: [{ prompt: '{{a}}', answer: { type: 'number', expr: 'a +' }, solution: 'x', level: 'E', template: { vars: [{ name: 'a', int: [1, 2] }] } }] });
+    assert.match(badTpl.error?.message || '', /template problem/);
+
+    const ds = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [drillId], mode: 'exercises', count: 10 } });
+    const byPrompt = (re) => ds.body.items.find((i) => re.test(i.prompt));
+    const dsid = ds.body.session.id;
+    const say = (item, answer, extra = {}) => api(`/api/study/sessions/${dsid}/answer`, A.token, { method: 'POST', body: { itemId: item.id, answer, ...extra } });
+    const multiItem = byPrompt(/primtal\?/);
+    assert.deepEqual((await say(multiItem, [3, 1])).body.result, 'correct');
+    const orderItem = byPrompt(/storleksordning/);
+    assert.notDeepEqual(orderItem.items, ['0,05', '0,5', '5'], 'shuffled, never already right');
+    assert.equal((await say(orderItem, ['0,05', '0,5', '5'])).body.result, 'correct');
+    const factorItem = byPrompt(/faktorisera/);
+    assert.equal((await say(factorItem, '3·2·5·3')).body.result, 'correct');
+    const tpl = ds.body.items.find((i) => i.templated);
+    assert.ok(tpl.seed && !tpl.prompt.includes('{{'), 'a template arrives as an instance with its seed');
+    const [, x, y] = /Beräkna (\d+) · (\d+)/.exec(tpl.prompt);
+    assert.equal((await say(tpl, String(x * y))).status, 422, 'no seed → not graded');
+    const tplRes = await say(tpl, String(x * y), { seed: tpl.seed });
+    assert.equal(tplRes.body.result, 'correct');
+    assert.equal(tplRes.body.solution, `${x} · ${y} = ${x * y}`);
+    await api(`/api/study/sessions/${dsid}/finish`, A.token, { method: 'POST' });
+    const again2 = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [drillId], mode: 'exercises', count: 10 } });
+    await api(`/api/study/sessions/${again2.body.session.id}/finish`, A.token, { method: 'POST' });
+    const bySkill = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [drillId], mode: 'exercises', skills: ['primtal'] } });
+    assert.equal(bySkill.body.items.length, 2, 'practise one skill');
+    await api(`/api/study/sessions/${bySkill.body.session.id}/finish`, A.token, { method: 'POST' });
+
+    const tplTest = await call(claude, 'create_practice_test', { unit_id: drillId, title: 'x', questions: [exs[5]] });
+    assert.match(tplTest.error?.message || '', /Templates are for practice/);
+    const parts = await call(claude, 'create_practice_test', {
+      unit_id: drillId,
+      title: 'Diagnos — Tal',
+      questions: [
+        { ...exs[2], part: 'Del A — utan miniräknare' },
+        { ...exs[4], part: 'Del A — utan miniräknare' },
+        { prompt: 'Beräkna $12 \\cdot 12$', answer: { type: 'number', value: 144 }, solution: '144', level: 'E', skill: 'multiplikation', part: 'Del B' }
+      ]
+    });
+    assert.equal(parts.isError, false, JSON.stringify(parts));
+    assert.equal((await call(claude, 'create_practice_test', { unit_id: drillId, title: 'diagnos — tal', questions: [exs[2]] })).error?.code, 'conflict');
+    const partSheet = await api(`/api/study/tests/${parts.data.test_id}/sheet`, A.token);
+    assert.deepEqual(partSheet.body.questions.map((q) => q.part), ['Del A — utan miniräknare', 'Del A — utan miniräknare', 'Del B']);
+    const paperDiag = await call(claude, 'record_paper_test', {
+      test_id: parts.data.test_id,
+      results: [{ code: parts.data.question_codes[0], points: { C: 1 } }, { code: parts.data.question_codes[2], points: { E: 1 } }],
+      overall_feedback: 'Öva mer på primtal.'
+    });
+    assert.deepEqual(paperDiag.data.by_skill.map((r) => [r.skill, r.points]), [['primtal', '1/2'], ['multiplikation', '1/1']]);
+    ok('feedback: duplicate unit refused; one tolerance warning (exact decimals pass); retries skip; svg checked; multi/order/factors graded; templates with seeds; skill practice; test parts and per-skill result');
+
     // ── städning ────────────────────────────────────────────────────────────
     const delTest = await call(claude, 'delete_practice_test', { test_id: testId });
     assert.equal(delTest.isError, false);

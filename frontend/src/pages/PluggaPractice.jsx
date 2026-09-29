@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
+import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
 import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
@@ -35,6 +36,7 @@ function readScope(params) {
     allTerms: params.get('allTerms') === '1',
     mode: params.get('mode') || 'mixed',
     levels: list('levels'),
+    skill: params.get('skill') || undefined,
     count: Number(params.get('count')) || 15,
     back: params.get('back') || '/plugga'
   };
@@ -87,6 +89,9 @@ export default function PluggaPractice() {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState('loading'); // loading | question | feedback | done | empty
   const [answer, setAnswer] = useState('');
+  // Flera rätta (valda index) och ordna (nuvarande ordning) — nollställs per uppgift.
+  const [picked, setPicked] = useState([]);
+  const [ordered, setOrdered] = useState(null);
   const [revealed, setRevealed] = useState(false);
   const [hintsShown, setHintsShown] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -106,7 +111,8 @@ export default function PluggaPractice() {
     setPhase('loading');
     startStudySession(apiFetch, {
       unitIds: scope.unitIds, folderId: scope.folderId, subject: scope.subject, group: scope.group, term: scope.term,
-      allTerms: scope.allTerms, mode: scope.mode, levels: scope.levels, count: scope.count
+      allTerms: scope.allTerms, mode: scope.mode, levels: scope.levels, count: scope.count,
+      skills: scope.skill ? [scope.skill] : undefined
     })
       .then((r) => {
         if (!active) return;
@@ -139,6 +145,8 @@ export default function PluggaPractice() {
 
   const resetForNext = () => {
     setAnswer('');
+    setPicked([]);
+    setOrdered(null);
     setRevealed(false);
     setHintsShown(0);
     setFeedback(null);
@@ -150,7 +158,8 @@ export default function PluggaPractice() {
     setBusy(true);
     setInvalidMsg('');
     try {
-      const res = await answerStudyItem(apiFetch, session.id, { itemId: current.id, ...payload });
+      // Mallövning: fröet tillbaka, så servern rättar exakt de tal som visades.
+      const res = await answerStudyItem(apiFetch, session.id, { itemId: current.id, ...payload, ...(current.seed ? { seed: current.seed } : {}) });
       answeredCount.current += 1;
       if (res.result !== 'correct') setMissed((m) => m + 1);
       if (res.ladder) {
@@ -232,7 +241,7 @@ export default function PluggaPractice() {
   }
 
   if (phase === 'done' && summary) {
-    const againUrl = practiceUrl({ ...scope, unitIds: scope.unitIds }, { mode: scope.mode, levels: scope.levels, count: scope.count });
+    const againUrl = practiceUrl({ ...scope, unitIds: scope.unitIds }, { mode: scope.mode, levels: scope.levels, count: scope.count, skill: scope.skill });
     return (
       <div className="card card-lg practice-shell" style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 48 }} aria-hidden="true">{summary.perfect ? '🏆' : '💪'}</div>
@@ -285,6 +294,7 @@ export default function PluggaPractice() {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           <CodeTag code={current.code} />
           <LevelPill level={current.level} />
+          {current.templated && <span className="pill" title="Den här uppgiften får nya tal varje gång">🎲 nya tal</span>}
           <span className="t-hand muted grow" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
           {current.own && (
             <button type="button" className="trash-btn" onClick={removeCurrent} disabled={busy} title="Ta bort uppgiften" aria-label={`Ta bort ${current.code}`}>
@@ -328,7 +338,7 @@ export default function PluggaPractice() {
         )
       )}
 
-      {phase === 'question' && !isCard && (type === 'number' || type === 'text') && (
+      {phase === 'question' && !isCard && (type === 'number' || type === 'text' || type === 'factors') && (
         <form
           className="stack"
           style={{ gap: 8 }}
@@ -343,7 +353,7 @@ export default function PluggaPractice() {
               autoComplete="off"
               autoFocus
               maxLength={200}
-              placeholder={type === 'number' ? 't.ex. 3,5 eller 7/2' : 'Skriv ditt svar'}
+              placeholder={type === 'number' ? 't.ex. 3,5 eller 7/2' : type === 'factors' ? 't.ex. 2·3·3·5 eller 2*3^2*5' : 'Skriv ditt svar'}
               aria-label="Ditt svar"
             />
             {current.unitLabel && <span className="t-hand" style={{ fontSize: 18 }}>{current.unitLabel}</span>}
@@ -351,6 +361,22 @@ export default function PluggaPractice() {
           {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
           <button type="submit" className="btn btn-primary btn-lg" disabled={busy || !answer.trim()}>Svara</button>
         </form>
+      )}
+
+      {phase === 'question' && !isCard && type === 'multi' && (
+        <div className="stack" style={{ gap: 10 }}>
+          <MultiChoice choices={current.choices} value={picked} onChange={(v) => { setPicked(v); setInvalidMsg(''); }} disabled={busy} />
+          {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
+          <button type="button" className="btn btn-primary btn-lg" disabled={busy || picked.length === 0} onClick={() => submit({ answer: picked })}>Svara</button>
+        </div>
+      )}
+
+      {phase === 'question' && !isCard && type === 'order' && (
+        <div className="stack" style={{ gap: 10 }}>
+          <OrderList items={ordered || current.items} onChange={setOrdered} disabled={busy} />
+          {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
+          <button type="button" className="btn btn-primary btn-lg" disabled={busy} onClick={() => submit({ answer: ordered || current.items })}>Svara</button>
+        </div>
       )}
 
       {phase === 'question' && !isCard && type === 'choice' && (

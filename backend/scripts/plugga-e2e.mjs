@@ -3,77 +3,24 @@
 // appen (rättas på servern) → XP och streak → felrapport → AI:n rättar och
 // stänger → en annan användare ser ingenting. Engångsanvändare raderas efteråt.
 //
-//   FEATURES_FOR_ALL=study FRONTEND_URL=http://localhost:8080 docker compose up --build -d
+// Fungerar med och utan FEATURES_FOR_ALL=study (utan slås flaggan på för
+// testanvändarna direkt i den lokala databasen, som i prod).
+//
+//   FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 //   cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
-import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { e2e, grantFeatureInLocalDb, inDays } from './lib/e2e.mjs';
 
-const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/+$/, '');
-const CALLBACK = 'https://example.test/callback';
-let step = 0;
-const ok = (msg) => console.log(`  ✓ ${String(++step).padStart(2)} ${msg}`);
-
-async function api(path, token, { method = 'GET', body } = {}) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {})
-  });
-  let data = null;
-  try { data = await res.json(); } catch { /* no body */ }
-  return { status: res.status, body: data };
-}
-
-async function register(prefix) {
-  const u = `${prefix}${crypto.randomBytes(3).toString('hex')}`;
-  const r = await api('/api/auth/register', null, {
-    method: 'POST', body: { username: u, email: `${u}@example.test`, password: 'E2e-Passw0rd!x', ageConsent: true }
-  });
-  assert.equal(r.status, 201, 'register');
-  return { name: u, token: r.body.token };
-}
-
-async function connectMcp(jwt) {
-  const reg = await api('/api/mcp/oauth/register', null, { method: 'POST', body: { client_name: 'E2E', redirect_uris: [CALLBACK] } });
-  const clientId = reg.body.client_id;
-  const verifier = crypto.randomBytes(32).toString('base64url');
-  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-  const approve = await api('/api/mcp/oauth/approve', jwt, {
-    method: 'POST',
-    body: { client_id: clientId, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: 'S256', scope: 'read write', approved: true }
-  });
-  const code = new URL(approve.body.redirect).searchParams.get('code');
-  const tok = await fetch(`${BASE}/api/mcp/oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', client_id: clientId, code, code_verifier: verifier, redirect_uri: CALLBACK })
-  }).then((r) => r.json());
-  const client = new Client({ name: 'plugga-e2e', version: '1.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/api/mcp`), {
-    requestInit: { headers: { Authorization: `Bearer ${tok.access_token}` } }
-  }));
-  return client;
-}
-
-async function call(client, name, args = {}) {
-  const res = await client.callTool({ name, arguments: args });
-  const text = res.content?.[0]?.text || '';
-  let body;
-  try { body = JSON.parse(text); } catch { body = { raw: text }; }
-  return { isError: !!res.isError, ...body };
-}
-
-const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 
 async function main() {
   console.log(`Plugga e2e against ${BASE}`);
   const A = await register('plugga');
   const B = await register('pluggb');
   try {
-    const ov = await api('/api/study/overview', A.token);
-    assert.equal(ov.status, 200, 'Plugga must be enabled — start the stack with FEATURES_FOR_ALL=study');
+    // Utan FEATURES_FOR_ALL=study slås Plugga på för testanvändaren direkt i den lokala databasen.
+    if ((await api('/api/study/overview', A.token)).status !== 200) grantFeatureInLocalDb(A.name, 'study');
+    assert.equal((await api('/api/study/overview', A.token)).status, 200, 'Plugga must be enabled for the test user');
     ok('Plugga enabled for the test user');
 
     const claude = await connectMcp(A.token);
@@ -130,8 +77,8 @@ async function main() {
     });
     assert.equal(ex.isError, false, JSON.stringify(ex));
     assert.deepEqual(ex.data.codes, ['MA1-4', 'MA1-5', 'MA1-6', 'MA1-7', 'MA1-8', 'MA1-9']);
-    assert.ok(ex.warnings?.some((w) => w.includes('0.5')), 'warns about 0.5 without tolerance');
-    ok('flashcards MA1-1…3; exercises MA1-4…9 on E/C/A (missing solution refused, rounding warning given)');
+    assert.equal(ex.warnings, undefined, 'no rounding warning for a short exact decimal (0.5)');
+    ok('flashcards MA1-1…3; exercises MA1-4…9 on E/C/A (missing solution refused, no noise about 0.5)');
 
     const unit = await call(claude, 'get_study_unit', { unit_id: unitId });
     assert.equal(unit.data.pages.length, 1);
@@ -229,6 +176,8 @@ async function main() {
     assert.deepEqual(progress.data.keeps_missing.map((w) => w.code), ['MA1-7']);
     ok('get_study_progress tells the AI what the student keeps missing (MA1-7)');
 
+    // B ska ha modulen — det är åtkomstkontrollen som testas, inte flaggan.
+    if ((await api('/api/study/overview', B.token)).status !== 200) grantFeatureInLocalDb(B.name, 'study');
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     const claudeB = await connectMcp(B.token);
     assert.equal((await call(claudeB, 'get_study_item', { code: 'MA1-4' })).error.code, 'not_found');

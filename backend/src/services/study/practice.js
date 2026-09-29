@@ -10,9 +10,10 @@ const StudySession = require('../../models/StudySession');
 const StudyFolder = require('../../models/StudyFolder');
 const { SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm } = require('../../utils/term');
-const { gradeAnswer } = require('./grading');
+const { gradeAnswer, describeAnswer } = require('./grading');
 const { nextState, pickItems } = require('./scheduler');
 const { startLevel, ladderStep, pickNext, LEVEL_ORDER } = require('./ladder');
+const { instance, newSeed } = require('./templates');
 const { readableFilter, isId, oid, itemCode } = require('./access');
 const { awardStudyActivity } = require('../gamification');
 
@@ -52,6 +53,17 @@ async function resolveScopeUnits(userId, scope = {}) {
   return StudyUnit.find(filter).lean();
 }
 
+/** Blanda en lista så att den inte står i sin ursprungliga ordning (om det går). */
+function shuffledDifferent(list) {
+  const a = [...(list || [])];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  if (a.length > 1 && a.every((x, i) => x === list[i])) a.push(a.shift());
+  return a;
+}
+
 /**
  * Ett kort/en övning som den skickas till spelaren — UTAN facit. Med
  * `userId` får uppgiften `own` (användaren skapade området och får ta bort den).
@@ -71,11 +83,22 @@ function publicItem(item, unit, userId = null) {
     hints: item.hints || [],
     ...(userId ? { own: String(unit.user?._id || unit.user) === String(userId) } : {})
   };
+  // Mallövning: nya tal varje gång. Fröet följer med och skickas tillbaka med svaret.
+  if (item.template) {
+    out.templated = true;
+    try {
+      const seed = newSeed();
+      const inst = instance(item, seed);
+      Object.assign(out, { prompt: inst.prompt, hints: inst.hints, seed });
+    } catch { /* trasig mall — rättningen säger till */ }
+  }
   if (item.kind === 'card') {
     out.back = item.back; // ett kort vänds i klienten — baksidan är inget facit
   } else {
     out.answerType = item.answer?.type;
-    if (item.answer?.type === 'choice') out.choices = item.answer.choices;
+    if (item.answer?.type === 'choice' || item.answer?.type === 'multi') out.choices = item.answer.choices;
+    // Ordna: alternativen blandade — aldrig redan i rätt ordning.
+    if (item.answer?.type === 'order') out.items = shuffledDifferent(item.answer.choices);
     if (item.answer?.type === 'number' && item.answer.unit) out.unitLabel = item.answer.unit;
     // Öppna frågor bedömer eleven själv mot modellsvaret — det måste finnas i
     // klienten (dolt tills eleven väljer "Visa modellsvar"), precis som
@@ -141,6 +164,9 @@ async function startSession(userId, params = {}) {
   if (mode === 'exercises') query.kind = 'exercise';
   // Kort har ofta ingen nivå — ett nivåfilter gäller övningarna.
   if (levels.length) query.$or = [{ level: { $in: levels } }, { kind: 'card', level: null }];
+  // Öva på en färdighet ("Positionssystemet") — t.ex. från provresultatet.
+  const skills = Array.isArray(params.skills) ? params.skills.filter((x) => typeof x === 'string' && x.trim()).slice(0, 10) : [];
+  if (skills.length) query.skill = { $in: skills };
 
   const items = await StudyItem.find(query).lean();
   const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }).lean();
@@ -171,7 +197,7 @@ async function startSession(userId, params = {}) {
  * Returnerar det nya StudyItemState — eller null för provfrågor, som inte
  * ingår i repetitionen (de visas aldrig i vanliga pass) och bara får historik.
  */
-async function recordAttempt({ userId, item, unit, sessionId = null, source = 'app', mode = 'practice', result, given = '', feedback = '' }) {
+async function recordAttempt({ userId, item, unit, sessionId = null, source = 'app', mode = 'practice', result, given = '', feedback = '', seed = null }) {
   const now = new Date();
   let next = null;
   if (item.usage !== 'test') {
@@ -195,7 +221,8 @@ async function recordAttempt({ userId, item, unit, sessionId = null, source = 'a
     mode,
     result,
     given: String(given ?? '').slice(0, 500),
-    feedback: String(feedback ?? '').slice(0, 4000)
+    feedback: String(feedback ?? '').slice(0, 4000),
+    seed
   });
   return next;
 }
@@ -219,15 +246,28 @@ async function touchSession(session, extra = {}) {
 async function answerInSession(userId, sessionId, item, unit, payload) {
   const session = await loadOpenSession(userId, sessionId);
   if (!session) return { error: 'session_gone' };
-  const graded = gradeAnswer(item, payload);
+  // Mallövning: rätta mot talen i just den instans eleven såg (fröet).
+  let gradedItem = item;
+  let solution = item.solution || '';
+  let seed = null;
+  if (item.template) {
+    seed = Number(payload.seed);
+    if (!Number.isInteger(seed) || seed <= 0) return { invalid: true, message: 'Uppgiften behöver laddas om — starta passet igen.' };
+    try {
+      const inst = instance(item, seed);
+      gradedItem = { kind: item.kind, answer: inst.answer };
+      solution = inst.solution;
+    } catch {
+      return { invalid: true, message: 'Uppgiften gick inte att räkna ut — rapportera felet så rättar AI:n den.' };
+    }
+  }
+  const graded = gradeAnswer(gradedItem, payload);
   if (graded.invalid) return graded;
-  const given = payload.answer !== undefined
-    ? (item.answer?.type === 'choice' ? item.answer.choices[Number(payload.answer)] : payload.answer)
-    : payload.self;
+  const given = payload.answer !== undefined ? describeAnswer(item, payload.answer) : payload.self;
   const state = await recordAttempt({
     userId, item, unit, sessionId: session._id, source: 'app',
     mode: session.kind === 'review' ? 'review' : 'practice',
-    result: graded.result, given
+    result: graded.result, given, seed
   });
   await touchSession(session, {
     inc: { answered: 1, correct: graded.result === 'correct' ? 1 : 0 },
@@ -237,7 +277,7 @@ async function answerInSession(userId, sessionId, item, unit, payload) {
     result: graded.result,
     expected: graded.expected ?? null,
     note: graded.note || null,
-    solution: item.solution || '',
+    solution,
     modelAnswer: item.answer?.modelAnswer || '',
     state: state ? { box: state.box, dueAt: state.dueAt } : null,
     ...(session.ladder ? { ladder: await climbLadder(session, item, graded.result) } : {})
@@ -367,6 +407,6 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
 }
 
 module.exports = {
-  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, startSession, recordAttempt, answerInSession,
+  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, shuffledDifferent, startSession, recordAttempt, answerInSession,
   pingSession, finishSession, recordPaperAttempt
 };

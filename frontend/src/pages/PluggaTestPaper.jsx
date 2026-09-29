@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyTestSheet } from '../api/study';
@@ -10,6 +10,45 @@ import '../styles/study.css';
 // Övningsprovet på papper: skriv ut, skriv svaren (med frågans kod), fota och
 // låt din AI rätta — resultatet (poäng per nivå, uppskattat betyg) hamnar i
 // Glosan. Utskriften har bara frågorna, aldrig facit.
+
+const letter = (i) => String.fromCharCode(65 + i);
+
+// Svarsutrymmet på pappret, efter frågans typ.
+function SheetAnswer({ q }) {
+  if (q.answerType === 'choice' || q.answerType === 'multi') {
+    return (
+      <>
+        {q.answerType === 'multi' && <p className="t-hand muted" style={{ margin: '6px 0 0', fontSize: 14 }}>Flera kan vara rätt — kryssa alla som stämmer.</p>}
+        <ul className="test-sheet-choices">
+          {q.choices.map((c, i) => (
+            <li key={i}><span className="test-sheet-box" aria-hidden="true" /> {letter(i)}. <StudyMarkdown inline>{c}</StudyMarkdown></li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+  if (q.answerType === 'order') {
+    return (
+      <>
+        <ul className="test-sheet-choices">
+          {q.items.map((c, i) => <li key={i}>{letter(i)}. <StudyMarkdown inline>{c}</StudyMarkdown></li>)}
+        </ul>
+        <div className="test-sheet-space short" aria-hidden="true">
+          <div className="test-sheet-answer">Rätt ordning (bokstäver): <span className="test-sheet-line" /></div>
+        </div>
+      </>
+    );
+  }
+  if (q.answerType === 'self') return <div className="test-sheet-space tall" aria-hidden="true" />;
+  return (
+    <div className="test-sheet-space" aria-hidden="true">
+      <div className="test-sheet-answer">
+        Svar: <span className="test-sheet-line" />{q.unitLabel ? ` ${q.unitLabel}` : ''}
+        {q.answerType === 'factors' && <span className="t-hand muted" style={{ fontSize: 13 }}> (faktorerna med · emellan)</span>}
+      </div>
+    </div>
+  );
+}
 
 export default function PluggaTestPaper() {
   const { id } = useParams();
@@ -74,27 +113,18 @@ export default function PluggaTestPaper() {
         <p className="t-hand muted" style={{ margin: '6px 0 0', fontSize: 14 }}>Poängen skrivs som E/C/A, t.ex. (1/1/0) = en E-poäng och en C-poäng. Skriv frågans kod vid varje svar.</p>
 
         <ol className="test-sheet-questions">
-          {questions.map((q) => (
-            <li key={q.itemId}>
-              <div className="row between" style={{ gap: 8, alignItems: 'baseline' }}>
-                <span className="study-code">{q.code}</span>
-                <span className="t-hand">({pointsText(q.points)})</span>
-              </div>
-              <div style={{ marginTop: 6 }}><StudyMarkdown>{q.prompt}</StudyMarkdown></div>
-              {q.answerType === 'choice' ? (
-                <ul className="test-sheet-choices">
-                  {q.choices.map((c, i) => (
-                    <li key={i}><span className="test-sheet-box" aria-hidden="true" /> {String.fromCharCode(65 + i)}. <StudyMarkdown inline>{c}</StudyMarkdown></li>
-                  ))}
-                </ul>
-              ) : q.answerType === 'self' ? (
-                <div className="test-sheet-space tall" aria-hidden="true" />
-              ) : (
-                <div className="test-sheet-space" aria-hidden="true">
-                  <div className="test-sheet-answer">Svar: <span className="test-sheet-line" />{q.unitLabel ? ` ${q.unitLabel}` : ''}</div>
+          {questions.map((q, i) => (
+            <Fragment key={q.itemId}>
+              {q.part && q.part !== questions[i - 1]?.part && <li className="test-sheet-part">{q.part}</li>}
+              <li value={q.n}>
+                <div className="row between" style={{ gap: 8, alignItems: 'baseline' }}>
+                  <span className="study-code">{q.code}</span>
+                  <span className="t-hand">({pointsText(q.points)})</span>
                 </div>
-              )}
-            </li>
+                <div style={{ marginTop: 6 }}><StudyMarkdown>{q.prompt}</StudyMarkdown></div>
+                <SheetAnswer q={q} />
+              </li>
+            </Fragment>
           ))}
         </ol>
         <footer className="t-hand muted test-sheet-foot">Fota dina svar och be din AI: "Rätta mitt övningsprov i Glosan".</footer>

@@ -96,7 +96,7 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
 }
 
 /** Bygg /plugga/ova-URL:en av ett omfång + valen i PracticePicker. */
-export function practiceUrl(scope, { mode, levels, count }) {
+export function practiceUrl(scope, { mode, levels, count, skill }) {
   const q = new URLSearchParams();
   if (scope.unitIds?.length) q.set('units', scope.unitIds.join(','));
   if (scope.folderId) q.set('folder', scope.folderId);
@@ -106,6 +106,7 @@ export function practiceUrl(scope, { mode, levels, count }) {
   if (scope.allTerms) q.set('allTerms', '1');
   if (mode) q.set('mode', mode);
   if (levels?.length) q.set('levels', levels.join(','));
+  if (skill) q.set('skill', skill);
   if (count) q.set('count', String(count));
   if (scope.back) q.set('back', scope.back);
   return `/plugga/ova?${q}`;

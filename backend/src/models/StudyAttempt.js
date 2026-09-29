@@ -26,6 +26,8 @@ const studyAttemptSchema = new mongoose.Schema({
   result: { type: String, enum: ['correct', 'partial', 'wrong'], required: true },
   given: { type: String, maxlength: 500, default: '' },
   feedback: { type: String, maxlength: 4000, default: '' },
+  // Mallövning: fröet som gav talen eleven såg (samma frö = samma tal).
+  seed: { type: Number, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

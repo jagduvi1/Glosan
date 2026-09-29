@@ -68,11 +68,12 @@ function PaperFeedback({ paper }) {
   );
 }
 
-function PaperButton({ code }) {
+function PaperButton({ code, prompt = null }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(`Rätta min lösning på Glosan-uppgift ${code}`);
+      // Mallövning: talen byts varje gång — skicka med uppgiften eleven faktiskt löste.
+      await navigator.clipboard.writeText(`Rätta min lösning på Glosan-uppgift ${code}${prompt ? `. Uppgiften jag löste: ${prompt}` : ''}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch { /* clipboard saknas — tipset räcker */ }
@@ -323,9 +324,10 @@ export default function PluggaUnit() {
                     <LevelPill level={e.level} />
                     <StateBadge state={e.state} />
                     {e.sourceRef && <span className="t-hand muted" style={{ fontSize: 13 }}>som {e.sourceRef}</span>}
+                    {e.templated && <span className="t-hand muted" style={{ fontSize: 13 }} title="Nya tal varje gång du övar">🎲 nya tal varje gång</span>}
                   </div>
                   <div className="row" style={{ gap: 4, alignItems: 'center' }}>
-                    <PaperButton code={e.code} />
+                    <PaperButton code={e.code} prompt={e.templated ? e.prompt : null} />
                     {unit.isOwner && (
                       <button type="button" className="trash-btn" title="Ta bort övningen" aria-label={`Ta bort ${e.code}`} onClick={() => removeItem(e)}>
                         🗑️

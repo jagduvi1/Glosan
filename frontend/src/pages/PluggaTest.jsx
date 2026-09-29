@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { fetchStudyTest, startStudyTest, submitStudyTest, assessStudyTest, pingStudySession } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
+import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
 import { CodeTag } from '../components/study/StudyBits';
 import { PointsLabel, GradeBadge, LimitsText, pointsText, pointsTotal } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -100,6 +101,23 @@ function Overview({ data, onStart, busy }) {
 }
 
 function QuestionInput({ q, value, onChange, invalid }) {
+  if (q.answerType === 'multi') {
+    return (
+      <>
+        <MultiChoice choices={q.choices} value={value || []} onChange={(v) => onChange(v.length ? v : undefined)} />
+        {invalid && <p className="error" style={{ margin: '6px 0 0' }}>{invalid}</p>}
+      </>
+    );
+  }
+  if (q.answerType === 'order') {
+    // Orört = obesvarat (ordningen är blandad och aldrig redan rätt).
+    return (
+      <>
+        <OrderList items={value || q.items} onChange={onChange} />
+        {invalid && <p className="error" style={{ margin: '6px 0 0' }}>{invalid}</p>}
+      </>
+    );
+  }
   if (q.answerType === 'choice') {
     return (
       <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label={`Svar på fråga ${q.n}`}>
@@ -142,7 +160,7 @@ function QuestionInput({ q, value, onChange, invalid }) {
           inputMode={q.answerType === 'number' ? 'decimal' : 'text'}
           autoComplete="off"
           maxLength={200}
-          placeholder={q.answerType === 'number' ? 'Svar, t.ex. 3,5' : 'Svar'}
+          placeholder={q.answerType === 'number' ? 'Svar, t.ex. 3,5' : q.answerType === 'factors' ? 't.ex. 2·3·3·5' : 'Svar'}
           aria-label={`Svar på fråga ${q.n}`}
           aria-invalid={Boolean(invalid)}
         />
@@ -367,8 +385,10 @@ export default function PluggaTest() {
 
       {run.attempt.resumed && <p className="t-hand muted" style={{ margin: 0 }}>Du fortsätter där du var.</p>}
 
-      {run.questions.map((q) => (
-        <div key={q.itemId} id={`q-${q.itemId}`} className="card card-lg" style={invalid[q.itemId] ? { outline: '3px solid var(--berry)' } : undefined}>
+      {run.questions.map((q, i) => (
+        <Fragment key={q.itemId}>
+        {q.part && q.part !== run.questions[i - 1]?.part && <h2 className="test-part">{q.part}</h2>}
+        <div id={`q-${q.itemId}`} className="card card-lg" style={invalid[q.itemId] ? { outline: '3px solid var(--berry)' } : undefined}>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
             <strong>Fråga {q.n}</strong>
             <CodeTag code={q.code} />
@@ -387,6 +407,7 @@ export default function PluggaTest() {
             />
           </div>
         </div>
+        </Fragment>
       ))}
 
       {error && <p className="error">{error}</p>}

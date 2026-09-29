@@ -59,6 +59,9 @@ const shareLinkLimiter = rateLimit({
 });
 
 const bad = (res, error) => res.status(400).json({ error });
+// Ett svar: text/tal som sträng, flervalsindex, eller en lista (flera rätta: index; ordna: texterna).
+const isAnswerValue = (v, maxLen) => (typeof v === 'string' && v.length <= maxLen) || Number.isInteger(v)
+  || (Array.isArray(v) && v.length <= 10 && v.every((x) => Number.isInteger(x) || (typeof x === 'string' && x.length <= 300)));
 const isIdList = (v, max = 200) => v === undefined || (Array.isArray(v) && v.length <= max && v.every((x) => typeof x === 'string'));
 
 /** Området om inloggad användare är skaparen, annars svarar den 404/403 och ger null. */
@@ -167,12 +170,16 @@ router.post('/sessions', async (req, res, next) => {
       return bad(res, 'unitIds must be an array of ids');
     }
     if (b.folderId !== undefined && typeof b.folderId !== 'string') return bad(res, 'folderId must be an id');
+    if (b.skills !== undefined && (!Array.isArray(b.skills) || b.skills.length > 10 || b.skills.some((x) => typeof x !== 'string' || x.length > 80))) {
+      return bad(res, 'skills must be a short array of skill names');
+    }
     if (b.levels !== undefined && (!Array.isArray(b.levels) || b.levels.some((l) => !LEVELS.includes(l)))) {
       return bad(res, 'levels must be a subset of E, C, A');
     }
     const result = await startSession(req.user.id, {
       unitIds: b.unitIds,
       folderId: b.folderId,
+      skills: b.skills,
       subject: typeof b.subject === 'string' ? b.subject : undefined,
       group: typeof b.group === 'string' ? b.group : undefined,
       term: typeof b.term === 'string' ? b.term : undefined,
@@ -188,19 +195,21 @@ router.post('/sessions', async (req, res, next) => {
   }
 });
 
-// POST /api/study/sessions/:id/answer — Body: { itemId, answer? | self? }
+// POST /api/study/sessions/:id/answer — Body: { itemId, answer? | self?, seed? }
+// (seed = mallövningens frö, se services/study/templates.js)
 // Rättas på servern; svaret innehåller facit och lösning.
 router.post('/sessions/:id/answer', async (req, res, next) => {
   try {
-    const { itemId, answer, self } = req.body || {};
-    if (answer !== undefined && !(typeof answer === 'string' && answer.length <= 200) && !Number.isInteger(answer)) {
-      return bad(res, 'answer must be a short string or a choice index');
+    const { itemId, answer, self, seed } = req.body || {};
+    if (seed !== undefined && !(Number.isInteger(seed) && seed > 0)) return bad(res, 'seed must be a positive integer');
+    if (answer !== undefined && !isAnswerValue(answer, 200)) {
+      return bad(res, 'answer must be a short string, a choice index or a short list');
     }
     if (self !== undefined && typeof self !== 'string') return bad(res, 'self must be a string');
     const access = await loadItem(req.user.id, itemId, 'read');
     // Provfrågor rättas bara i ett prov — annars kunde ett övningspass visa provets facit.
     if (access.error || access.item.usage === 'test') return res.status(404).json({ error: 'Uppgiften hittades inte.' });
-    const result = await answerInSession(req.user.id, req.params.id, access.item, access.unit, { answer, self });
+    const result = await answerInSession(req.user.id, req.params.id, access.item, access.unit, { answer, self, seed });
     if (result.error) return res.status(404).json({ error: 'Passet är avslutat — starta ett nytt.' });
     if (result.invalid) return res.status(422).json({ invalid: true, message: result.message });
     res.json(result);
@@ -315,8 +324,8 @@ router.post('/tests/attempts/:id/submit', async (req, res, next) => {
     if (!Array.isArray(answers) || answers.length > 60) return bad(res, 'answers must be an array');
     for (const a of answers) {
       if (!a || typeof a.itemId !== 'string') return bad(res, 'every answer needs an itemId');
-      if (a.answer !== undefined && a.answer !== null && !(typeof a.answer === 'string' && a.answer.length <= 2000) && !Number.isInteger(a.answer)) {
-        return bad(res, 'answer must be a string or a choice index');
+      if (a.answer !== undefined && a.answer !== null && !isAnswerValue(a.answer, 2000)) {
+        return bad(res, 'answer must be a string, a choice index or a short list');
       }
     }
     const result = await submitTest(req.user.id, req.params.id, answers);

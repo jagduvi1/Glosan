@@ -21,6 +21,8 @@ const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { activityFor } = require('../../services/study/activity');
 const { deleteItems } = require('../../services/study/itemDeletion');
+const { figureProblems } = require('../../services/study/figures');
+const { validateTemplate, instance } = require('../../services/study/templates');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
 const { loadTest, testItems, recordPaperTest } = require('../../services/study/tests');
 const G = require('../../services/study/testGrading');
@@ -57,8 +59,10 @@ const cardInput = z.object({
 const answerInput = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('number'),
-    value: z.number().describe('The exact answer as a number (use a dot in JSON: 3.5)'),
+    value: z.number().optional().describe('The exact answer as a number (use a dot in JSON: 3.5). In a template exercise use expr instead.'),
+    expr: z.string().trim().max(200).optional().describe('Template exercises only: the answer as an expression of the variables, e.g. "d * 10^k"'),
     tolerance: z.number().min(0).optional().describe('Allowed deviation, e.g. 0.05 when the answer is rounded to one decimal'),
+    exact: z.boolean().optional().describe('true when the exact decimals are the point (0,043 must not pass as 0,04) — silences the rounding warning'),
     unit: z.string().trim().max(20).optional().describe('e.g. "cm", "kr", "%", "m/s" — a missing unit is forgiven, a wrong one is not')
   }),
   z.object({
@@ -73,8 +77,40 @@ const answerInput = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('self'),
     model_answer: z.string().trim().min(1).max(4000).describe('Model answer; for SO/NO/history describe what an E, C and A answer contains')
+  }),
+  z.object({
+    type: z.literal('multi'),
+    choices: z.array(z.string().trim().min(1).max(300)).min(2).max(8),
+    correct_indices: z.array(z.number().int().min(0)).min(1).max(8).describe('0-based indexes of ALL correct choices, e.g. "Vilka av talen är primtal?"')
+  }),
+  z.object({
+    type: z.literal('order'),
+    items: z.array(z.string().trim().min(1).max(300)).min(2).max(8).describe('The items in the CORRECT order (smallest first, earliest first …) — the app shuffles them for the student')
+  }),
+  z.object({
+    type: z.literal('factors'),
+    factors: z.array(z.number().int().min(2).max(1000000000)).min(1).max(30)
+      .describe('The factors in any order, e.g. [2, 3, 3, 5] for "Primtalsfaktorisera 90" — the student may write 2·3·3·5, 3·2·5·3 or 2·3²·5')
   })
 ]);
+
+const templateVar = z.object({
+  name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,15}$/, 'letters, digits and _'),
+  int: z.tuple([z.number().int(), z.number().int()]).optional().describe('A whole number in [min, max], e.g. [1000, 99999]'),
+  decimal: z.tuple([z.number(), z.number()]).optional().describe('A decimal number in [min, max] (set decimals)'),
+  decimals: z.number().int().min(1).max(4).optional(),
+  pick: z.array(z.number()).min(1).max(50).optional().describe('One of these numbers, e.g. [10, 100, 1000]'),
+  calc: z.string().trim().max(200).optional().describe('Computed from earlier variables, e.g. "digit(n, k)"')
+}).describe('Exactly one of int, decimal, pick or calc');
+
+const templateInput = z.object({
+  vars: z.array(templateVar).min(1).max(12),
+  where: z.array(z.string().trim().max(200)).max(8).optional().describe('Conditions every instance meets, e.g. ["d != 0", "n % 3 == 0"]')
+}).describe(
+  'Makes a DRILL exercise that gets new numbers every time the student meets it, so it can\'t be learned by heart. ' +
+  'Write {{name}} or {{ expression }} in prompt, hints and solution ({{name:tex}} inside $…$), and give the answer as answer.expr. ' +
+  'Operators + - * / % ^ and comparisons; functions round(x,d), floor, ceil, abs, sqrt, min, max, gcd, lcm, digit(n,k) (k=0 ones, 1 tens, −1 tenths), digits(n), posname(k) ("tiotal", "hundradel" …).'
+);
 
 const exerciseInput = z.object({
   prompt: z.string().trim().min(1).max(4000).describe('The task (Markdown + LaTeX)'),
@@ -83,11 +119,63 @@ const exerciseInput = z.object({
   hints: z.array(z.string().trim().min(1).max(1000)).max(5).optional().describe('1–3 hints that nudge without giving the answer away'),
   level: level.describe('E = easy (lätt), C = medium, A = hard — follow the book\'s own level markings'),
   skill: z.string().trim().max(80).optional().describe('What it trains, e.g. "ekvationer med x i båda led"'),
-  source_ref: z.string().trim().max(60).optional().describe('The book exercise it is modelled on, e.g. "uppg 3.14"')
+  source_ref: z.string().trim().max(60).optional().describe('The book exercise it is modelled on, e.g. "uppg 3.14"'),
+  template: templateInput.optional()
 });
 
 // ── hjälpare ─────────────────────────────────────────────────────────────────
 const toDate = (s) => (s ? new Date(`${s}T12:00:00Z`) : null);
+
+const norm = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('sv');
+
+/** Antal decimaler i ett tal som det skrivs (0,043 → 3; 1/3 → många). */
+function decimalsOf(x) {
+  const s = String(x);
+  if (/e/i.test(s)) return 10;
+  return (s.split('.')[1] || '').length;
+}
+
+/**
+ * En uppgifts "fingeravtryck": typ, fråga och facit. Samma fingeravtryck i
+ * samma område = en dubblett — typiskt när AI:n gör om ett anrop som faktiskt
+ * gick igenom (svaret kom aldrig fram).
+ */
+function itemSignature(d) {
+  const a = d.answer || {};
+  return JSON.stringify([
+    d.kind,
+    norm(d.prompt),
+    d.kind === 'card' ? norm(d.back) : [
+      a.type, a.value ?? null, a.expr ?? null, (a.choices || []).map(norm), a.correctIndex ?? null,
+      a.correctIndices || [], (a.accepted || []).map(norm), norm(a.modelAnswer), a.factors || []
+    ]
+  ]);
+}
+
+/**
+ * Dela upp nya uppgifter i nya och dubbletter (mot områdets övningsuppgifter
+ * och inom samma anrop). Returnerar { fresh, duplicates: ['MA2-14', 'nr 3 i anropet', …] }.
+ */
+async function withoutDuplicates(unit, docs) {
+  const existing = await StudyItem.find({ unit: unit._id, usage: 'practice' }, 'number kind prompt back answer').lean();
+  const seen = new Map(existing.map((e) => [itemSignature(e), itemCode(unit, e)]));
+  const fresh = [];
+  const duplicates = [];
+  docs.forEach((d, i) => {
+    const sig = itemSignature(d);
+    if (seen.has(sig)) {
+      duplicates.push(seen.get(sig));
+      return;
+    }
+    seen.set(sig, `nr ${i + 1} i samma anrop`);
+    fresh.push(d);
+  });
+  return { fresh, duplicates };
+}
+
+const duplicateWarning = (dups, what) => (dups.length
+  ? [`Skipped ${dups.length} ${what} that already exist (${dups.slice(0, 10).join(', ')}${dups.length > 10 ? ', …' : ''}) — an earlier call probably went through. Check with get_study_unit before adding more.`]
+  : []);
 
 function unitError(access) {
   return access.error === 'forbidden' ? fail('forbidden', MSG_OWNER_ONLY) : fail('not_found', MSG_UNIT_NOT_FOUND);
@@ -96,22 +184,96 @@ function unitError(access) {
 function answerOut(a) {
   if (!a) return null;
   switch (a.type) {
-    case 'number': return { type: 'number', value: a.value, tolerance: a.tolerance || 0, unit: a.unit || '' };
+    case 'number': return { type: 'number', ...(a.expr ? { expr: a.expr } : { value: a.value }), tolerance: a.tolerance || 0, unit: a.unit || '' };
     case 'choice': return { type: 'choice', choices: a.choices, correct_index: a.correctIndex };
     case 'text': return { type: 'text', accepted: a.accepted };
     case 'self': return { type: 'self', model_answer: a.modelAnswer };
+    case 'multi': return { type: 'multi', choices: a.choices, correct_indices: a.correctIndices };
+    case 'order': return { type: 'order', items: a.choices };
+    case 'factors': return { type: 'factors', factors: a.factors };
     default: return null;
   }
 }
 
 function answerIn(a) {
   switch (a.type) {
-    case 'number': return { type: 'number', value: a.value, tolerance: a.tolerance || 0, unit: a.unit || '' };
+    case 'number': return { type: 'number', value: a.value, ...(a.expr ? { expr: a.expr } : {}), tolerance: a.tolerance || 0, unit: a.unit || '' };
     case 'choice': return { type: 'choice', choices: a.choices, correctIndex: a.correct_index };
     case 'text': return { type: 'text', accepted: a.accepted };
     case 'self': return { type: 'self', modelAnswer: a.model_answer };
+    case 'multi': return { type: 'multi', choices: a.choices, correctIndices: a.correct_indices };
+    case 'order': return { type: 'order', choices: a.items };
+    case 'factors': return { type: 'factors', factors: a.factors };
     default: return undefined;
   }
+}
+
+const FIGURE_HELP = 'Figures are ```svg blocks holding one <svg> with viewBox and width — shapes, lines and text only (no scripts, links, images, styles or animation).';
+
+/** Fel för första trasiga SVG-figuren i texterna, annars null. */
+function figureError(label, ...texts) {
+  const problem = texts.flat().filter(Boolean).flatMap(figureProblems)[0];
+  return problem ? fail('invalid_input', `${label}: ${problem}. ${FIGURE_HELP}`) : null;
+}
+
+/**
+ * Kontrollera och bygg övningar (add_exercises, create_practice_test).
+ * Returnerar { docs, warnings } eller { error }. `label` = "Exercise" eller
+ * "Question" i meddelandena. Toleransvarningen samlas till EN rad per anrop och
+ * gäller bara svar med fler än tre decimaler (1/3 = 0,3333…) — 0,043 är ofta
+ * precis det eleven ska räkna fram, och exact: true tystar den helt.
+ */
+function prepareExercises(list, label) {
+  const docs = [];
+  const needTolerance = [];
+  const samples = [];
+  for (const [i, ex] of list.entries()) {
+    const n = `${label} ${i + 1}`;
+    const a = ex.answer;
+    let template = null;
+    if (ex.template) {
+      if (a.type !== 'number' || !a.expr) {
+        return { error: fail('invalid_input', `${n}: a template needs a number answer with expr — the answer as an expression of the variables, e.g. "d * 10^k".`) };
+      }
+      const check = validateTemplate({ template: ex.template, answerExpr: a.expr, texts: [ex.prompt, ex.solution || '', ...(ex.hints || [])] });
+      if (check.error) return { error: fail('invalid_input', `${n}: template problem — ${check.error}.`) };
+      template = { vars: ex.template.vars, where: ex.template.where || [] };
+      samples.push({ [label.toLowerCase()]: i + 1, examples: check.samples.map((x) => ({ prompt: x.prompt, answer: x.answer })) });
+    } else if (a.type === 'number' && (a.expr || !Number.isFinite(a.value))) {
+      return { error: fail('invalid_input', a.expr ? `${n}: expr only works together with template.` : `${n}: a number answer needs value.`) };
+    }
+    if (a.type === 'choice' && a.correct_index >= a.choices.length) {
+      return { error: fail('invalid_input', `${n}: correct_index ${a.correct_index} is outside its ${a.choices.length} choices.`) };
+    }
+    if (a.type === 'multi' && (a.correct_indices.some((k) => k >= a.choices.length) || new Set(a.correct_indices).size !== a.correct_indices.length)) {
+      return { error: fail('invalid_input', `${n}: correct_indices must point at its ${a.choices.length} choices, each once.`) };
+    }
+    if (a.type === 'order' && new Set(a.items.map(norm)).size !== a.items.length) {
+      return { error: fail('invalid_input', `${n}: the items to order must all be different.`) };
+    }
+    if (a.type !== 'self' && !(ex.solution && ex.solution.trim())) {
+      return { error: fail('invalid_input', `${n}: add a worked solution (step by step) — every calculated or closed exercise needs one.`) };
+    }
+    const badFigure = figureError(n, ex.prompt, ex.solution, ex.hints, a.model_answer);
+    if (badFigure) return { error: badFigure };
+    if (a.type === 'number' && !template && !a.exact && !a.tolerance && decimalsOf(a.value) > 3) needTolerance.push(i + 1);
+    docs.push({
+      kind: 'exercise',
+      prompt: ex.prompt,
+      answer: answerIn(a),
+      solution: ex.solution || '',
+      hints: ex.hints || [],
+      level: ex.level,
+      skill: ex.skill || '',
+      sourceRef: ex.source_ref || '',
+      ...(template ? { template } : {})
+    });
+  }
+  const warnings = needTolerance.length
+    ? [`${label}(s) ${needTolerance.join(', ')}: the answer has more than three decimals and no tolerance, so a student who rounds is marked wrong. ` +
+      'If rounding is expected, add a tolerance (e.g. 0.005 for two decimals); if the exact value is the point, pass exact: true.']
+    : [];
+  return { docs, warnings, samples };
 }
 
 /** Ett kort/en övning MED facit — för AI:n (skapa, kontrollera, rätta papper). */
@@ -127,8 +289,19 @@ function itemFull(item, unit) {
     level: item.level || null,
     ...(item.skill ? { skill: item.skill } : {}),
     ...(item.sourceRef ? { source_ref: item.sourceRef } : {}),
-    ...(item.usage === 'test' ? { usage: 'test' } : {})
+    ...(item.usage === 'test' ? { usage: 'test' } : {}),
+    ...(item.template ? { template: item.template, example: templateExample(item) } : {})
   };
+}
+
+/** Ett exempel på en mallövning (frö 1), så AI:n ser hur den blir. */
+function templateExample(item) {
+  try {
+    const inst = instance(item, 1);
+    return { prompt: inst.prompt, answer: inst.answer.value, note: 'New numbers every time — on paper, read the student\x27s numbers from the photo and compute with answer.expr.' };
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 function unitMeta(unit) {
@@ -465,18 +638,32 @@ registerTool({
       pages: z.string().trim().max(60).optional()
     }).optional().describe('Where the material comes from, e.g. { book: "Matte Direkt 8", chapter: "3 Ekvationer", pages: "98–124" }'),
     exam_date: dateStr.optional().describe('Test date if there is one (YYYY-MM-DD)'),
-    pages: z.array(pageInput).max(10).optional().describe('Genomgångar: explanation, "så gör du" step by step, examples, common mistakes')
+    pages: z.array(pageInput).max(10).optional().describe('Genomgångar: explanation, "så gör du" step by step, examples, common mistakes'),
+    allow_duplicate: z.boolean().optional().describe('Only if the student really wants a second unit with the same title, subject and term')
   },
   handler: async (args, ctx) => {
     const count = await StudyUnit.countDocuments({ user: ctx.user.id });
     if (count >= MAX_UNITS_PER_USER) return fail('invalid_input', `The user already has ${count} units — archive or delete old ones first.`);
+    const badPageFigure = figureError('A page', (args.pages || []).map((p) => p.body));
+    if (badPageFigure) return badPageFigure;
+    // Dubblettskydd: samma titel + ämne + termin finns redan (t.ex. ett anrop som
+    // gick igenom fast svaret aldrig kom fram, och gjordes om).
+    const term = args.term || termFor();
+    if (!args.allow_duplicate) {
+      const same = (await StudyUnit.find({ user: ctx.user.id, subject: args.subject, term, archivedAt: null }, 'code title createdAt').lean())
+        .find((u) => norm(u.title) === norm(args.title));
+      if (same) {
+        return fail('conflict', `A unit with this title already exists: ${same.code} "${same.title}" (unit_id ${same._id}, created ${same.createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC). ` +
+          'Add to it with add_study_pages / add_flashcards / add_exercises instead. Only if the student really wants a second one, pass allow_duplicate: true.');
+      }
+    }
     const code = await StudyUnit.nextCode(ctx.user.id, args.subject);
     let unit;
     try {
       unit = await StudyUnit.create({
         user: ctx.user.id,
         subject: args.subject,
-        term: args.term || termFor(),
+        term,
         gradeYear: args.grade_year,
         code,
         title: args.title,
@@ -511,6 +698,8 @@ registerTool({
   handler: async (args, ctx) => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
+    const badFigure = figureError('A page', args.pages.map((p) => p.body));
+    if (badFigure) return badFigure;
     const existing = await StudyPage.countDocuments({ unit: access.unit._id });
     if (existing + args.pages.length > MAX_PAGES_PER_UNIT) return fail('invalid_input', `A unit holds at most ${MAX_PAGES_PER_UNIT} pages (it has ${existing}).`);
     const docs = await StudyPage.insertMany(args.pages.map((p, i) => ({
@@ -534,6 +723,8 @@ registerTool({
     order: z.number().int().min(0).max(100).optional()
   },
   handler: async (args, ctx) => {
+    const badFigure = figureError('The page', args.body);
+    if (badFigure) return badFigure;
     const page = isId(args.page_id) ? await StudyPage.findById(args.page_id) : null;
     if (!page) return fail('not_found', 'No such page. get_study_unit lists page ids.');
     const access = await loadUnit(ctx.user.id, page.unit, 'owner');
@@ -574,14 +765,25 @@ registerTool({
   handler: async (args, ctx) => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
-    const r = await insertItems(ctx, access.unit, args.cards.map((c) => ({
+    for (const [i, c] of args.cards.entries()) {
+      const badFigure = figureError(`Card ${i + 1}`, c.front, c.back);
+      if (badFigure) return badFigure;
+    }
+    const { fresh, duplicates } = await withoutDuplicates(access.unit, args.cards.map((c) => ({
       kind: 'card', prompt: c.front, back: c.back, level: c.level || null, skill: c.skill || ''
     })));
-    if (r.error) return r.error;
-    return ok(`Added ${r.inserted.length} card(s) to ${access.unit.code}`, {
-      codes: r.inserted.map((i) => itemCode(access.unit, i)),
+    const warnings = duplicateWarning(duplicates, 'card(s)');
+    const inserted = [];
+    if (fresh.length) {
+      const r = await insertItems(ctx, access.unit, fresh);
+      if (r.error) return r.error;
+      inserted.push(...r.inserted);
+    }
+    return ok(`Added ${inserted.length} card(s) to ${access.unit.code}`, {
+      codes: inserted.map((i) => itemCode(access.unit, i)),
+      ...(duplicates.length ? { skipped_duplicates: duplicates } : {}),
       url: unitUrl(access.unit)
-    });
+    }, warnings.length ? { warnings } : {});
   }
 });
 
@@ -590,8 +792,11 @@ registerTool({
   title: 'Add exercises',
   description:
     'Adds exercises (övningar) to a unit you created — your OWN exercises modelled on the book\'s (put the book exercise in source_ref), on levels E/C/A following the book\'s level markings. ' +
-    'Answer types: number (calculations), choice, text (short facts), self (open "förklara/resonera/visa" questions with a model answer). ' +
-    'Every number/choice/text exercise needs a worked solution. Returns each exercise\'s code (e.g. MA3-14) — the student writes it on paper when solving by hand.',
+    'Answer types: number (calculations), choice (one right), multi (several right: "Vilka är primtal?"), order (put in order: "Skriv talen i storleksordning"), ' +
+    'factors (a product in any order: "Primtalsfaktorisera 90"), text (short facts), self (open "förklara/resonera/visa" questions with a model answer). ' +
+    'Figures (number lines, factor trees with gaps, geometry): draw them as SVG in a ```svg block in the prompt. ' +
+    'Every exercise except self needs a worked solution. Identical exercises already in the unit are skipped (safe to retry). ' +
+    'Returns each exercise\'s code (e.g. MA3-14) — the student writes it on paper when solving by hand.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -599,32 +804,21 @@ registerTool({
   handler: async (args, ctx) => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
-    const warnings = [];
-    for (const [i, ex] of args.exercises.entries()) {
-      if (ex.answer.type === 'choice' && ex.answer.correct_index >= ex.answer.choices.length) {
-        return fail('invalid_input', `Exercise ${i + 1}: correct_index ${ex.answer.correct_index} is outside its ${ex.answer.choices.length} choices.`);
-      }
-      if (ex.answer.type !== 'self' && !(ex.solution && ex.solution.trim())) {
-        return fail('invalid_input', `Exercise ${i + 1}: add a worked solution (step by step) — every calculated or closed exercise needs one.`);
-      }
-      if (ex.answer.type === 'number' && !Number.isInteger(ex.answer.value) && !ex.answer.tolerance) {
-        warnings.push(`Exercise ${i + 1}: the answer ${ex.answer.value} is not an integer and has no tolerance — a student who rounds will be marked wrong. Consider a tolerance.`);
-      }
+    const prepared = prepareExercises(args.exercises, 'Exercise');
+    if (prepared.error) return prepared.error;
+    const { fresh, duplicates } = await withoutDuplicates(access.unit, prepared.docs);
+    const warnings = [...prepared.warnings, ...duplicateWarning(duplicates, 'exercise(s)')];
+    const inserted = [];
+    if (fresh.length) {
+      const r = await insertItems(ctx, access.unit, fresh);
+      if (r.error) return r.error;
+      inserted.push(...r.inserted);
     }
-    const r = await insertItems(ctx, access.unit, args.exercises.map((ex) => ({
-      kind: 'exercise',
-      prompt: ex.prompt,
-      answer: answerIn(ex.answer),
-      solution: ex.solution || '',
-      hints: ex.hints || [],
-      level: ex.level,
-      skill: ex.skill || '',
-      sourceRef: ex.source_ref || ''
-    })));
-    if (r.error) return r.error;
-    const levels = r.inserted.reduce((m, i) => ({ ...m, [i.level]: (m[i.level] || 0) + 1 }), {});
-    return ok(`Added ${r.inserted.length} exercise(s) to ${access.unit.code} (${Object.entries(levels).map(([k, v]) => `${v} ${k}`).join(', ')})`, {
-      codes: r.inserted.map((i) => itemCode(access.unit, i)),
+    const levels = inserted.reduce((m, i) => ({ ...m, [i.level]: (m[i.level] || 0) + 1 }), {});
+    return ok(`Added ${inserted.length} exercise(s) to ${access.unit.code}${inserted.length ? ` (${Object.entries(levels).map(([k, v]) => `${v} ${k}`).join(', ')})` : ''}`, {
+      codes: inserted.map((i) => itemCode(access.unit, i)),
+      ...(duplicates.length ? { skipped_duplicates: duplicates } : {}),
+      ...(prepared.samples.length ? { template_examples: prepared.samples } : {}),
       url: unitUrl(access.unit)
     }, warnings.length ? { warnings } : {});
   }
@@ -649,9 +843,12 @@ registerTool({
     hints: z.array(z.string().trim().min(1).max(1000)).max(5).optional(),
     level: level.optional(),
     skill: z.string().trim().max(80).optional(),
-    source_ref: z.string().trim().max(60).optional()
+    source_ref: z.string().trim().max(60).optional(),
+    template: templateInput.optional().describe('Exercises only — replaces the template (new numbers every time)')
   },
   handler: async (args, ctx) => {
+    const badFigure = figureError('The item', args.prompt, args.back, args.solution, args.hints, args.answer?.model_answer);
+    if (badFigure) return badFigure;
     const r = await resolveItem(ctx, args, 'owner');
     if (r.error) return r.error;
     const { item, unit } = r;
@@ -666,7 +863,18 @@ registerTool({
       if (args[arg] !== undefined) { item[field] = args[arg]; changed.push(arg); }
     }
     if (args.answer) { item.answer = answerIn(args.answer); changed.push('answer'); }
+    if (args.template) {
+      if (item.kind !== 'exercise' || item.usage === 'test') return fail('invalid_input', 'Only practice exercises can be templates.');
+      item.template = { vars: args.template.vars, where: args.template.where || [] };
+      changed.push('template');
+    }
     if (!changed.length) return fail('invalid_input', 'Nothing to change — pass at least one field.');
+    // En mallövning måste fortfarande gå att räkna ut efter ändringen.
+    if (item.template) {
+      if (item.answer?.type !== 'number' || !item.answer?.expr) return fail('invalid_input', 'A template exercise needs a number answer with expr.');
+      const check = validateTemplate({ template: item.template, answerExpr: item.answer.expr, texts: [item.prompt, item.solution || '', ...(item.hints || [])] });
+      if (check.error) return fail('invalid_input', `Template problem — ${check.error}.`);
+    }
     try {
       await item.save();
     } catch (err) {
@@ -801,6 +1009,8 @@ registerTool({
     minutes: z.number().min(0).max(120).optional().describe('How long the student worked on it, if they said')
   },
   handler: async (args, ctx) => {
+    const badFigure = figureError('The feedback', args.feedback);
+    if (badFigure) return badFigure;
     const r = await resolveItem(ctx, args, 'read');
     if (r.error) return r.error;
     const { item, unit } = r;
@@ -884,41 +1094,39 @@ registerTool({
     description: z.string().trim().max(1000).optional().describe('What it covers, allowed aids (miniräknare, formelblad), a tip'),
     time_limit_min: z.number().int().min(5).max(180).optional(),
     questions: z.array(exerciseInput.extend({
-      points: pointsInput.optional().describe('Points per level — default 1 point on the question\'s level')
+      points: pointsInput.optional().describe('Points per level — default 1 point on the question\'s level'),
+      part: z.string().trim().max(60).optional().describe('The test part it belongs to, e.g. "Del A — utan miniräknare". Questions of one part go together, in order.')
     })).min(1).max(40),
     grade_limits: z.object({
       E: z.object({ total: z.number().int().min(0) }).optional(),
       C: z.object({ total: z.number().int().min(0), c_or_a: z.number().int().min(0).optional() }).optional(),
       A: z.object({ total: z.number().int().min(0), a: z.number().int().min(0).optional() }).optional()
-    }).optional().describe('Only if the book/teacher gives limits, e.g. { E: { total: 8 }, C: { total: 14, c_or_a: 4 }, A: { total: 19, a: 3 } }')
+    }).optional().describe('Only if the book/teacher gives limits, e.g. { E: { total: 8 }, C: { total: 14, c_or_a: 4 }, A: { total: 19, a: 3 } }'),
+    allow_duplicate: z.boolean().optional().describe('Only if the student really wants a second test with the same title in this unit')
   },
   handler: async (args, ctx) => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
     const { unit } = access;
+    if (!args.allow_duplicate) {
+      const same = (await StudyTest.find({ unit: unit._id }, 'title').lean()).find((t) => norm(t.title) === norm(args.title));
+      if (same) {
+        return fail('conflict', `This unit already has a test called "${same.title}" (test_id ${same._id}) — an earlier call probably went through. ` +
+          'Check it with get_practice_test. Only if the student wants a second one, pass allow_duplicate: true.');
+      }
+    }
+    if (args.questions.some((q) => q.template)) {
+      return fail('invalid_input', 'Templates are for practice (add_exercises): a test needs fixed numbers, so the printed sheet, the app and your checking all match.');
+    }
+    const prepared = prepareExercises(args.questions, 'Question');
+    if (prepared.error) return prepared.error;
     const points = [];
     for (const [i, q] of args.questions.entries()) {
-      if (q.answer.type === 'choice' && q.answer.correct_index >= q.answer.choices.length) {
-        return fail('invalid_input', `Question ${i + 1}: correct_index ${q.answer.correct_index} is outside its ${q.answer.choices.length} choices.`);
-      }
-      if (q.answer.type !== 'self' && !(q.solution && q.solution.trim())) {
-        return fail('invalid_input', `Question ${i + 1}: add a worked solution — the student sees it after the test.`);
-      }
       const p = q.points ? { E: q.points.E || 0, C: q.points.C || 0, A: q.points.A || 0 } : G.defaultPoints(q.level);
       if (p.E + p.C + p.A < 1) return fail('invalid_input', `Question ${i + 1}: give it at least 1 point.`);
       points.push(p);
     }
-    const r = await insertItems(ctx, unit, args.questions.map((q) => ({
-      kind: 'exercise',
-      usage: 'test',
-      prompt: q.prompt,
-      answer: answerIn(q.answer),
-      solution: q.solution || '',
-      hints: q.hints || [],
-      level: q.level,
-      skill: q.skill || '',
-      sourceRef: q.source_ref || ''
-    })));
+    const r = await insertItems(ctx, unit, prepared.docs.map((d) => ({ ...d, usage: 'test' })));
     if (r.error) return r.error;
     const max = G.sumPoints(points);
     let test;
@@ -929,7 +1137,7 @@ registerTool({
         title: args.title,
         description: args.description || '',
         timeLimitMin: args.time_limit_min ?? null,
-        questions: r.inserted.map((item, i) => ({ item: item._id, points: points[i] })),
+        questions: r.inserted.map((item, i) => ({ item: item._id, points: points[i], part: args.questions[i].part || '' })),
         gradeLimits: G.gradeLimitsFrom(args.grade_limits, max)
       });
     } catch (err) {
@@ -943,7 +1151,7 @@ registerTool({
       max_points: max,
       grade_limits: test.gradeLimits,
       url: testUrl(test._id)
-    });
+    }, prepared.warnings.length ? { warnings: prepared.warnings } : {});
   }
 });
 
@@ -976,7 +1184,7 @@ registerTool({
       unit: unitMeta(unit),
       max_points: G.sumPoints(qs.map((x) => x.q.points)),
       grade_limits: test.gradeLimits,
-      questions: qs.map((x) => ({ n: x.n, points: { E: x.q.points.E, C: x.q.points.C, A: x.q.points.A }, ...itemFull(x.item, unit) })),
+      questions: qs.map((x) => ({ n: x.n, ...(x.q.part ? { part: x.q.part } : {}), points: { E: x.q.points.E, C: x.q.points.C, A: x.q.points.A }, ...itemFull(x.item, unit) })),
       my_attempts: tries.map((a) => ({ at: a.finishedAt, source: a.source, score: a.score, max: a.max, estimated_grade: a.grade })),
       url: testUrl(test._id)
     });
@@ -1008,6 +1216,8 @@ registerTool({
     minutes: z.number().min(0).max(180).optional().describe('How long the student worked, if they said')
   },
   handler: async (args, ctx) => {
+    const badFigure = figureError('The feedback', args.overall_feedback, args.results.map((r) => r.feedback));
+    if (badFigure) return badFigure;
     const t = await resolveTest(ctx, args);
     if (t.error) return t.error;
     const { test, unit } = t;
@@ -1033,6 +1243,7 @@ registerTool({
       max: out.max,
       estimated_grade: out.grade,
       xp_earned: out.xpEarned,
+      ...(out.bySkill.length ? { by_skill: out.bySkill.map((r) => ({ skill: r.skill, points: `${r.earned}/${r.max}`, codes: r.codes })) } : {}),
       ...(out.missing.length ? { not_graded: out.missing } : {}),
       url: `${testUrl(test._id)}/resultat/${out.attemptId}`
     });

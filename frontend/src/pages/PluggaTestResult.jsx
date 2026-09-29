@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyTestAttempt } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
-import { CodeTag } from '../components/study/StudyBits';
+import { CodeTag, practiceUrl } from '../components/study/StudyBits';
 import { PointsLabel, GradeBadge, LevelBars, LimitsText } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
@@ -70,10 +70,45 @@ export default function PluggaTestResult() {
         </div>
       )}
 
+      {data.bySkill?.length > 0 && (
+        <div className="card">
+          <h3 style={{ margin: '0 0 4px' }}>Per färdighet</h3>
+          <p className="t-hand muted" style={{ margin: '0 0 10px', fontSize: 14 }}>Svagast först — öva på just det som inte satt.</p>
+          <div className="stack" style={{ gap: 10 }}>
+            {data.bySkill.map((s) => {
+              const pct = s.max ? Math.round((s.earned / s.max) * 100) : 0;
+              return (
+                <div key={s.skill} className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="grow" style={{ minWidth: 180 }}>
+                    <div className="row between" style={{ gap: 8 }}>
+                      <strong style={{ fontSize: 15 }}>{s.skill}</strong>
+                      <span className="t-hand muted" style={{ fontSize: 14 }}>{s.earned} av {s.max} p</span>
+                    </div>
+                    <div className="bar-shell" style={{ height: 10, marginTop: 4 }}>
+                      <div className={`bar-fill ${pct >= 70 ? 'bar-fill-leaf' : pct >= 40 ? 'bar-fill-mustard' : 'bar-fill-coral'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  {pct < 100 && (
+                    <Link
+                      className="btn btn-sm"
+                      to={practiceUrl({ unitIds: [data.unitId], back: `/plugga/prov/${data.testId}/resultat/${data.id}` }, { mode: 'exercises', count: 10, skill: s.skill })}
+                    >
+                      Öva
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <h3 style={{ margin: '0 0 6px' }}>Fråga för fråga</h3>
-        {data.answers.map((a) => (
-          <div key={a.n} className="unit-item">
+        {data.answers.map((a, i) => (
+          <Fragment key={a.n}>
+          {a.part && a.part !== data.answers[i - 1]?.part && <h4 className="test-part" style={{ fontSize: 18, margin: '14px 0 0' }}>{a.part}</h4>}
+          <div className="unit-item">
             <div className="row between" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <strong>{a.n}.</strong>
@@ -105,6 +140,7 @@ export default function PluggaTestResult() {
               </details>
             )}
           </div>
+          </Fragment>
         ))}
       </div>
 

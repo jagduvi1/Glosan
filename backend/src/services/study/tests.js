@@ -9,9 +9,9 @@ const StudyUnit = require('../../models/StudyUnit');
 const StudySession = require('../../models/StudySession');
 const { getSubject } = require('../../config/subjects');
 const { termLabel } = require('../../utils/term');
-const { gradeAnswer, formatNumber } = require('./grading');
+const { gradeAnswer, formatNumber, formatFactors, describeAnswer } = require('./grading');
 const { loadUnit, isId, oid, itemCode } = require('./access');
-const { recordAttempt, XP_CORRECT, XP_PARTIAL } = require('./practice');
+const { recordAttempt, shuffledDifferent, XP_CORRECT, XP_PARTIAL } = require('./practice');
 const { awardStudyActivity } = require('../gamification');
 const G = require('./testGrading');
 
@@ -52,10 +52,12 @@ function publicQuestion({ n, q, item }, unit) {
     code: itemCode(unit, item),
     prompt: item.prompt,
     answerType: type,
-    ...(type === 'choice' ? { choices: item.answer.choices } : {}),
+    ...(type === 'choice' || type === 'multi' ? { choices: item.answer.choices } : {}),
+    ...(type === 'order' ? { items: shuffledDifferent(item.answer.choices) } : {}),
     ...(type === 'number' && item.answer.unit ? { unitLabel: item.answer.unit } : {}),
     level: item.level || null,
-    points: maxOf(q.points)
+    points: maxOf(q.points),
+    part: q.part || ''
   };
 }
 
@@ -64,6 +66,9 @@ function expectedAnswer(item) {
   if (a.type === 'number') return `${formatNumber(a.value)}${a.unit ? ` ${a.unit}` : ''}`;
   if (a.type === 'choice') return a.choices?.[a.correctIndex] ?? '';
   if (a.type === 'text') return a.accepted?.[0] ?? '';
+  if (a.type === 'multi') return (a.correctIndices || []).map((i) => a.choices?.[i]).filter(Boolean).join(', ');
+  if (a.type === 'order') return (a.choices || []).join(' → ');
+  if (a.type === 'factors') return formatFactors(a.factors || []);
   return '';
 }
 
@@ -278,7 +283,7 @@ async function submitTest(userId, attemptId, answers = []) {
   const rows = [];
   for (const x of qs) {
     const raw = given.get(String(x.item._id));
-    const empty = raw === undefined || raw === null || (typeof raw === 'string' && !raw.trim());
+    const empty = raw === undefined || raw === null || (typeof raw === 'string' && !raw.trim()) || (Array.isArray(raw) && raw.length === 0);
     const max = maxOf(x.q.points);
     const row = { item: x.item._id, code: itemCode(unit, x.item), max: G.withTotal(max) };
     const type = x.item.answer?.type;
@@ -292,8 +297,7 @@ async function submitTest(userId, attemptId, answers = []) {
         invalid.push({ n: x.n, itemId: String(x.item._id), message: g.message });
         continue;
       }
-      const shown = type === 'choice' ? x.item.answer.choices[Number(raw)] : String(raw);
-      rows.push({ ...row, given: String(shown ?? '').slice(0, 500), result: g.result, points: G.withTotal(G.pointsForResult(max, g.result)) });
+      rows.push({ ...row, given: describeAnswer(x.item, raw).slice(0, 500), result: g.result, points: G.withTotal(G.pointsForResult(max, g.result)) });
     }
   }
   if (invalid.length) return { invalid };
@@ -418,7 +422,11 @@ async function recordPaperTest(userId, test, unit, { results = [], overallFeedba
     startedAt: now, submittedAt: now, answers, overallFeedback: String(overallFeedback || '').slice(0, 4000)
   });
   const out = await finalize(attempt, { test, unit, qs });
-  return { ...out, missing: qs.filter((x) => !byItem.has(String(x.item._id))).map((x) => itemCode(unit, x.item)) };
+  return {
+    ...out,
+    bySkill: skillReport(answers, new Map(qs.map((x) => [String(x.item._id), x.item]))),
+    missing: qs.filter((x) => !byItem.has(String(x.item._id))).map((x) => itemCode(unit, x.item))
+  };
 }
 
 /** Resultatsidan för ett avslutat försök (bara ägaren). Facit visas först när provet är klart. */
@@ -428,10 +436,11 @@ async function attemptView(userId, attemptId) {
   if (!a) return null;
   if (a.status !== 'done') return { id: String(a._id), status: a.status, testId: String(a.test) };
   const [test, items] = await Promise.all([
-    StudyTest.findById(a.test, 'gradeLimits').lean(),
+    StudyTest.findById(a.test, 'gradeLimits questions').lean(),
     StudyItem.find({ _id: { $in: a.answers.map((x) => x.item) } }).lean()
   ]);
   const byId = new Map(items.map((i) => [String(i._id), i]));
+  const partOf = new Map((test?.questions || []).map((q) => [String(q.item), q.part || '']));
   const s = getSubject(a.subject);
   return {
     id: String(a._id),
@@ -469,13 +478,34 @@ async function attemptView(userId, attemptId) {
         expected: item ? expectedAnswer(item) : '',
         solution: item?.solution || '',
         modelAnswer: item?.answer?.modelAnswer || '',
-        feedback: row.feedback || ''
+        feedback: row.feedback || '',
+        part: partOf.get(String(row.item)) || '',
+        skill: item?.skill || ''
       };
-    })
+    }),
+    bySkill: skillReport(a.answers, byId)
   };
+}
+
+/**
+ * Resultat per färdighet (uppgifternas `skill`): poäng av max och koderna —
+ * så eleven ser VAD som behöver övas, och kan öva på just det.
+ */
+function skillReport(answers, itemById) {
+  const by = new Map();
+  for (const row of answers) {
+    const skill = itemById.get(String(row.item))?.skill;
+    if (!skill) continue;
+    if (!by.has(skill)) by.set(skill, { skill, earned: 0, max: 0, codes: [] });
+    const r = by.get(skill);
+    r.earned += row.points?.total || 0;
+    r.max += row.max?.total || 0;
+    r.codes.push(row.code);
+  }
+  return [...by.values()].sort((x, y) => (x.earned / x.max) - (y.earned / y.max));
 }
 
 module.exports = {
   XP_TEST_BONUS, loadTest, testItems, testsForUnit, testOverview, testSheet, startTest, submitTest, assessTest,
-  recordPaperTest, attemptView, expectedAnswer, publicQuestion
+  recordPaperTest, attemptView, expectedAnswer, publicQuestion, skillReport
 };
