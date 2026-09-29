@@ -19,6 +19,9 @@ const coopStreaksRoute = require('./routes/coopStreaks');
 const duelsRoute = require('./routes/duels');
 const leaderboardsRoute = require('./routes/leaderboards');
 const adminRoute = require('./routes/admin');
+const mcpRoute = require('./routes/mcp');
+const mcpOAuthRoute = require('./routes/mcpOAuth');
+const wellKnownOAuthRoute = require('./routes/wellKnownOAuth');
 
 const app = express();
 
@@ -43,12 +46,21 @@ app.use(helmet({
 
 app.use(compression());
 app.use(cookieParser());
+
+// OAuth-discovery för MCP-connectorn (RFC 8414 + RFC 9728). Måste ligga på
+// originets rot och före CORS/limitrarna — se routes/wellKnownOAuth.js.
+// nginx proxar /.well-known/oauth-* hit (frontend/nginx.conf).
+app.use('/.well-known', wellKnownOAuthRoute);
+
 // Bildimporten skickar en nerskalad JPEG som base64 och spränger därför
 // 64 kB-taket nedan. Den högre gränsen gäller BARA den routen — resten av
 // API:t ligger kvar på 64 kB, vilket är ett medvetet skydd mot uppsvällda
 // requests. Monterad FÖRE den globala parsern: body-parser sätter req._body
 // och den globala hoppar då över en redan parsad body.
 app.use('/api/ai/parse-image', express.json({ limit: '2mb' }));
+// MCP: ett create_list-anrop med ett helt kapitels ord kan passera 64 kB.
+// Gäller hela /api/mcp-prefixet (inkl. OAuth-endpointsen); nginx har samma tak.
+app.use('/api/mcp', express.json({ limit: '1mb' }));
 app.use(express.json({ limit: '64kb' }));
 
 // FRONTEND_URL kan vara en enstaka URL eller en kommaseparerad lista —
@@ -70,11 +82,22 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// MCP-protokollet och dess OAuth-endpoints är undantagna från de globala
+// per-IP-limitrarna: hostade AI-connectors (claude.ai, ChatGPT) går ut från en
+// liten delad IP-pool, så alla deras användare skulle dela EN hink. De har egna
+// limitrar i routes/mcp.js och routes/mcpOAuth.js. /api/mcp/connections (Profil-
+// sidan) är en vanlig webbapp-route och omfattas som vanligt.
+const isMcpProtocol = (req) => {
+  const p = (req.baseUrl || '') + (req.path || '');
+  return p === '/api/mcp' || p === '/api/mcp/' || p.startsWith('/api/mcp/oauth/');
+};
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: isMcpProtocol,
   handler: (req, res) => res.status(429).json({ error: 'Too many requests, please try again later' })
 });
 app.use('/api/', apiLimiter);
@@ -84,7 +107,7 @@ const writeLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+  skip: (req) => isMcpProtocol(req) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
   handler: (req, res) => res.status(429).json({ error: 'Too many write requests, please try again later' })
 });
 app.use('/api/', writeLimiter);
@@ -95,6 +118,14 @@ app.use('/api/auth', authRoute);
 // efter authRoute; subpaths (/google, /sso/providers) krockar inte med
 // lösenordsrouterna.
 app.use('/api/auth', oauthRoute);
+// MCP-servern (Model Context Protocol) — låter claude.ai m.fl. skapa och
+// redigera användarens listor. Se docs/mcp.md. Monteras FÖRE routrarna på
+// '/api' nedan: glosor-routern kör router.use(requireAuth) på hela
+// /api-prefixet och skulle annars svara 401 på varje OAuth-anrop och varje
+// glo_-token innan de når hit (app.mcp.test.js vaktar ordningen). OAuth-
+// servern före /api/mcp så /api/mcp/oauth/* hamnar rätt.
+app.use('/api/mcp/oauth', mcpOAuthRoute);
+app.use('/api/mcp', mcpRoute);
 app.use('/api/lists', listsRoute);
 // listInvites monteras på /api/ eftersom routes har paths som
 // /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)

@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Token = require('../models/Token');
 const emailService = require('../services/email');
 const { requireAuth } = require('../middleware/auth');
+const { revokeMcpConnectionsForUser } = require('../services/mcpOAuth');
 // Token-utgivningen bor i en service så Google-SSO-flödet (routes/oauth.js)
 // skapar exakt samma sessioner som lösenordsflödet här.
 const {
@@ -315,6 +316,9 @@ router.post('/reset-password', authLimiter, async (req, res) => {
       user.emailVerifiedAt = new Date();
     }
     await user.save();
+    // Anslutna AI:er (MCP) är tredjepartsbehörigheter — "säkra mitt konto"
+    // ska avsluta dem också, precis som inloggningssessionerna ovan.
+    await revokeMcpConnectionsForUser(user._id);
     // Skicka bekräftelse efter ändring (best-effort). Om angripare kapat
     // konto via stulen reset-token får riktiga ägaren ändå mail om att
     // lösenord just ändrades.
