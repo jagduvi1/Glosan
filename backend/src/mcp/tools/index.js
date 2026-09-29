@@ -5,5 +5,6 @@ require('./meta');
 require('./lists');
 require('./words');
 require('./categories');
+require('./study');
 
 module.exports = {};
