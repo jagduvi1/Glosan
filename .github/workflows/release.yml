@@ -9,8 +9,13 @@ env:
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/glosan
 
 jobs:
+  # Samma kontroller som på varje PR — inga images byggs förrän de är gröna.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-backend:
     name: Build Backend Image
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,9 +45,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
 
   build-frontend:
     name: Build Frontend Image
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read

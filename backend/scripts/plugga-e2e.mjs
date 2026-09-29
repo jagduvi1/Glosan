@@ -15,9 +15,11 @@ const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 
 async function main() {
   console.log(`Plugga e2e against ${BASE}`);
-  const A = await register('plugga');
-  const B = await register('pluggb');
+  const users = [];
+  const signUp = async (prefix) => { const u = await register(prefix); users.push(u); return u; };
   try {
+    const A = await signUp('plugga');
+    const B = await signUp('pluggb');
     // Utan FEATURES_FOR_ALL=study slås Plugga på för testanvändaren direkt i den lokala databasen.
     if ((await api('/api/study/overview', A.token)).status !== 200) grantFeatureInLocalDb(A.name, 'study');
     assert.equal((await api('/api/study/overview', A.token)).status, 200, 'Plugga must be enabled for the test user');
@@ -220,8 +222,12 @@ async function main() {
     await claude.close();
     ok('archive hides the unit; delete_study_unit removes it');
   } finally {
-    for (const u of [A, B]) await api('/api/me', u.token, { method: 'DELETE' }).catch(() => {});
-    console.log('  · deleted throwaway users');
+    let leftover = 0;
+    for (const u of users) {
+      const r = await api('/api/me', u.token, { method: 'DELETE' }).catch(() => ({ status: 0 }));
+      if (r.status !== 200) { leftover += 1; console.log(`  ! could not delete ${u.name} (${r.status})`); }
+    }
+    if (!leftover) console.log('  · deleted throwaway users');
   }
   console.log('All good.');
 }

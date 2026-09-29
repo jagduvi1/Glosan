@@ -63,6 +63,9 @@ app.use('/api/ai/parse-image', express.json({ limit: '2mb' }));
 // MCP: ett create_list-anrop med ett helt kapitels ord kan passera 64 kB.
 // Gäller hela /api/mcp-prefixet (inkl. OAuth-endpointsen); nginx har samma tak.
 app.use('/api/mcp', express.json({ limit: '1mb' }));
+// Ett övningsprov lämnas in i ett anrop: 40 svar, öppna svar upp till 2000
+// tecken (å/ä/ö är två byte) — mer än 64 kB. Bara den routen; nginx likadant.
+app.use(/^\/api\/study\/tests\/attempts\/[^/]+\/submit$/, express.json({ limit: '256kb' }));
 app.use(express.json({ limit: '64kb' }));
 
 // FRONTEND_URL kan vara en enstaka URL eller en kommaseparerad lista —

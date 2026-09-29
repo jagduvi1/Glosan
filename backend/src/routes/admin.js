@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const User = require('../models/User');
 const { PLANS, PLAN_IDS, isValidPlanId, effectivePlan, monthKey } = require('../config/plans');
-const { FEATURES, FEATURE_KEYS, featuresForAll } = require('../config/features');
+const { FEATURES, FEATURE_KEYS, featuresForAll, featuresDisabled } = require('../config/features');
 
 const router = express.Router();
 
@@ -60,8 +60,9 @@ router.get('/plans', (req, res) => {
 // admin-UI:t kan rita en växel per flagga utan att hårdkoda dem.
 router.get('/features', (req, res) => {
   const forAll = featuresForAll();
+  const disabled = featuresDisabled();
   res.json({
-    features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key) }))
+    features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key), disabled: disabled.includes(key) }))
   });
 });
 

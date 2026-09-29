@@ -32,8 +32,11 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
-      # Funktionsflaggor som är på för ALLA (t.ex. "study" = Plugga) — se config/features.js.
+      # Funktionsflaggor som är på för ALLA (t.ex. "study" = Plugga) och som är
+      # AV för alla (nödbroms, vinner över allt annat) — se config/features.js.
       - FEATURES_FOR_ALL=${FEATURES_FOR_ALL:-}
+      - FEATURES_DISABLED=${FEATURES_DISABLED:-}
+      - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
       - NODE_ENV=${NODE_ENV:-production}
     deploy:
       resources:

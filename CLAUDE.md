@@ -8,7 +8,7 @@ with quiz mode, and can let Claude generate words / example sentences /
 translations.
 
 - **GitHub repo:** https://github.com/jagduvi1/Glosan
-- **Production:** https://glosan.jeklund.dev
+- **Production:** https://glosan.app (canonical — also the MCP OAuth issuer; the legacy https://glosan.jeklund.dev still serves the app)
 
 ---
 
@@ -63,19 +63,19 @@ Glosan/
 │       ├── app.js
 │       ├── config/db.js
 │       ├── middleware/auth.js
-│       ├── models/{User,GlosList,Glos}.js
-│       ├── routes/{health,auth,oauth,lists,glosor,ai}.js
+│       ├── models/{User,GlosList,Glos,McpToken,OAuthClient,OAuthAuthCode,Study*}.js
+│       ├── routes/{health,auth,oauth,lists,glosor,ai,mcp,mcpOAuth,wellKnownOAuth,study,studyInvites,admin,me,friends}.js
 │       ├── config/{plans,features,subjects}.js
 │       ├── services/{anthropic,authTokens,oauthStateStore,email,mcpOAuth,studyData}.js
 │       └── mcp/{server,registry,toolUtil,instructions,prompts}.js + mcp/tools/*.js
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, vite.config.js, index.html
 │   └── src/
-│       ├── App.js, main.jsx, index.css
-│       ├── contexts/AuthContext.js
+│       ├── App.jsx, main.jsx, index.css
+│       ├── contexts/AuthContext.jsx
 │       ├── utils/apiFetch.js
-│       ├── components/{Layout,ProtectedRoute,Analytics}.js
-│       └── pages/{Login,Register,Lists,ListDetail,Quiz}.js
+│       ├── components/{Layout,ProtectedRoute,Analytics,StudyMarkdown}.jsx + components/study/
+│       └── pages/{Login,Register,Lists,ListDetail,Quiz,Plugga*,ConnectAiAuthorize}.jsx
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -105,6 +105,9 @@ Copy `.env.example` → `.env` and set:
 | `PORT` | No | `5000` |
 | `FRONTEND_URL` | No | `http://localhost` (first entry is also the MCP OAuth issuer) |
 | `FEATURES_FOR_ALL` | No | — (comma-separated feature flags on for everyone, e.g. `study`) |
+| `FEATURES_DISABLED` | No | — (emergency brake: flags OFF for everyone, wins over everything) |
+| `MCP_KNOWN_REDIRECT_HOSTS` | No | — (more AI services the MCP consent page recognises) |
+| `RESEND_API_KEY` / `EMAIL_FROM` | No (required for verify/reset email) | — |
 | `ANTHROPIC_API_KEY` | No (required for AI routes) | — |
 | `GOOGLE_CLIENT_ID` | No (required for Google login) | — |
 | `GOOGLE_CLIENT_SECRET` | No (required for Google login) | — |
@@ -155,7 +158,8 @@ cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 - **Feature flags:** hidden modules are gated per account (`User.features`, switched on the admin page) or for everyone (`FEATURES_FOR_ALL`); catalogue in [config/features.js](backend/src/config/features.js). Backend routes use `requireFeature(key)` (404 when off), the frontend `hasFeature(user, key)`, and MCP tools/prompts/instructions declare `feature: '<key>'` so they're only registered for flagged users.
 - **Plugga (school subjects):** behind the `study` flag. Content is created **only via MCP** by the user's own AI, and **Glosan never calls an AI API in Plugga** — don't import `services/anthropic.js` there. Progress is per user (`StudyItemState`), never on the item, because units can be shared. Use `services/studyData.js` for deleting units/accounts and the export, and `services/study/itemDeletion.js` for deleting items (it logs them). Template exercises are graded against the seed the client sends back (`services/study/templates.js` — a hand-written expression parser, never `eval`); ```svg figures render only as `<img>`. Design + phases: [docs/plugga.md](docs/plugga.md).
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
-- **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
+- **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.jsx` for the pattern.
+- **CI:** `.github/workflows/ci.yml` runs jest, the frontend build and all three e2e scripts (against a Docker stack) on every PR and push to main; `release.yml` builds images only after it passes and stamps the release tag into the backend (`APP_VERSION` → `/api/health`). The e2e scripts refuse non-localhost URLs unless given `--allow-remote`.
 
 ---
 

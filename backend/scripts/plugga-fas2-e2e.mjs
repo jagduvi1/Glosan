@@ -20,10 +20,12 @@ async function hasPlugga(user) {
 
 async function main() {
   console.log(`Plugga fas 2 e2e against ${BASE}`);
-  const A = await register('p2creator');
-  const B = await register('p2friend');
-  const C = await register('p2mate');
+  const users = [];
+  const signUp = async (prefix) => { const u = await register(prefix); users.push(u); return u; };
   try {
+    const A = await signUp('p2creator');
+    const B = await signUp('p2friend');
+    const C = await signUp('p2mate');
     // ── uppstart ────────────────────────────────────────────────────────────
     const forAll = await hasPlugga(B);
     if (!(await hasPlugga(A))) grantFeatureInLocalDb(A.name, 'study');
@@ -438,8 +440,12 @@ async function main() {
     assert.equal(orphan.body.score.total, 4);
     ok('the creator deletes the account: the friend keeps the result, without the creator\'s titles and questions');
   } finally {
-    for (const u of [A, B, C]) await api('/api/me', u.token, { method: 'DELETE' }).catch(() => {});
-    console.log('  · deleted throwaway users');
+    let leftover = 0;
+    for (const u of users) {
+      const r = await api('/api/me', u.token, { method: 'DELETE' }).catch(() => ({ status: 0 }));
+      if (r.status !== 200) { leftover += 1; console.log(`  ! could not delete ${u.name} (${r.status})`); }
+    }
+    if (!leftover) console.log('  · deleted throwaway users');
   }
   console.log('All good.');
 }

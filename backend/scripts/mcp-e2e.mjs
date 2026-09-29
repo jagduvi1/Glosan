@@ -14,8 +14,10 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { assertLocalBase } from './lib/e2e.mjs';
 
-const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/+$/, '');
+const BASE = (process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'http://localhost:8080').replace(/\/+$/, '');
+assertLocalBase(BASE);
 const CALLBACK = 'https://example.test/callback';
 let step = 0;
 const ok = (msg) => console.log(`  ✓ ${String(++step).padStart(2)} ${msg}`);

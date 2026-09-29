@@ -319,7 +319,7 @@ async function submitTest(userId, attemptId, answers = [], { lenient = false } =
     const row = { item: x.item._id, code: itemCode(unit, x.item), max: G.withTotal(max) };
     const type = x.item.answer?.type;
     if (type === 'self') {
-      rows.push({ ...row, given: empty ? '' : String(raw).slice(0, 500), result: null });
+      rows.push({ ...row, given: empty ? '' : String(raw).slice(0, 2000), result: null });
     } else if (empty) {
       rows.push({ ...row, given: '', result: 'wrong', points: G.withTotal({}) });
     } else {

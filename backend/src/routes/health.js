@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { version } = require('../../package.json');
+const version = require('../version');
 
 const router = express.Router();
 

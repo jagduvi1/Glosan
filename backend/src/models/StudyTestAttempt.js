@@ -20,7 +20,8 @@ const pointsSchema = new mongoose.Schema({
 const answerSchema = new mongoose.Schema({
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem', required: true },
   code: { type: String, maxlength: 12, default: '' },
-  given: { type: String, maxlength: 500, default: '' },
+  // Öppna svar upp till 2000 tecken, övriga (tal, val) korta.
+  given: { type: String, maxlength: 2000, default: '' },
   // null = öppen fråga som väntar på elevens självbedömning
   result: { type: String, enum: ['correct', 'partial', 'wrong', null], default: null },
   selfLevel: { type: String, enum: ['none', 'E', 'C', 'A', null], default: null },

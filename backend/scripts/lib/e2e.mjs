@@ -1,15 +1,32 @@
 // Delade hjälpare för end-to-end-skripten (scripts/*-e2e.mjs): HTTP-anrop mot
 // en KÖRANDE Glosan, engångsanvändare och en riktig MCP-klient via OAuth.
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const CALLBACK = 'https://example.test/callback';
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'host.docker.internal'];
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
+/**
+ * Skripten skapar konton, OAuth-klienter och data — de får aldrig råka köras
+ * mot produktion. En annan värd än localhost kräver --allow-remote.
+ */
+export function assertLocalBase(base) {
+  let host = '';
+  try { host = new URL(base).hostname; } catch { /* fel URL — stoppas nedan */ }
+  if (LOCAL_HOSTS.includes(host) || process.argv.includes('--allow-remote')) return;
+  console.error(`Refusing to run against ${base}: e2e scripts create accounts and data. Use a local stack, or pass --allow-remote if you really mean it.`);
+  process.exit(2);
+}
 
 export function e2e(baseArg) {
-  const BASE = (baseArg || 'http://localhost:8080').replace(/\/+$/, '');
+  const BASE = (baseArg && !baseArg.startsWith('--') ? baseArg : 'http://localhost:8080').replace(/\/+$/, '');
+  assertLocalBase(BASE);
   let step = 0;
   const ok = (msg) => console.log(`  ✓ ${String(++step).padStart(2)} ${msg}`);
 
@@ -70,8 +87,17 @@ export function e2e(baseArg) {
 /**
  * Slå på en funktionsflagga direkt i den lokala databasen (docker compose-
  * stacken) — för att testa en dold modul när FEATURES_FOR_ALL inte är satt.
+ * Containern heter likadant i produktion, så den måste höra till compose-
+ * projektet i DEN HÄR utcheckningen (eller anges med E2E_MONGO_CONTAINER).
  */
-export function grantFeatureInLocalDb(username, feature, container = 'glosan-mongo') {
+export function grantFeatureInLocalDb(username, feature, container = process.env.E2E_MONGO_CONTAINER || 'glosan-mongo') {
+  if (!process.env.E2E_MONGO_CONTAINER) {
+    const dir = execFileSync('docker', ['inspect', '-f', '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}', container], { encoding: 'utf8' }).trim();
+    const same = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    if (same(dir) !== same(REPO_ROOT)) {
+      throw new Error(`${container} belongs to ${dir || 'another project'}, not this checkout (${REPO_ROOT}) — refusing to write to it. Set E2E_MONGO_CONTAINER to override.`);
+    }
+  }
   execFileSync('docker', [
     'exec', container, 'mongosh', '--quiet', 'glosan', '--eval',
     `db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $addToSet: { features: ${JSON.stringify(feature)} } })`

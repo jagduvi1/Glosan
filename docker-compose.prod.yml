@@ -49,6 +49,11 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      # Funktionsflaggor (config/features.js): på för alla / av för alla.
+      - FEATURES_FOR_ALL=${FEATURES_FOR_ALL:-}
+      - FEATURES_DISABLED=${FEATURES_DISABLED:-}
+      # Fler AI-tjänster vars redirect-värd samtyckessidan känner igen (services/mcpOAuth.js).
+      - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       mongo:

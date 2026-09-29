@@ -3,10 +3,10 @@
 // MCP:n och den enskilt viktigaste spaken för bra verktygsbeteende. Håll den
 // kort: vad det här är, hur verktygen används väl, och foto-flödet.
 // Skriven på engelska eftersom den läses av modellen, inte av användaren.
-const pkg = require('../../package.json');
+const version = require('../version');
 
 const INSTRUCTIONS = [
-  `You are connected to Glosan — an open-source vocabulary ("glosor") trainer (AGPL-3.0, https://github.com/jagduvi1/Glosan). This MCP server (v${pkg.version}) exposes the connected user's OWN word lists. Users are often Swedish school students or their parents — answer in the user's language.`,
+  `You are connected to Glosan — an open-source vocabulary ("glosor") trainer (AGPL-3.0, https://github.com/jagduvi1/Glosan). This MCP server (v${version}) exposes the connected user's OWN word lists. Users are often Swedish school students or their parents — answer in the user's language.`,
   '',
   'How to work with it:',
   '- Every tool acts on the authenticated user\'s account — their own data plus what friends shared with them. Reads are cheap: call list_lists once to learn list ids.',

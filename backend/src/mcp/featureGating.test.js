@@ -71,3 +71,17 @@ test('an admin block wins over the account flag and FEATURES_FOR_ALL (audit)', (
     else process.env.FEATURES_FOR_ALL = before;
   }
 });
+
+test('FEATURES_DISABLED switches a module off for everyone (audit)', () => {
+  const { effectiveFeatures } = require('../config/features');
+  const before = { all: process.env.FEATURES_FOR_ALL, off: process.env.FEATURES_DISABLED };
+  process.env.FEATURES_FOR_ALL = 'study';
+  process.env.FEATURES_DISABLED = 'study';
+  try {
+    expect(effectiveFeatures({ features: ['study'] })).toEqual([]);
+  } finally {
+    for (const [k, v] of [['FEATURES_FOR_ALL', before.all], ['FEATURES_DISABLED', before.off]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});

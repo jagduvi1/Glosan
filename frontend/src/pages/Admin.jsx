@@ -322,7 +322,7 @@ export default function Admin() {
                           checked={on}
                           onChange={(e) => onToggleFeature(u, f.key, e.target.checked)}
                         />
-                        {f.label} (beta){f.forAll ? ' · på för alla' : ''}{blocked ? ' · avstängd för kontot' : ''}
+                        {f.label} (beta){f.forAll ? ' · på för alla' : ''}{blocked ? ' · avstängd för kontot' : ''}{f.disabled ? ' · AV för alla (FEATURES_DISABLED)' : ''}
                       </label>
                     );
                   })}
