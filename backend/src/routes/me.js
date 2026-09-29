@@ -8,6 +8,8 @@ const Friendship = require('../models/Friendship');
 const CoopStreak = require('../models/CoopStreak');
 const XpEvent = require('../models/XpEvent');
 const QuizRunEvent = require('../models/QuizRunEvent');
+const McpToken = require('../models/McpToken');
+const OAuthAuthCode = require('../models/OAuthAuthCode');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -429,7 +431,8 @@ router.get('/export', async (req, res) => {
       duels,
       xpEvents,
       quizRunEvents,
-      inviteCodes
+      inviteCodes,
+      mcpTokens
     ] = await Promise.all([
       ownedListIds.length > 0 ? Glos.find({ list: { $in: ownedListIds } }).lean() : [],
       Friendship.find({ user: userId }).populate('friend', 'username').lean(),
@@ -440,7 +443,8 @@ router.get('/export', async (req, res) => {
         .lean(),
       XpEvent.find({ user: userId }).lean(),
       QuizRunEvent.find({ user: userId }).populate('list', 'title').lean(),
-      InviteCode.find({ user: userId }).lean()
+      InviteCode.find({ user: userId }).lean(),
+      McpToken.find({ user: userId }).lean()
     ]);
 
     // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
@@ -503,6 +507,14 @@ router.get('/export', async (req, res) => {
         expiresAt: c.expiresAt,
         usedAt: c.usedAt,
         createdAt: c.createdAt
+      })),
+      // Anslutna AI:er (MCP) — bara metadata, aldrig token-hashar.
+      aiConnections: mcpTokens.map((t) => ({
+        name: t.name,
+        scopes: t.scopes,
+        createdAt: t.createdAt,
+        lastUsedAt: t.lastUsedAt,
+        revokedAt: t.revokedAt
       }))
     });
   } catch (err) {
@@ -513,7 +525,8 @@ router.get('/export', async (req, res) => {
 
 // DELETE /api/me — GDPR Art. 17: rätt att raderas. Hård delete på allt jag
 // äger eller är knuten till. Cascading: User, GlosList, Glos, Friendship,
-// CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode. Pull också ut mig
+// CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode, McpToken,
+// OAuthAuthCode. Pull också ut mig
 // från andras GlosList.sharedWith så jag inte syns kvar i deras "delade
 // med dig"-sektion.
 //
@@ -559,6 +572,10 @@ router.delete('/', async (req, res) => {
       { $set: { usedBy: null } },
       opts
     );
+    // AI-anslutningar (MCP) och ev. ej inlösta auth-koder. OAuthClient-raderna
+    // är connector-metadata utan user-ref och lämnas kvar.
+    await McpToken.deleteMany({ user: userId }, opts);
+    await OAuthAuthCode.deleteMany({ user: userId }, opts);
 
     await User.deleteOne({ _id: userId }, opts);
   }

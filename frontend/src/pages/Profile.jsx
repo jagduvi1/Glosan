@@ -7,6 +7,7 @@ import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
+import AiConnectSection from '../components/AiConnectSection';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -427,6 +428,8 @@ export default function Profile() {
           })}
         </div>
       </div>
+
+      <AiConnectSection />
 
       <div className="card" style={{ background: 'var(--paper-edge)' }}>
         <h2 style={{ marginTop: 0 }}>Mina rättigheter</h2>
