@@ -77,6 +77,8 @@ function unitSummary(u, userId, progress, ownerName) {
     source: u.source || {},
     isOwner,
     sharedBy: isOwner ? null : ownerName || null,
+    // Hur många skaparen delat med — bara skaparen får veta det.
+    sharedCount: isOwner ? (u.sharedWith || []).length : null,
     progress,
     url: unitUrl(u),
     updatedAt: u.updatedAt

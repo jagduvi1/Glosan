@@ -66,3 +66,41 @@ export async function finishStudySession(apiFetch, sessionId) {
 export async function flagStudyItem(apiFetch, itemId, note) {
   return readJson(await post(apiFetch, `/api/study/items/${itemId}/flag`, { note }), 'Kunde inte skicka rapporten');
 }
+
+// ── Dela ─────────────────────────────────────────────────────────────────────
+
+// GET /api/study/units/:id/shares → { recipients: [{_id, username, avatar}], links: [...] } (bara skaparen)
+export async function fetchUnitShares(apiFetch, unitId) {
+  return readJson(await apiFetch(`/api/study/units/${unitId}/shares`), 'Kunde inte hämta delningarna');
+}
+
+export async function shareUnitWithFriends(apiFetch, unitId, friendIds) {
+  return readJson(await post(apiFetch, `/api/study/units/${unitId}/share`, { friendIds }), 'Kunde inte dela området');
+}
+
+export async function removeUnitRecipient(apiFetch, unitId, userId) {
+  return readJson(await apiFetch(`/api/study/units/${unitId}/share/${userId}`, { method: 'DELETE' }), 'Kunde inte ta bort');
+}
+
+export async function leaveStudyUnit(apiFetch, unitId) {
+  return readJson(await post(apiFetch, `/api/study/units/${unitId}/leave`), 'Kunde inte lämna området');
+}
+
+// POST → { link: { code, expiresAt, maxUses, usedCount, revoked } }
+export async function createUnitShareLink(apiFetch, unitId, { ttlDays, maxUses }) {
+  return readJson(await post(apiFetch, `/api/study/units/${unitId}/share-links`, { ttlDays, maxUses }), 'Kunde inte skapa länken');
+}
+
+export async function revokeUnitShareLink(apiFetch, unitId, code) {
+  return readJson(await apiFetch(`/api/study/units/${unitId}/share-links/${code}`, { method: 'DELETE' }), 'Kunde inte stänga av länken');
+}
+
+// Publik (ingen inloggning): förhandsvisning av en delningslänk /p/<kod>.
+export async function fetchStudyInvitePreview(code) {
+  return readJson(await fetch(`/api/study-invite/${encodeURIComponent(code)}`), 'Kunde inte läsa länken');
+}
+
+// POST → { unitId, joined, own? } — kräver inloggning men inte Plugga-flaggan.
+export async function acceptStudyInvite(apiFetch, code) {
+  return readJson(await post(apiFetch, `/api/study-invite/${encodeURIComponent(code)}/accept`), 'Kunde inte gå med');
+}

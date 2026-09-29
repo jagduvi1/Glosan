@@ -10,6 +10,7 @@ const StudyAttempt = require('../models/StudyAttempt');
 const StudySession = require('../models/StudySession');
 const StudyFolder = require('../models/StudyFolder');
 const StudyFlag = require('../models/StudyFlag');
+const StudyShareLink = require('../models/StudyShareLink');
 
 /**
  * Radera områden med genomgångar, kort/övningar och ALLAS progress på dem
@@ -24,6 +25,7 @@ async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   await StudyItem.deleteMany({ unit: inUnits }, opts);
   await StudyItemState.deleteMany({ unit: inUnits }, opts);
   await StudyFlag.deleteMany({ unit: inUnits }, opts);
+  await StudyShareLink.deleteMany({ unit: inUnits }, opts);
   await StudyFolder.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudySession.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudyUnit.deleteMany({ _id: inUnits }, opts);
@@ -38,6 +40,8 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   await StudySession.deleteMany({ user: userId }, opts);
   await StudyFolder.deleteMany({ user: userId }, opts);
   await StudyFlag.deleteMany({ reporter: userId }, opts);
+  await StudyShareLink.deleteMany({ creator: userId }, opts);
+  await StudyShareLink.updateMany({ usedBy: userId }, { $pull: { usedBy: userId } }, opts);
   // Ur andras delningar, så jag inte ligger kvar som dangling ref.
   await StudyUnit.updateMany({ sharedWith: userId }, { $pull: { sharedWith: userId } }, opts);
 }
@@ -46,7 +50,7 @@ async function deleteStudyDataForUser(userId, opts = {}) {
 async function exportStudyData(userId) {
   const units = await StudyUnit.find({ user: userId }).lean();
   const unitIds = units.map((u) => u._id);
-  const [pages, items, sharedWithMe, folders, sessions, attempts, itemStates, flags] = await Promise.all([
+  const [pages, items, sharedWithMe, folders, sessions, attempts, itemStates, flags, links] = await Promise.all([
     unitIds.length ? StudyPage.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyItem.find({ unit: { $in: unitIds } }).lean() : [],
     StudyUnit.find({ sharedWith: userId }, 'title subject term user').populate('user', 'username').lean(),
@@ -54,7 +58,8 @@ async function exportStudyData(userId) {
     StudySession.find({ user: userId }).lean(),
     StudyAttempt.find({ user: userId }).lean(),
     StudyItemState.find({ user: userId }).lean(),
-    StudyFlag.find({ reporter: userId }, 'item unit note status resolutionNote resolvedAt createdAt').lean()
+    StudyFlag.find({ reporter: userId }, 'item unit note status resolutionNote resolvedAt createdAt').lean(),
+    StudyShareLink.find({ creator: userId }).lean()
   ]);
   return {
     units: units.map((u) => ({
@@ -70,7 +75,12 @@ async function exportStudyData(userId) {
     sessions,
     attempts,
     itemStates,
-    reportedErrors: flags
+    reportedErrors: flags,
+    // Vilka som använt länken är andras data — bara antalet exporteras.
+    shareLinks: links.map((l) => ({
+      unit: l.unit, code: l.code, expiresAt: l.expiresAt, maxUses: l.maxUses,
+      usedCount: (l.usedBy || []).length, revokedAt: l.revokedAt, createdAt: l.createdAt
+    }))
   };
 }
 

@@ -23,6 +23,7 @@ const mcpRoute = require('./routes/mcp');
 const mcpOAuthRoute = require('./routes/mcpOAuth');
 const wellKnownOAuthRoute = require('./routes/wellKnownOAuth');
 const studyRoute = require('./routes/study');
+const studyInvitesRoute = require('./routes/studyInvites');
 
 const app = express();
 
@@ -137,6 +138,9 @@ app.use('/api/lists', listsRoute);
 // listInvites monteras på /api/ eftersom routes har paths som
 // /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)
 app.use('/api', listInvitesRoute);
+// Delningslänkar till Plugga-områden (/p/<kod>) — publik förhandsvisning, så
+// den måste ligga före glosor-routern (samma skäl som listInvites).
+app.use('/api', studyInvitesRoute);
 app.use('/api', glosorRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/me', meRoute);

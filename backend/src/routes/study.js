@@ -8,9 +8,12 @@ const StudyItemState = require('../models/StudyItemState');
 const StudyFlag = require('../models/StudyFlag');
 const { SUBJECTS, SUBJECT_GROUPS } = require('../config/subjects');
 const { termFor, isValidTerm, termLabel, compareTerms } = require('../utils/term');
-const { readableFilter, loadItem } = require('../services/study/access');
+const { readableFilter, loadUnit, loadItem } = require('../services/study/access');
 const { listUnits, unitDetail } = require('../services/study/views');
 const { startSession, answerInSession, pingSession, finishSession, MODES, LEVELS } = require('../services/study/practice');
+const {
+  listRecipients, shareWithFriends, removeRecipient, createShareLink, listShareLinks, revokeShareLink
+} = require('../services/study/sharing');
 
 // Plugga — skolämnen. Dold bakom funktionsflaggan 'study' (config/features.js)
 // tills modulen släpps. Innehållet skapas BARA via MCP (användarens egen AI);
@@ -37,7 +40,31 @@ const practiceLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: 'Lugn i stormen — vänta några minuter och fortsätt sedan plugga.' })
 });
 
+// Nya delningslänkar kostar en skrivning + kollisionskoll — begränsa per användare.
+const shareLinkLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `u:${req.user.id}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'För många nya länkar — vänta en stund.' })
+});
+
 const bad = (res, error) => res.status(400).json({ error });
+
+/** Området om inloggad användare är skaparen, annars svarar den 404/403 och ger null. */
+async function ownedUnit(req, res) {
+  const access = await loadUnit(req.user.id, req.params.id, 'owner');
+  if (access.error === 'forbidden') {
+    res.status(403).json({ error: 'Bara den som skapade området kan dela det.' });
+    return null;
+  }
+  if (access.error) {
+    res.status(404).json({ error: 'Området hittades inte.' });
+    return null;
+  }
+  return access.unit;
+}
 
 // GET /api/study/overview?term=2026-HT — startsidan: ämnen med antal områden
 // för terminen (egna + delade med mig), vilka terminer som finns och hur
@@ -190,6 +217,91 @@ router.post('/items/:id/flag', async (req, res, next) => {
       { upsert: true }
     );
     res.status(201).json({ flagged: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Dela ─────────────────────────────────────────────────────────────────────
+// Skaparen delar med kompisar eller via länk/QR (publika delen ligger i
+// routes/studyInvites.js). Mottagarna övar med egen progress; bara skaparen
+// kan ändra innehållet. Den som fått ett område delat kan lämna det.
+
+// GET /api/study/units/:id/shares → { recipients, links }
+router.get('/units/:id/shares', async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    const [recipients, links] = await Promise.all([listRecipients(unit), listShareLinks(unit)]);
+    res.json({ recipients, links });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/units/:id/share — Body: { friendIds: [id] }
+router.post('/units/:id/share', async (req, res, next) => {
+  try {
+    const { friendIds } = req.body || {};
+    if (!Array.isArray(friendIds) || friendIds.length === 0 || friendIds.length > 100 || friendIds.some((x) => typeof x !== 'string')) {
+      return bad(res, 'friendIds must be a non-empty array of ids');
+    }
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    const result = await shareWithFriends(req.user.id, unit, friendIds);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/study/units/:id/share/:userId — ta bort en mottagare
+router.delete('/units/:id/share/:userId', async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    await removeRecipient(unit, req.params.userId);
+    const fresh = await StudyUnit.findById(unit._id, 'sharedWith').lean();
+    res.json({ recipients: await listRecipients(fresh) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/units/:id/leave — mottagaren lämnar ett delat område
+router.post('/units/:id/leave', async (req, res, next) => {
+  try {
+    const access = await loadUnit(req.user.id, req.params.id, 'read');
+    if (access.error) return res.status(404).json({ error: 'Området hittades inte.' });
+    if (access.isOwner) return bad(res, 'Det här är ditt eget område — be din AI arkivera eller radera det.');
+    await removeRecipient(access.unit, req.user.id);
+    res.json({ left: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/units/:id/share-links — Body: { ttlDays: 1|7|30, maxUses: 10|30|100 }
+router.post('/units/:id/share-links', shareLinkLimiter, async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    const result = await createShareLink(req.user.id, unit, req.body || {});
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/study/units/:id/share-links/:code — stäng av en länk
+router.delete('/units/:id/share-links/:code', async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    if (!(await revokeShareLink(unit, req.params.code))) return res.status(404).json({ error: 'Länken hittades inte.' });
+    res.json({ links: await listShareLinks(unit) });
   } catch (err) {
     next(err);
   }

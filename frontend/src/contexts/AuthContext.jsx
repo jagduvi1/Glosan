@@ -136,7 +136,21 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken };
+  // Läs om användaren från servern — t.ex. när en Plugga-inbjudan just slagit
+  // på en funktionsflagga, så att menyn och sidorna följer med utan omloggning.
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/auth/me');
+      if (!res.ok) return null;
+      const data = await res.json();
+      setUser(data.user);
+      return data.user;
+    } catch {
+      return null;
+    }
+  }, [apiFetch]);
+
+  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken, refreshUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession } from '../api/study';
+import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, daysUntil } from '../components/study/StudyBits';
+import ShareUnitDialog from '../components/study/ShareUnitDialog';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -87,6 +88,7 @@ export default function PluggaUnit() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState(null);
+  const [sharing, setSharing] = useState(false);
   const loadedFor = useRef(null);
 
   const load = useCallback(async () => {
@@ -114,6 +116,15 @@ export default function PluggaUnit() {
   const exercises = items.filter((i) => i.kind === 'exercise');
   const days = daysUntil(unit.examDate);
   const back = `/plugga/omrade/${unit.id}`;
+  const leave = async () => {
+    if (!window.confirm(`Lämna "${unit.title}"? Du kan gå med igen om ${unit.sharedBy} delar det på nytt.`)) return;
+    try {
+      await leaveStudyUnit(apiFetch, unit.id);
+      navigate(`/plugga/amne/${unit.subject}`);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -135,7 +146,18 @@ export default function PluggaUnit() {
             📅 Prov {days === 0 ? 'idag — lycka till!' : days === 1 ? 'imorgon' : `om ${days} dagar`}
           </p>
         )}
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {unit.isOwner ? (
+            <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>
+              👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-sm btn-ghost" onClick={leave}>Lämna området</button>
+          )}
+        </div>
       </div>
+
+      {sharing && <ShareUnitDialog unit={unit} onClose={() => setSharing(false)} onChanged={load} />}
 
       <div className="card">
         <ProgressBar progress={unit.progress} />

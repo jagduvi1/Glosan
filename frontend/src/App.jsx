@@ -31,6 +31,7 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
+const JoinStudyUnit = lazy(() => import('./pages/JoinStudyUnit'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
 const Plugga = lazy(() => import('./pages/Plugga'));
 const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
@@ -80,6 +81,9 @@ function AppRoutes() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
         <Route path="/j/:code" element={<JoinList />} />
+        {/* Delat Plugga-område (QR-kod). Publik och INTE bakom flaggan — den som
+            går med får Plugga påslaget. */}
+        <Route path="/p/:code" element={<JoinStudyUnit />} />
         {/* OAuth-samtycket för MCP-connectorn — hanterar utloggat läge själv
             så att OAuth-parametrarna ligger kvar i URL:en. */}
         <Route path="/connect-ai/authorize" element={<ConnectAiAuthorize />} />

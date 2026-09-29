@@ -58,7 +58,7 @@ function HowToCreate() {
             <li>Claude frågar vilken årskurs du går i, föreslår vad som ska skapas och lägger in allt här.</li>
           </ol>
           <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-            Snart kan kompisar dela sina områden med dig — då behöver du ingen egen AI.
+            Har en kompis redan gjort ett område? Be om QR-koden under <em>Dela</em> — då behöver du ingen egen AI.
           </p>
         </div>
       </div>

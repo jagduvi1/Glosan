@@ -12,6 +12,10 @@ export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inviteCode = params.get('invite');
+  // Delningslänk till ett Plugga-område (/p/<kod>) — bara giltiga koder, så
+  // parametern aldrig kan styra om till något annat än /p/.
+  const studyInvite = /^[A-Z0-9]{4,16}$/.test(params.get('studyInvite') || '') ? params.get('studyInvite') : null;
+  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : null;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +28,7 @@ export default function Login() {
     const result = await login(username, password);
     setBusy(false);
     if (result.success) {
-      navigate(inviteCode ? `/j/${inviteCode}` : '/lists');
+      navigate(afterLogin || '/lists');
     } else {
       setError(result.error);
     }
@@ -68,7 +72,7 @@ export default function Login() {
           <h1 style={{ fontSize: 38, marginBottom: 4 }}>Välkommen tillbaka</h1>
           <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 24px' }}>Logga in och kör vidare.</p>
 
-          <GoogleLoginButton redirectTo={inviteCode ? `/j/${inviteCode}` : undefined} />
+          <GoogleLoginButton redirectTo={afterLogin || undefined} />
 
           <label className="field" style={{ marginBottom: 16 }}>
             <span className="field-label">Användarnamn eller e-post</span>

@@ -9,6 +9,7 @@ const path = require('path');
 const ROOT = path.join(__dirname);
 const STUDY_FILES = [
   'routes/study.js',
+  'routes/studyInvites.js',
   'mcp/tools/study.js',
   'services/studyData.js',
   ...fs.readdirSync(path.join(ROOT, 'services/study'))

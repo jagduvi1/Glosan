@@ -187,6 +187,7 @@ registerTool({
       exam_date: u.examDate ? new Date(u.examDate).toISOString().slice(0, 10) : null,
       is_owner: u.isOwner,
       ...(u.sharedBy ? { shared_by: u.sharedBy } : {}),
+      ...(u.isOwner && u.sharedCount ? { shared_with: u.sharedCount } : {}),
       cards: u.progress.cards,
       exercises: u.progress.exercises,
       levels: u.progress.levels,
