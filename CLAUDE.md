@@ -65,7 +65,8 @@ Glosan/
 │       ├── middleware/auth.js
 │       ├── models/{User,GlosList,Glos}.js
 │       ├── routes/{health,auth,oauth,lists,glosor,ai}.js
-│       └── services/{anthropic,authTokens,oauthStateStore,email}.js
+│       ├── services/{anthropic,authTokens,oauthStateStore,email,mcpOAuth}.js
+│       └── mcp/{server,registry,toolUtil,instructions,prompts}.js + mcp/tools/*.js
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, vite.config.js, index.html
 │   └── src/
@@ -100,7 +101,7 @@ Copy `.env.example` → `.env` and set:
 | `MONGO_URI` | No | `mongodb://mongo:27017/glosan` |
 | `ACCESS_TOKEN_EXPIRES_IN` | No | `15m` |
 | `PORT` | No | `5000` |
-| `FRONTEND_URL` | No | `http://localhost` |
+| `FRONTEND_URL` | No | `http://localhost` (first entry is also the MCP OAuth issuer) |
 | `ANTHROPIC_API_KEY` | No (required for AI routes) | — |
 | `GOOGLE_CLIENT_ID` | No (required for Google login) | — |
 | `GOOGLE_CLIENT_SECRET` | No (required for Google login) | — |
@@ -128,6 +129,9 @@ cd frontend && npm install && npm run dev   # http://localhost:3000
 
 # Tests
 cd backend && npm test
+# MCP end-to-end against a running stack (see docs/mcp.md)
+FRONTEND_URL=http://localhost:8080 docker compose up --build -d
+cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
 # Frontend tests not configured yet — add Vitest when you write the first test.
 ```
 
@@ -141,6 +145,7 @@ cd backend && npm test
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.
 - **Image import:** `POST /api/ai/parse-image` takes a base64 image and returns the *same* shape as `/parse-list`, so [ImportModal](frontend/src/components/ImportModal.jsx) reuses the whole review-and-save step. The client downscales to 1600px JPEG first ([utils/image.js](frontend/src/utils/image.js)) — a phone photo is 2–12 MB raw, ~300 kB scaled. The image is never stored. Body limits are raised **only** for that one route (app.js + nginx.conf); the rest of the API stays at 64 kB.
+- **MCP server:** `POST /api/mcp` lets claude.ai & co. read and edit a user's lists (photo → `create_list` is the headline flow — Claude reads the image, Glosan never sees it). Ported from Cellarion but stateless-only. Connectors authorize through Glosan's own OAuth 2.1 server ([routes/mcpOAuth.js](backend/src/routes/mcpOAuth.js), consent page `/connect-ai/authorize`) and get `glo_` tokens that **only** [middleware/mcpAuth.js](backend/src/middleware/mcpAuth.js) accepts. Tools are declared with `registerTool` in [backend/src/mcp/tools/](backend/src/mcp/tools); scope filtering is structural (a read-only connection never gets write tools registered). The MCP routes must stay mounted **before** the routers on `/api` in app.js — `glosor.js` runs `requireAuth` on the whole prefix. Full guide: [docs/mcp.md](docs/mcp.md).
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
 - **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
 
