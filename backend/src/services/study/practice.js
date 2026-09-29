@@ -126,17 +126,21 @@ async function startSession(userId, params = {}) {
 
 /**
  * Spara ett svar: användarens progress (spaced repetition) + historik.
- * Returnerar det nya StudyItemState.
+ * Returnerar det nya StudyItemState — eller null för provfrågor, som inte
+ * ingår i repetitionen (de visas aldrig i vanliga pass) och bara får historik.
  */
 async function recordAttempt({ userId, item, unit, sessionId = null, source = 'app', mode = 'practice', result, given = '', feedback = '' }) {
   const now = new Date();
-  const prev = await StudyItemState.findOne({ user: userId, item: item._id }).lean();
-  const next = nextState(prev, result, now);
-  await StudyItemState.updateOne(
-    { user: userId, item: item._id },
-    { $set: { ...next, unit: unit._id } },
-    { upsert: true }
-  );
+  let next = null;
+  if (item.usage !== 'test') {
+    const prev = await StudyItemState.findOne({ user: userId, item: item._id }).lean();
+    next = nextState(prev, result, now);
+    await StudyItemState.updateOne(
+      { user: userId, item: item._id },
+      { $set: { ...next, unit: unit._id } },
+      { upsert: true }
+    );
+  }
   await StudyAttempt.create({
     user: userId,
     item: item._id,
@@ -193,7 +197,7 @@ async function answerInSession(userId, sessionId, item, unit, payload) {
     note: graded.note || null,
     solution: item.solution || '',
     modelAnswer: item.answer?.modelAnswer || '',
-    state: { box: state.box, dueAt: state.dueAt }
+    state: state ? { box: state.box, dueAt: state.dueAt } : null
   };
 }
 
@@ -287,6 +291,6 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
 }
 
 module.exports = {
-  MODES, LEVELS, resolveScopeUnits, publicItem, startSession, recordAttempt, answerInSession,
+  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, startSession, recordAttempt, answerInSession,
   pingSession, finishSession, recordPaperAttempt
 };

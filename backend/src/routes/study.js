@@ -16,6 +16,7 @@ const {
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
+const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
 const { PERIODS, parseYmd } = require('../utils/localTime');
 const User = require('../models/User');
 
@@ -29,20 +30,22 @@ const User = require('../models/User');
 
 const router = express.Router();
 
-router.use(requireAuth, requireFeature('study'));
-
-// Pluggpass skickar ett anrop per svar (plus en "ping" var 30:e sekund när en
-// genomgång läses). En skolklass delar ofta EN IP-adress, så de globala
-// per-IP-limitrarna skulle strypa hela klassrummet — pass-routerna är
-// undantagna i app.js och begränsas här per inloggad användare i stället.
-const practiceLimiter = rateLimit({
+// Plugga används i klassrum: en hel klass delar ofta EN IP-adress, och pass
+// skickar ett anrop per svar (plus en "ping" var 30:e sekund medan en
+// genomgång läses eller ett prov skrivs). De globala per-IP-limitrarna skulle
+// strypa klassrummet, så hela /api/study är undantagen i app.js och begränsas
+// här per inloggad användare i stället — efter flaggkollen, så en dold modul
+// inte avslöjas av ett 429.
+const studyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 900,
+  max: 1500,
   keyGenerator: (req) => `u:${req.user.id}`,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'Lugn i stormen — vänta några minuter och fortsätt sedan plugga.' })
 });
+
+router.use(requireAuth, requireFeature('study'), studyLimiter);
 
 // Nya delningslänkar kostar en skrivning + kollisionskoll — begränsa per användare.
 const shareLinkLimiter = rateLimit({
@@ -155,7 +158,7 @@ router.get('/units/:id', async (req, res, next) => {
 
 // POST /api/study/sessions — starta ett pass.
 // Body: { unitIds? | folderId? | subject? | group?, term?, allTerms?, mode, levels?, count? }
-router.post('/sessions', practiceLimiter, async (req, res, next) => {
+router.post('/sessions', async (req, res, next) => {
   try {
     const b = req.body || {};
     if (b.mode !== undefined && !MODES.includes(b.mode)) return bad(res, `mode must be one of: ${MODES.join(', ')}`);
@@ -186,7 +189,7 @@ router.post('/sessions', practiceLimiter, async (req, res, next) => {
 
 // POST /api/study/sessions/:id/answer — Body: { itemId, answer? | self? }
 // Rättas på servern; svaret innehåller facit och lösning.
-router.post('/sessions/:id/answer', practiceLimiter, async (req, res, next) => {
+router.post('/sessions/:id/answer', async (req, res, next) => {
   try {
     const { itemId, answer, self } = req.body || {};
     if (answer !== undefined && !(typeof answer === 'string' && answer.length <= 200) && !Number.isInteger(answer)) {
@@ -194,7 +197,8 @@ router.post('/sessions/:id/answer', practiceLimiter, async (req, res, next) => {
     }
     if (self !== undefined && typeof self !== 'string') return bad(res, 'self must be a string');
     const access = await loadItem(req.user.id, itemId, 'read');
-    if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
+    // Provfrågor rättas bara i ett prov — annars kunde ett övningspass visa provets facit.
+    if (access.error || access.item.usage === 'test') return res.status(404).json({ error: 'Uppgiften hittades inte.' });
     const result = await answerInSession(req.user.id, req.params.id, access.item, access.unit, { answer, self });
     if (result.error) return res.status(404).json({ error: 'Passet är avslutat — starta ett nytt.' });
     if (result.invalid) return res.status(422).json({ invalid: true, message: result.message });
@@ -205,7 +209,7 @@ router.post('/sessions/:id/answer', practiceLimiter, async (req, res, next) => {
 });
 
 // POST /api/study/sessions/:id/ping — aktiv lästid medan en genomgång är synlig.
-router.post('/sessions/:id/ping', practiceLimiter, async (req, res, next) => {
+router.post('/sessions/:id/ping', async (req, res, next) => {
   try {
     const result = await pingSession(req.user.id, req.params.id);
     if (result.error) return res.status(404).json({ error: 'Passet är avslutat.' });
@@ -216,7 +220,7 @@ router.post('/sessions/:id/ping', practiceLimiter, async (req, res, next) => {
 });
 
 // POST /api/study/sessions/:id/finish — avsluta: sammanfattning, XP och streak.
-router.post('/sessions/:id/finish', practiceLimiter, async (req, res, next) => {
+router.post('/sessions/:id/finish', async (req, res, next) => {
   try {
     const result = await finishSession(req.user.id, req.params.id);
     if (result.error) return res.status(404).json({ error: 'Passet är redan avslutat.' });
@@ -240,6 +244,91 @@ router.post('/items/:id/flag', async (req, res, next) => {
       { upsert: true }
     );
     res.status(201).json({ flagged: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Övningsprov ──────────────────────────────────────────────────────────────
+// Skapas av AI:n (create_practice_test). Eleven gör provet i appen — rättas
+// här, öppna frågor bedömer eleven själv efter inlämning — eller på papper,
+// som elevens AI rättar via MCP (record_paper_test). Facit visas först när
+// provet är klart.
+
+// GET /api/study/tests/attempts/:id — resultatet av ett försök
+router.get('/tests/attempts/:id', async (req, res, next) => {
+  try {
+    const view = await attemptView(req.user.id, req.params.id);
+    if (!view) return res.status(404).json({ error: 'Resultatet hittades inte.' });
+    res.json(view);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/tests/attempts/:id/submit — Body: { answers: [{ itemId, answer }] }
+router.post('/tests/attempts/:id/submit', async (req, res, next) => {
+  try {
+    const { answers } = req.body || {};
+    if (!Array.isArray(answers) || answers.length > 60) return bad(res, 'answers must be an array');
+    for (const a of answers) {
+      if (!a || typeof a.itemId !== 'string') return bad(res, 'every answer needs an itemId');
+      if (a.answer !== undefined && a.answer !== null && !(typeof a.answer === 'string' && a.answer.length <= 2000) && !Number.isInteger(a.answer)) {
+        return bad(res, 'answer must be a string or a choice index');
+      }
+    }
+    const result = await submitTest(req.user.id, req.params.id, answers);
+    if (result.error) return res.status(404).json({ error: 'Provet är redan inlämnat.' });
+    if (result.invalid) return res.status(422).json({ invalid: result.invalid });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/tests/attempts/:id/assess — Body: { assessments: [{ itemId, level: none|E|C|A }] }
+router.post('/tests/attempts/:id/assess', async (req, res, next) => {
+  try {
+    const { assessments } = req.body || {};
+    if (!Array.isArray(assessments) || assessments.length > 60) return bad(res, 'assessments must be an array');
+    const result = await assessTest(req.user.id, req.params.id, assessments);
+    if (result.error) return res.status(404).json({ error: 'Provet är redan klart.' });
+    if (result.missing) return res.status(400).json({ error: `Bedöm alla öppna frågor (${result.missing.join(', ')}).`, missing: result.missing });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/tests/:id — provet, betygsgränserna och mina försök
+router.get('/tests/:id', async (req, res, next) => {
+  try {
+    const overview = await testOverview(req.user.id, req.params.id);
+    if (!overview) return res.status(404).json({ error: 'Provet hittades inte.' });
+    res.json(overview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/tests/:id/sheet — provet att skriva ut (utan facit)
+router.get('/tests/:id/sheet', async (req, res, next) => {
+  try {
+    const sheet = await testSheet(req.user.id, req.params.id);
+    if (!sheet) return res.status(404).json({ error: 'Provet hittades inte.' });
+    res.json(sheet);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/tests/:id/start — starta (eller fortsätt ett påbörjat) prov
+router.post('/tests/:id/start', async (req, res, next) => {
+  try {
+    const result = await startTest(req.user.id, req.params.id);
+    if (!result) return res.status(404).json({ error: 'Provet hittades inte.' });
+    if (result.error) return res.status(409).json({ error: 'Provet har inga frågor.' });
+    res.status(result.attempt.resumed ? 200 : 201).json(result);
   } catch (err) {
     next(err);
   }

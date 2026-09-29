@@ -53,7 +53,7 @@ describe('tool invariants', () => {
 
   test('the permanent deletions are flagged destructive', () => {
     const destructive = allTools().filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort();
-    expect(destructive).toEqual(['delete_list', 'delete_study_items', 'delete_study_unit', 'delete_words']);
+    expect(destructive).toEqual(['delete_list', 'delete_practice_test', 'delete_study_items', 'delete_study_unit', 'delete_words']);
   });
 
   test('every tool has a description the model can choose by', () => {

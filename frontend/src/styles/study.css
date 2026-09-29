@@ -96,3 +96,30 @@
   body { background: #fff; }
   .card { box-shadow: none !important; break-inside: avoid; }
 }
+
+/* ── Övningsprov ───────────────────────────────────────────────────────── */
+.points-pill { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border: 2px solid var(--ink); border-radius: 999px; font-family: var(--font-mono); font-size: 13px; font-weight: 800; background: var(--paper-deep); white-space: nowrap; }
+.grade-badge { border: 3px solid var(--ink); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-headline); line-height: 1; flex: none; box-shadow: 3px 3px 0 0 var(--ink); }
+.test-bar { position: sticky; top: 8px; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; }
+.test-clock { font-family: var(--font-mono); font-weight: 800; font-size: 18px; white-space: nowrap; }
+.practice-choice.is-picked { background: var(--mustard); box-shadow: 2px 2px 0 0 var(--ink); }
+
+.test-sheet { background: var(--bg-elev); border: 2px solid var(--ink); border-radius: 16px; padding: 24px; }
+.test-sheet-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; border-bottom: 2px solid var(--ink); padding-bottom: 12px; }
+.test-sheet-fields { display: grid; gap: 10px; min-width: 220px; }
+.test-sheet-line { display: inline-block; min-width: 160px; border-bottom: 1.5px solid var(--ink); height: 1em; vertical-align: bottom; }
+.test-sheet-line.short { min-width: 110px; }
+.test-sheet-questions { padding-left: 24px; margin: 18px 0 0; }
+.test-sheet-questions > li { padding: 14px 0; border-top: 1.5px dashed var(--ink-soft); break-inside: avoid; }
+.test-sheet-choices { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.test-sheet-box { display: inline-block; width: 14px; height: 14px; border: 1.5px solid var(--ink); border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+.test-sheet-space { min-height: 90px; display: flex; align-items: flex-end; }
+.test-sheet-space.tall { min-height: 180px; }
+.test-sheet-foot { margin-top: 16px; font-size: 13px; }
+@media (max-width: 480px) {
+  .test-sheet { padding: 16px; }
+  .test-sheet-line { min-width: 110px; }
+}
+@media print {
+  .test-sheet { border: none; padding: 0; background: #fff; }
+}

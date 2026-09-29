@@ -5,6 +5,7 @@
 const StudySession = require('../../models/StudySession');
 const StudyAttempt = require('../../models/StudyAttempt');
 const StudyUnit = require('../../models/StudyUnit');
+const StudyTestAttempt = require('../../models/StudyTestAttempt');
 const XpEvent = require('../../models/XpEvent');
 const User = require('../../models/User');
 const { getSubject } = require('../../config/subjects');
@@ -48,15 +49,17 @@ async function activityFor(userId, { period, anchor } = {}) {
   const when = { $gte: range.from, $lt: range.to };
   const attemptFields = `session subject unit unitTitle itemCode source mode result createdAt${detailed ? ' given feedback' : ''}`;
 
-  const [sessionsRaw, attempts, xpRows, user] = await Promise.all([
+  const [sessionsRaw, attempts, xpRows, user, testsDone] = await Promise.all([
     StudySession.find({ user: uid, startedAt: when }, 'kind subjects units activeSeconds answered correct startedAt').sort({ startedAt: -1 }).lean(),
     StudyAttempt.find({ user: uid, createdAt: when }, attemptFields).sort({ createdAt: 1 }).lean(),
     XpEvent.aggregate([
       { $match: { user: uid, createdAt: when, sourceLang: { $regex: '^study:' } } },
       { $group: { _id: null, xp: { $sum: '$amount' } } }
     ]),
-    User.findById(uid, 'streak').lean()
+    User.findById(uid, 'streak').lean(),
+    StudyTestAttempt.find({ user: uid, status: 'done', finishedAt: when }, 'test session source testTitle score max grade finishedAt').lean()
   ]);
+  const testBySession = new Map(testsDone.filter((t) => t.session).map((t) => [String(t.session), t]));
 
   // Ett pass som öppnades och stängdes utan att något hände räknas inte.
   const sessions = sessionsRaw.filter((s) => (s.activeSeconds || 0) > 0 || (s.answered || 0) > 0);
@@ -75,7 +78,7 @@ async function activityFor(userId, { period, anchor } = {}) {
     return subjects.get(key);
   };
 
-  const totals = { activeSeconds: 0, sessions: sessions.length, answered: 0, correct: 0, partial: 0, wrong: 0, paper: 0, daysStudied: 0, xp: xpRows[0]?.xp || 0 };
+  const totals = { activeSeconds: 0, sessions: sessions.length, answered: 0, correct: 0, partial: 0, wrong: 0, paper: 0, tests: testsDone.length, daysStudied: 0, xp: xpRows[0]?.xp || 0 };
   for (const s of sessions) {
     totals.activeSeconds += s.activeSeconds || 0;
     const day = days.get(localYmd(s.startedAt));
@@ -119,6 +122,7 @@ async function activityFor(userId, { period, anchor } = {}) {
       kind: 'sessions',
       sessions: shown.map((s) => {
         const items = bySession.get(String(s._id)) || [];
+        const t = testBySession.get(String(s._id));
         const titles = [...new Set(items.length ? items.map((a) => a.unitTitle) : (s.units || []).map((id) => titleOf.get(String(id))))].filter(Boolean);
         return {
           id: String(s._id),
@@ -130,6 +134,7 @@ async function activityFor(userId, { period, anchor } = {}) {
           activeSeconds: s.activeSeconds || 0,
           answered: items.length || s.answered || 0,
           correct: items.length ? items.filter((a) => a.result === 'correct').length : (s.correct || 0),
+          ...(t ? { test: { attemptId: String(t._id), testId: String(t.test), title: t.testTitle, score: t.score, max: t.max, grade: t.grade, source: t.source } } : {}),
           items: items.map((a) => ({
             code: a.itemCode,
             unitId: a.unit ? String(a.unit) : null,

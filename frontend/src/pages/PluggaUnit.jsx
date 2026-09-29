@@ -6,6 +6,7 @@ import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
 import FolderPicker from '../components/study/FolderPicker';
+import { GradeBadge, pointsText, pointsTotal } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -114,6 +115,7 @@ export default function PluggaUnit() {
   if (!data) return <p className="t-hand muted">Glo öppnar området…</p>;
 
   const { unit, pages, items } = data;
+  const tests = data.tests || [];
   const cards = items.filter((i) => i.kind === 'card');
   const exercises = items.filter((i) => i.kind === 'exercise');
   const days = daysUntil(unit.examDate);
@@ -188,7 +190,40 @@ export default function PluggaUnit() {
         <button type="button" role="tab" aria-selected={tab === 'exercises'} className={`btn btn-sm ${tab === 'exercises' ? 'btn-primary' : ''}`} onClick={() => setTab('exercises')}>
           Övningar ({exercises.length})
         </button>
+        {tests.length > 0 && (
+          <button type="button" role="tab" aria-selected={tab === 'tests'} className={`btn btn-sm ${tab === 'tests' ? 'btn-primary' : ''}`} onClick={() => setTab('tests')}>
+            📝 Prov ({tests.length})
+          </button>
+        )}
       </div>
+
+      {tab === 'tests' && (
+        <div className="stack" style={{ gap: 12 }}>
+          {tests.map((t) => (
+            <div key={t.id} className="card">
+              <div className="row between" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: 21 }}>📝 {t.title}</h3>
+                  <p className="t-hand muted" style={{ margin: '4px 0 0', fontSize: 14 }}>
+                    {t.questionCount} frågor · {pointsTotal(t.max)} poäng ({pointsText(t.max)} E/C/A){t.timeLimitMin ? ` · ${t.timeLimitMin} min` : ''}
+                  </p>
+                  {t.description && <p style={{ margin: '6px 0 0', fontSize: 15, whiteSpace: 'pre-line' }}>{t.description}</p>}
+                </div>
+                {t.best && (
+                  <Link to={`/plugga/prov/${t.id}/resultat/${t.best.id}`} className="row" style={{ gap: 8, alignItems: 'center', color: 'inherit', textDecoration: 'none' }} title="Ditt bästa resultat">
+                    <GradeBadge grade={t.best.grade} size={40} />
+                    <span className="t-hand" style={{ fontSize: 14 }}>bäst: {t.best.score.total}/{t.best.max.total}</span>
+                  </Link>
+                )}
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                <Link to={`/plugga/prov/${t.id}`} className="btn btn-primary btn-sm">{t.attempts ? 'Gör provet igen' : 'Gör provet'}</Link>
+                <Link to={`/plugga/prov/${t.id}/papper`} className="btn btn-sm">🖨️ På papper</Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {tab === 'pages' && (
         <div className="stack" style={{ gap: 16 }}>

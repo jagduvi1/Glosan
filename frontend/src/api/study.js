@@ -148,3 +148,36 @@ export async function fetchStudyActivity(apiFetch, { period, date } = {}) {
   if (date) q.set('date', date);
   return readJson(await apiFetch(`/api/study/activity?${q}`), 'Kunde inte hämta Min plugg');
 }
+
+// ── Övningsprov ──────────────────────────────────────────────────────────────
+
+// GET → { test: { id, title, description, timeLimitMin, questionCount, max, limits, unit }, attempts, inProgress }
+export async function fetchStudyTest(apiFetch, testId) {
+  return readJson(await apiFetch(`/api/study/tests/${testId}`), 'Kunde inte hämta provet');
+}
+
+// GET → { test, questions } — att skriva ut (inget facit)
+export async function fetchStudyTestSheet(apiFetch, testId) {
+  return readJson(await apiFetch(`/api/study/tests/${testId}/sheet`), 'Kunde inte hämta provet');
+}
+
+// POST → { attempt: { id, status, startedAt, sessionId, resumed }, test, questions, needsSelf? }
+export async function startStudyTest(apiFetch, testId) {
+  return readJson(await post(apiFetch, `/api/study/tests/${testId}/start`), 'Kunde inte starta provet');
+}
+
+// POST → { status: 'done', attemptId, … } | { status: 'awaiting_self', needsSelf }.
+// 422 = några svar gick inte att tolka → err.data.invalid = [{ n, itemId, message }].
+export async function submitStudyTest(apiFetch, attemptId, answers) {
+  return readJson(await post(apiFetch, `/api/study/tests/attempts/${attemptId}/submit`, { answers }), 'Kunde inte lämna in provet');
+}
+
+// assessments: [{ itemId, level: 'none'|'E'|'C'|'A' }]
+export async function assessStudyTest(apiFetch, attemptId, assessments) {
+  return readJson(await post(apiFetch, `/api/study/tests/attempts/${attemptId}/assess`, { assessments }), 'Kunde inte spara bedömningen');
+}
+
+// GET → resultatet (poäng per nivå, uppskattat betyg, facit per fråga)
+export async function fetchStudyTestAttempt(apiFetch, attemptId) {
+  return readJson(await apiFetch(`/api/study/tests/attempts/${attemptId}`), 'Kunde inte hämta resultatet');
+}

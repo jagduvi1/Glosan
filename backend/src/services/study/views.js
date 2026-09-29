@@ -10,6 +10,7 @@ const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subj
 const { isValidTerm, termLabel } = require('../../utils/term');
 const { readableFilter, oid, loadUnit } = require('./access');
 const { publicItem } = require('./practice');
+const { testsForUnit } = require('./tests');
 const { issuer } = require('../mcpOAuth');
 
 const MASTERED_BOX = 3;
@@ -63,6 +64,10 @@ function folderUrl(folderId) {
   return `${issuer()}/plugga/mapp/${folderId}`;
 }
 
+function testUrl(testId) {
+  return `${issuer()}/plugga/prov/${testId}`;
+}
+
 function unitSummary(u, userId, progress, ownerName) {
   const isOwner = String(u.user?._id || u.user) === String(userId);
   const subject = getSubject(u.subject);
@@ -114,14 +119,15 @@ async function unitDetail(userId, unitId) {
     User.findById(unit.user, 'username').lean()
   ]);
   const itemIds = items.map((i) => i._id);
-  const [states, papers, progress] = await Promise.all([
+  const [states, papers, progress, tests] = await Promise.all([
     StudyItemState.find({ user: userId, item: { $in: itemIds } }).lean(),
     StudyAttempt.aggregate([
       { $match: { user: oid(userId), unit: unit._id, source: 'paper' } },
       { $sort: { createdAt: -1 } },
       { $group: { _id: '$item', result: { $first: '$result' }, feedback: { $first: '$feedback' }, at: { $first: '$createdAt' } } }
     ]),
-    unitProgress(userId, [unit._id])
+    unitProgress(userId, [unit._id]),
+    testsForUnit(userId, unit)
   ]);
   const stateBy = new Map(states.map((s) => [String(s.item), s]));
   const paperBy = new Map(papers.map((p) => [String(p._id), p]));
@@ -129,6 +135,7 @@ async function unitDetail(userId, unitId) {
   return {
     unit: unitSummary(u, userId, progress.get(String(unit._id)), owner?.username),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
+    tests,
     items: items.map((i) => {
       const s = stateBy.get(String(i._id));
       const paper = paperBy.get(String(i._id));
@@ -141,5 +148,5 @@ async function unitDetail(userId, unitId) {
   };
 }
 
-module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, folderUrl, MASTERED_BOX };
+module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, folderUrl, testUrl, MASTERED_BOX };
 

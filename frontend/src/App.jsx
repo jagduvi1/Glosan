@@ -39,6 +39,9 @@ const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
 const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
 const PluggaFolder = lazy(() => import('./pages/PluggaFolder'));
 const PluggaActivity = lazy(() => import('./pages/PluggaActivity'));
+const PluggaTest = lazy(() => import('./pages/PluggaTest'));
+const PluggaTestPaper = lazy(() => import('./pages/PluggaTestPaper'));
+const PluggaTestResult = lazy(() => import('./pages/PluggaTestResult'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -153,6 +156,30 @@ function AppRoutes() {
           element={
             <FeatureRoute feature="study">
               <Layout><PluggaUnit /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/prov/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTest /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/prov/:id/papper"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTestPaper /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/prov/:id/resultat/:attemptId"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTestResult /></Layout>
             </FeatureRoute>
           }
         />

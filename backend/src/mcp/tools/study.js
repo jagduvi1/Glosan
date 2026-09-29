@@ -9,15 +9,19 @@ const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
 const StudyFlag = require('../../models/StudyFlag');
+const StudyTest = require('../../models/StudyTest');
+const StudyTestAttempt = require('../../models/StudyTestAttempt');
 const { SUBJECT_KEYS, getSubject } = require('../../config/subjects');
 const { termFor, termLabel } = require('../../utils/term');
 const { registerTool } = require('../registry');
 const { objectId, ok, fail, validationMessage } = require('../toolUtil');
 const { loadUnit, loadItem, findItemByCode, itemCode, isId, oid } = require('../../services/study/access');
-const { listUnits, unitUrl, folderUrl } = require('../../services/study/views');
+const { listUnits, unitUrl, folderUrl, testUrl } = require('../../services/study/views');
 const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { activityFor } = require('../../services/study/activity');
+const { loadTest, testItems, recordPaperTest } = require('../../services/study/tests');
+const G = require('../../services/study/testGrading');
 const { deleteStudyUnitsCascade } = require('../../services/studyData');
 const { parseStudyCode } = require('../../utils/studyCodes');
 
@@ -120,7 +124,8 @@ function itemFull(item, unit) {
     ...(item.hints?.length ? { hints: item.hints } : {}),
     level: item.level || null,
     ...(item.skill ? { skill: item.skill } : {}),
-    ...(item.sourceRef ? { source_ref: item.sourceRef } : {})
+    ...(item.sourceRef ? { source_ref: item.sourceRef } : {}),
+    ...(item.usage === 'test' ? { usage: 'test' } : {})
   };
 }
 
@@ -231,15 +236,24 @@ registerTool({
     } else {
       return fail('invalid_input', 'Pass unit_id or code.');
     }
-    const [pages, items] = await Promise.all([
+    const [pages, items, tests] = await Promise.all([
       args.include_pages === false ? [] : StudyPage.find({ unit: unit._id }).sort({ order: 1, createdAt: 1 }).lean(),
-      args.include_items === false ? [] : StudyItem.find({ unit: unit._id }).sort({ number: 1 }).lean()
+      args.include_items === false ? [] : StudyItem.find({ unit: unit._id }).sort({ number: 1 }).lean(),
+      StudyTest.find({ unit: unit._id }).sort({ createdAt: 1 }).lean()
     ]);
+    const codeById = new Map(items.map((i) => [String(i._id), itemCode(unit, i)]));
     return ok(`"${unit.title}" (${unit.code}) — ${pages.length} page(s), ${items.length} card(s)/exercise(s)`, {
       ...unitMeta(unit),
       is_owner: String(unit.user) === String(ctx.user.id),
       pages: pages.map((p) => ({ page_id: String(p._id), title: p.title, body: p.body, order: p.order })),
-      items: items.map((i) => itemFull(i, unit))
+      items: items.map((i) => itemFull(i, unit)),
+      tests: tests.map((t) => ({
+        test_id: String(t._id),
+        title: t.title,
+        question_codes: t.questions.map((q) => codeById.get(String(q.item))).filter(Boolean),
+        max_points: G.sumPoints(t.questions.map((q) => q.points)),
+        url: testUrl(t._id)
+      }))
     });
   }
 });
@@ -313,7 +327,17 @@ registerTool({
           }
         }
       }
-      return ok(`Progress in "${unit.title}"`, { ...unitMeta(unit), per_level: perLevel, keeps_missing: weak });
+      const tests = await StudyTest.find({ unit: unit._id }, 'title').lean();
+      const tries = tests.length
+        ? await StudyTestAttempt.find({ user: ctx.user.id, test: { $in: tests.map((t) => t._id) }, status: 'done' }).sort({ finishedAt: -1 }).lean()
+        : [];
+      const testResults = tests.map((t) => ({
+        test_id: String(t._id),
+        title: t.title,
+        attempts: tries.filter((a) => String(a.test) === String(t._id)).slice(0, 5)
+          .map((a) => ({ at: a.finishedAt, source: a.source, score: a.score, max: a.max, estimated_grade: a.grade }))
+      }));
+      return ok(`Progress in "${unit.title}"`, { ...unitMeta(unit), per_level: perLevel, keeps_missing: weak, tests: testResults });
     }
     const units = await listUnits(ctx.user.id, { subject: args.subject, term: args.term, allTerms: !args.term });
     return ok(`${units.length} unit(s)`, units.map((u) => ({
@@ -669,6 +693,9 @@ registerTool({
     await StudyItem.deleteMany({ _id: { $in: ids } });
     await StudyItemState.deleteMany({ item: { $in: ids } });
     await StudyFlag.deleteMany({ item: { $in: ids } });
+    // Provfrågor försvinner ur sina prov; ett prov utan frågor tas bort.
+    await StudyTest.updateMany({ unit: unit._id }, { $pull: { questions: { item: { $in: ids } } } });
+    await StudyTest.deleteMany({ unit: unit._id, questions: { $size: 0 } });
     const deleted = items.map((i) => `${unit.code}-${i.number}`);
     const missing = numbers.filter((n) => !items.some((i) => i.number === n)).map((n) => `${unit.code}-${n}`);
     return ok(`Deleted ${deleted.length} item(s) from ${unit.code}`, { deleted, ...(missing.length ? { not_found: missing } : {}) });
@@ -776,7 +803,7 @@ registerTool({
       code: itemCode(unit, item),
       result: args.result,
       xp_earned: out.xpEarned,
-      next_review: out.state.dueAt,
+      next_review: out.state?.dueAt ?? null,
       url: unitUrl(unit)
     });
   }
@@ -802,6 +829,227 @@ registerTool({
     );
     if (!flag) return fail('not_found', 'No such open report on a unit the user created. list_study_flags shows the open ones.');
     return ok('Report closed', { flag_id: String(flag._id) });
+  }
+});
+
+// ── övningsprov ──────────────────────────────────────────────────────────────
+
+const pointsInput = z.object({
+  E: z.number().int().min(0).max(10).optional(),
+  C: z.number().int().min(0).max(10).optional(),
+  A: z.number().int().min(0).max(10).optional()
+});
+
+const MSG_TEST_NOT_FOUND = 'No such practice test, or no access to it. get_study_unit lists a unit\'s tests (test_id and question codes).';
+
+/** Hitta ett prov via test_id eller en frågekod från provpappret ("MA3-31"). */
+async function resolveTest(ctx, args) {
+  if (args.test_id) {
+    const loaded = await loadTest(ctx.user.id, args.test_id);
+    return loaded || { error: fail('not_found', MSG_TEST_NOT_FOUND) };
+  }
+  if (args.code) {
+    const r = await resolveItem(ctx, { code: args.code }, 'read');
+    if (r.error) return r;
+    const test = await StudyTest.findOne({ 'questions.item': r.item._id }, '_id');
+    if (!test) return { error: fail('not_found', `${itemCode(r.unit, r.item)} is not a question on a practice test. For a single exercise use record_paper_attempt.`) };
+    return (await loadTest(ctx.user.id, test._id)) || { error: fail('not_found', MSG_TEST_NOT_FOUND) };
+  }
+  return { error: fail('invalid_input', 'Pass test_id, or code (any question code on the test, e.g. "MA3-31").') };
+}
+
+registerTool({
+  name: 'create_practice_test',
+  title: 'Create a practice test (övningsprov)',
+  description:
+    'Creates a practice test in a unit you created — like the real test or the national tests: your OWN questions across E, C and A, each giving points per level ' +
+    '(default 1 point on its level; e.g. { E: 1, C: 1 } for a question that shows both). Optional time limit, and grade limits if the book or teacher gives them ' +
+    '(otherwise limits like the national tests are used). The questions get codes like other exercises but are hidden from normal practice. ' +
+    'The student takes the test in the app (auto-graded; open questions self-assessed against your model answer) or on paper — then check the photos and call record_paper_test. ' +
+    'Returns test_id, the question codes and a url.',
+  scope: 'write',
+  feature: FEATURE,
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  inputSchema: {
+    unit_id: objectId,
+    title: z.string().trim().min(1).max(120).describe('e.g. "Övningsprov — Ekvationer"'),
+    description: z.string().trim().max(1000).optional().describe('What it covers, allowed aids (miniräknare, formelblad), a tip'),
+    time_limit_min: z.number().int().min(5).max(180).optional(),
+    questions: z.array(exerciseInput.extend({
+      points: pointsInput.optional().describe('Points per level — default 1 point on the question\'s level')
+    })).min(1).max(40),
+    grade_limits: z.object({
+      E: z.object({ total: z.number().int().min(0) }).optional(),
+      C: z.object({ total: z.number().int().min(0), c_or_a: z.number().int().min(0).optional() }).optional(),
+      A: z.object({ total: z.number().int().min(0), a: z.number().int().min(0).optional() }).optional()
+    }).optional().describe('Only if the book/teacher gives limits, e.g. { E: { total: 8 }, C: { total: 14, c_or_a: 4 }, A: { total: 19, a: 3 } }')
+  },
+  handler: async (args, ctx) => {
+    const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
+    if (access.error) return unitError(access);
+    const { unit } = access;
+    const points = [];
+    for (const [i, q] of args.questions.entries()) {
+      if (q.answer.type === 'choice' && q.answer.correct_index >= q.answer.choices.length) {
+        return fail('invalid_input', `Question ${i + 1}: correct_index ${q.answer.correct_index} is outside its ${q.answer.choices.length} choices.`);
+      }
+      if (q.answer.type !== 'self' && !(q.solution && q.solution.trim())) {
+        return fail('invalid_input', `Question ${i + 1}: add a worked solution — the student sees it after the test.`);
+      }
+      const p = q.points ? { E: q.points.E || 0, C: q.points.C || 0, A: q.points.A || 0 } : G.defaultPoints(q.level);
+      if (p.E + p.C + p.A < 1) return fail('invalid_input', `Question ${i + 1}: give it at least 1 point.`);
+      points.push(p);
+    }
+    const r = await insertItems(ctx, unit, args.questions.map((q) => ({
+      kind: 'exercise',
+      usage: 'test',
+      prompt: q.prompt,
+      answer: answerIn(q.answer),
+      solution: q.solution || '',
+      hints: q.hints || [],
+      level: q.level,
+      skill: q.skill || '',
+      sourceRef: q.source_ref || ''
+    })));
+    if (r.error) return r.error;
+    const max = G.sumPoints(points);
+    let test;
+    try {
+      test = await StudyTest.create({
+        unit: unit._id,
+        user: ctx.user.id,
+        title: args.title,
+        description: args.description || '',
+        timeLimitMin: args.time_limit_min ?? null,
+        questions: r.inserted.map((item, i) => ({ item: item._id, points: points[i] })),
+        gradeLimits: G.gradeLimitsFrom(args.grade_limits, max)
+      });
+    } catch (err) {
+      await StudyItem.deleteMany({ _id: { $in: r.inserted.map((i) => i._id) } });
+      if (err.name === 'ValidationError') return fail('invalid_input', validationMessage(err));
+      throw err;
+    }
+    return ok(`Created "${test.title}" in ${unit.code}: ${r.inserted.length} question(s), ${max.E}/${max.C}/${max.A} points (E/C/A)`, {
+      test_id: String(test._id),
+      question_codes: r.inserted.map((i) => itemCode(unit, i)),
+      max_points: max,
+      grade_limits: test.gradeLimits,
+      url: testUrl(test._id)
+    });
+  }
+});
+
+registerTool({
+  name: 'get_practice_test',
+  title: 'Get a practice test with answers',
+  description:
+    'Returns a practice test with every question INCLUDING answers, worked solutions and points per level, the grade limits, and the student\'s own results on it. ' +
+    'Find it by test_id or by any question code on the test sheet (e.g. "MA3-31"). Use it before grading a test done on paper, or to verify a test you created.',
+  scope: 'read',
+  feature: FEATURE,
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  inputSchema: {
+    test_id: objectId.optional(),
+    code: z.string().trim().max(20).optional().describe('Any question code on the test, e.g. "MA3-31"')
+  },
+  handler: async (args, ctx) => {
+    const t = await resolveTest(ctx, args);
+    if (t.error) return t.error;
+    const { test, unit } = t;
+    const [qs, tries] = await Promise.all([
+      testItems(test),
+      StudyTestAttempt.find({ user: ctx.user.id, test: test._id, status: 'done' }).sort({ finishedAt: -1 }).limit(5).lean()
+    ]);
+    return ok(`"${test.title}" in ${unit.code} — ${qs.length} question(s)`, {
+      test_id: String(test._id),
+      title: test.title,
+      description: test.description || '',
+      time_limit_min: test.timeLimitMin ?? null,
+      unit: unitMeta(unit),
+      max_points: G.sumPoints(qs.map((x) => x.q.points)),
+      grade_limits: test.gradeLimits,
+      questions: qs.map((x) => ({ n: x.n, points: { E: x.q.points.E, C: x.q.points.C, A: x.q.points.A }, ...itemFull(x.item, unit) })),
+      my_attempts: tries.map((a) => ({ at: a.finishedAt, source: a.source, score: a.score, max: a.max, estimated_grade: a.grade })),
+      url: testUrl(test._id)
+    });
+  }
+});
+
+registerTool({
+  name: 'record_paper_test',
+  title: 'Record a practice test checked on paper',
+  description:
+    'After checking a practice test the student did on paper (photos of their answers — every question has its code, e.g. MA3-31), records the points per question ' +
+    'with your feedback. Call get_practice_test first and grade against the real answers — never from memory. Points per level cannot exceed the question\'s points; ' +
+    'questions you leave out count as 0 (say so if the student skipped them). The result — points per level and an estimated grade — appears in the app and counts ' +
+    'toward study time and XP. The photos are not stored.',
+  scope: 'write',
+  feature: FEATURE,
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  inputSchema: {
+    test_id: objectId.optional(),
+    code: z.string().trim().max(20).optional().describe('Any question code on the test, used to find it'),
+    results: z.array(z.object({
+      code: z.string().trim().max(20).describe('The question code, e.g. "MA3-31"'),
+      points: pointsInput.describe('Points earned per level'),
+      feedback: z.string().trim().max(2000).optional().describe('Short feedback on this question (Swedish)'),
+      given: z.string().trim().max(500).optional().describe('The student\'s final answer as written')
+    })).min(1).max(40),
+    overall_feedback: z.string().trim().min(1).max(4000)
+      .describe('Swedish, to the student: what went well, what to practise next, and what would lift the grade'),
+    minutes: z.number().min(0).max(180).optional().describe('How long the student worked, if they said')
+  },
+  handler: async (args, ctx) => {
+    const t = await resolveTest(ctx, args);
+    if (t.error) return t.error;
+    const { test, unit } = t;
+    const qs = await testItems(test);
+    const byNumber = new Map(qs.map((x) => [x.item.number, x]));
+    const results = [];
+    const seen = new Set();
+    for (const r of args.results) {
+      const parsed = parseStudyCode(r.code);
+      const x = parsed && parsed.unitCode === unit.code ? byNumber.get(parsed.number) : null;
+      if (!x) {
+        return fail('invalid_input', `"${r.code}" is not a question on this test. Its codes: ${qs.map((q) => itemCode(unit, q.item)).join(', ')}.`);
+      }
+      if (seen.has(String(x.item._id))) return fail('invalid_input', `${r.code} is listed twice.`);
+      seen.add(String(x.item._id));
+      results.push({ itemId: String(x.item._id), points: r.points, feedback: r.feedback || '', given: r.given || '' });
+    }
+    const out = await recordPaperTest(ctx.user.id, test, unit, {
+      results, overallFeedback: args.overall_feedback, minutes: args.minutes ?? null
+    });
+    return ok(`Recorded "${test.title}": ${out.score.total}/${out.max.total} points, estimated grade ${out.grade} (+${out.xpEarned} XP)`, {
+      score: out.score,
+      max: out.max,
+      estimated_grade: out.grade,
+      xp_earned: out.xpEarned,
+      ...(out.missing.length ? { not_graded: out.missing } : {}),
+      url: `${testUrl(test._id)}/resultat/${out.attemptId}`
+    });
+  }
+});
+
+registerTool({
+  name: 'delete_practice_test',
+  title: 'Delete a practice test',
+  description:
+    'Permanently deletes a practice test you created and its questions (for everyone it is shared with). Results already done stay in the students\' history. ' +
+    'Confirm with the student first, naming the test.',
+  scope: 'write',
+  feature: FEATURE,
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  inputSchema: { test_id: objectId },
+  handler: async (args, ctx) => {
+    const loaded = await loadTest(ctx.user.id, args.test_id);
+    if (!loaded) return fail('not_found', MSG_TEST_NOT_FOUND);
+    if (!loaded.isOwner) return fail('forbidden', MSG_OWNER_ONLY);
+    const ids = loaded.test.questions.map((q) => q.item);
+    await StudyItem.deleteMany({ _id: { $in: ids }, usage: 'test' });
+    await StudyFlag.deleteMany({ item: { $in: ids } });
+    await StudyTest.deleteOne({ _id: loaded.test._id });
+    return ok(`Deleted "${loaded.test.title}" and its ${ids.length} question(s)`, { test_id: String(loaded.test._id) });
   }
 });
 

@@ -164,6 +164,11 @@ function SessionRow({ s, showDate }) {
           <span aria-hidden="true">{s.subjects.map((x) => x.emoji).join(' ')}</span> {KIND_LABEL[s.kind] || 'Plugg'}
           {s.unitTitles.length > 0 && <span className="muted" style={{ fontWeight: 600 }}> · {s.unitTitles.join(', ')}</span>}
         </div>
+        {s.test && (
+          <Link to={`/plugga/prov/${s.test.testId}/resultat/${s.test.attemptId}`} className="t-hand" style={{ display: 'block', fontSize: 15 }}>
+            📝 {s.test.title}: {s.test.score.total} av {s.test.max.total} poäng · uppskattat {s.test.grade}{s.test.source === 'paper' ? ' (på papper)' : ''} ›
+          </Link>
+        )}
         <div className="t-hand muted" style={{ fontSize: 14 }}>
           {[s.answered ? `${s.answered} ${s.answered === 1 ? 'uppgift' : 'uppgifter'}, ${s.correct} rätt` : null, s.activeSeconds ? formatMinutes(s.activeSeconds) : null]
             .filter(Boolean).join(' · ') || '—'}
@@ -269,6 +274,7 @@ export default function PluggaActivity() {
         <StatTile value={t.answered} label={pct === null ? 'uppgifter' : `uppgifter · ${pct} % rätt`} color="var(--leaf-soft)" compact />
         {data.period !== 'day' && <StatTile value={t.daysStudied} label={t.daysStudied === 1 ? 'dag med plugg' : 'dagar med plugg'} color="var(--mustard-soft)" compact />}
         <StatTile value={`+${t.xp}`} label="XP" color="var(--plum-soft)" compact />
+        {t.tests > 0 && <StatTile value={t.tests} label="övningsprov" color="var(--berry-soft)" compact />}
         {data.streak.current > 0 && (
           <StatTile value={`🔥 ${data.streak.current}`} label={data.streak.current === 1 ? 'dag i rad' : 'dagar i rad'} color="var(--coral-soft)" compact />
         )}

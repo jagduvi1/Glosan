@@ -90,12 +90,13 @@ app.use(cors({
 //   (claude.ai, ChatGPT) går ut från en liten delad IP-pool. Egna limitrar i
 //   routes/mcp.js och routes/mcpOAuth.js. (/api/mcp/connections, Profil-sidan,
 //   är en vanlig webbapp-route och omfattas som vanligt.)
-// - Plugga-pass (ett anrop per svar): en skolklass delar ofta en IP-adress.
-//   Begränsas per inloggad användare i routes/study.js.
+// - Plugga (/api/study): en skolklass delar ofta en IP-adress, och pass och
+//   prov skickar ett anrop per svar. Begränsas per inloggad användare i
+//   routes/study.js.
 const hasOwnLimiter = (req) => {
   const p = (req.baseUrl || '') + (req.path || '');
   return p === '/api/mcp' || p === '/api/mcp/' || p.startsWith('/api/mcp/oauth/')
-    || p === '/api/study/sessions' || p.startsWith('/api/study/sessions/');
+    || p === '/api/study' || p.startsWith('/api/study/');
 };
 
 const apiLimiter = rateLimit({
