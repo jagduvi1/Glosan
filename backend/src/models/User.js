@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { FEATURE_KEYS, effectiveFeatures } = require('../config/features');
 
 const userSchema = new mongoose.Schema({
   username: {
@@ -81,6 +82,17 @@ const userSchema = new mongoose.Schema({
     enum: ['free', 'basic', 'premium'],
     default: 'free'
   },
+  // Funktionsflaggor som admin slagit på för just det här kontot (t.ex.
+  // 'study' = Plugga medan modulen är dold). Katalog + "på för alla" i
+  // config/features.js — läs alltid via effectiveFeatures(), inte direkt.
+  features: {
+    type: [{ type: String, enum: FEATURE_KEYS }],
+    default: []
+  },
+  // Plugga: löpnummer per ämnesprefix för områdeskoderna, t.ex. { MA: 3 } →
+  // nästa matteområde blir MA4. Räknas upp atomärt i StudyUnit.nextCode och
+  // går aldrig bakåt, så en kod på ett gammalt papper pekar alltid rätt.
+  studyCodeCounters: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   trial: {
     plan: { type: String, enum: ['free', 'basic', 'premium', null], default: null },
     until: { type: Date, default: null }
@@ -154,6 +166,10 @@ userSchema.methods.toJSON = function () {
   obj.hasPassword = !!obj.password;
   // Bara provider-NAMNEN (t.ex. ['google']) — aldrig råa provider-id:n.
   obj.linkedProviders = Array.isArray(obj.authProviders) ? obj.authProviders.map((p) => p.provider) : [];
+  // De EFFEKTIVA flaggorna (egna + FEATURES_FOR_ALL), så frontend kan visa
+  // dolda moduler utan att känna till env-variabeln.
+  obj.features = effectiveFeatures(obj);
+  delete obj.studyCodeCounters;
   delete obj.authProviders;
   delete obj.password;
   delete obj.refreshTokenHash;

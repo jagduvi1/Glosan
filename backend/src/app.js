@@ -22,6 +22,7 @@ const adminRoute = require('./routes/admin');
 const mcpRoute = require('./routes/mcp');
 const mcpOAuthRoute = require('./routes/mcpOAuth');
 const wellKnownOAuthRoute = require('./routes/wellKnownOAuth');
+const studyRoute = require('./routes/study');
 
 const app = express();
 
@@ -126,6 +127,8 @@ app.use('/api/auth', oauthRoute);
 // servern före /api/mcp så /api/mcp/oauth/* hamnar rätt.
 app.use('/api/mcp/oauth', mcpOAuthRoute);
 app.use('/api/mcp', mcpRoute);
+// Plugga (skolämnen) — dold bakom funktionsflaggan 'study'. Se docs/plugga.md.
+app.use('/api/study', studyRoute);
 app.use('/api/lists', listsRoute);
 // listInvites monteras på /api/ eftersom routes har paths som
 // /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)

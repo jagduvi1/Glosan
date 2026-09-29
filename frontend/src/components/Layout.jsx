@@ -13,6 +13,7 @@ import { useSeasonalTheme } from '../utils/useSeasonalTheme';
 import { useTextSequence } from '../utils/useTextSequence';
 import { markEggFound } from '../utils/easterEggs';
 import { resendVerification } from '../api/email';
+import { hasFeature } from '../utils/features';
 
 export default function Layout({ children }) {
   const { user, logout, apiFetch } = useAuth();
@@ -125,6 +126,9 @@ export default function Layout({ children }) {
   const isOnProfile = location.pathname.startsWith('/profile');
   const isOnDictionary = location.pathname.startsWith('/ordbok');
   const isOnFriends = location.pathname.startsWith('/kompisar');
+  // Plugga ligger bakom funktionsflaggan 'study' tills modulen släpps.
+  const showPlugga = hasFeature(user, 'study');
+  const isOnPlugga = location.pathname.startsWith('/plugga');
   const isOnAdmin = location.pathname.startsWith('/admin');
   const isAdmin = user?.roles?.includes('admin');
 
@@ -188,6 +192,7 @@ export default function Layout({ children }) {
           </Link>
           <div className="nav-links nav-links-desktop">
             <Link to="/lists" className={`nav-link ${isOnLists ? 'active' : ''}`}>Mina listor</Link>
+            {showPlugga && <Link to="/plugga" className={`nav-link ${isOnPlugga ? 'active' : ''}`}>Plugga</Link>}
             <Link to="/ordbok" className={`nav-link ${isOnDictionary ? 'active' : ''}`}>Ordbok</Link>
             <Link to="/kompisar" className={`nav-link ${isOnFriends ? 'active' : ''}`}>Kompisar</Link>
             <Link to="/profile" className={`nav-link ${isOnProfile ? 'active' : ''}`}>Profil</Link>
@@ -240,6 +245,7 @@ export default function Layout({ children }) {
         {menuOpen && (
           <div className="nav-drawer">
             <Link to="/lists" className={`nav-link ${isOnLists ? 'active' : ''}`}>Mina listor</Link>
+            {showPlugga && <Link to="/plugga" className={`nav-link ${isOnPlugga ? 'active' : ''}`}>Plugga</Link>}
             <Link to="/ordbok" className={`nav-link ${isOnDictionary ? 'active' : ''}`}>Ordbok</Link>
             <Link to="/kompisar" className={`nav-link ${isOnFriends ? 'active' : ''}`}>Kompisar</Link>
             <Link to="/profile" className={`nav-link ${isOnProfile ? 'active' : ''}`}>Profil</Link>

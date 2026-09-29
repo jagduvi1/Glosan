@@ -31,4 +31,15 @@ const INSTRUCTIONS = [
   '- Errors return { error: { code, message } }. Codes: not_found (wrong or foreign id — re-list to recover); invalid_input (the message says exactly what to fix); forbidden (the list was shared without that right); conflict (e.g. the category already exists — use the id in the message); rate_limited (too many changes in a short time — wait a few minutes; reads still work).'
 ].join('\n');
 
-module.exports = { INSTRUCTIONS };
+// Avsnitt för moduler bakom funktionsflaggor (config/features.js). Läggs bara
+// till för användare som har flaggan, så AI:n aldrig får höra talas om en dold
+// modul. Plugga fyller i sitt avsnitt när dess verktyg finns (docs/plugga.md).
+const FEATURE_SECTIONS = {};
+
+/** Instruktionerna för en användare med de här effektiva flaggorna. */
+function buildInstructions(features = []) {
+  const extra = features.filter((f) => FEATURE_SECTIONS[f]).map((f) => FEATURE_SECTIONS[f]);
+  return extra.length ? [INSTRUCTIONS, '', ...extra].join('\n') : INSTRUCTIONS;
+}
+
+module.exports = { INSTRUCTIONS, FEATURE_SECTIONS, buildInstructions };

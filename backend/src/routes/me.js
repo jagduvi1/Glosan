@@ -10,6 +10,7 @@ const XpEvent = require('../models/XpEvent');
 const QuizRunEvent = require('../models/QuizRunEvent');
 const McpToken = require('../models/McpToken');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
+const { exportStudyData, deleteStudyDataForUser } = require('../services/studyData');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -446,6 +447,7 @@ router.get('/export', async (req, res) => {
       InviteCode.find({ user: userId }).lean(),
       McpToken.find({ user: userId }).lean()
     ]);
+    const study = await exportStudyData(userId);
 
     // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
     // ens till användaren själv.
@@ -508,6 +510,9 @@ router.get('/export', async (req, res) => {
         usedAt: c.usedAt,
         createdAt: c.createdAt
       })),
+      // Plugga: egna områden (med genomgångar och uppgifter), delade med mig,
+      // mappar, pass, svar och progress.
+      study,
       // Anslutna AI:er (MCP) — bara metadata, aldrig token-hashar.
       aiConnections: mcpTokens.map((t) => ({
         name: t.name,
@@ -526,7 +531,7 @@ router.get('/export', async (req, res) => {
 // DELETE /api/me — GDPR Art. 17: rätt att raderas. Hård delete på allt jag
 // äger eller är knuten till. Cascading: User, GlosList, Glos, Friendship,
 // CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode, McpToken,
-// OAuthAuthCode. Pull också ut mig
+// OAuthAuthCode och all Plugga-data (services/studyData.js). Pull också ut mig
 // från andras GlosList.sharedWith så jag inte syns kvar i deras "delade
 // med dig"-sektion.
 //
@@ -576,6 +581,9 @@ router.delete('/', async (req, res) => {
     // är connector-metadata utan user-ref och lämnas kvar.
     await McpToken.deleteMany({ user: userId }, opts);
     await OAuthAuthCode.deleteMany({ user: userId }, opts);
+    // Plugga: egna områden med allt innehåll + allas progress på dem, min
+    // egen progress/historik/mappar, och mig ur andras delningar.
+    await deleteStudyDataForUser(userId, opts);
 
     await User.deleteOne({ _id: userId }, opts);
   }

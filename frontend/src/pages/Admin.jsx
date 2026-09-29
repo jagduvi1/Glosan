@@ -6,7 +6,9 @@ import {
   setUserPlan,
   grantTrial,
   clearTrial,
-  resetUsage
+  resetUsage,
+  fetchAdminFeatures,
+  setUserFeature
 } from '../api/admin';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
@@ -34,6 +36,7 @@ export default function Admin() {
   const { apiFetch, user } = useAuth();
   const [users, setUsers] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [features, setFeatures] = useState([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
@@ -44,12 +47,14 @@ export default function Admin() {
     setBusy(true);
     setError('');
     try {
-      const [u, p] = await Promise.all([
+      const [u, p, f] = await Promise.all([
         fetchAdminUsers(apiFetch),
-        fetchAdminPlans(apiFetch)
+        fetchAdminPlans(apiFetch),
+        fetchAdminFeatures(apiFetch)
       ]);
       setUsers(u);
       setPlans(p);
+      setFeatures(f);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -100,6 +105,17 @@ export default function Admin() {
     setActionError('');
     try {
       const updated = await clearTrial(apiFetch, u._id);
+      replaceUser(updated);
+    } catch (e) {
+      setActionError(e.message);
+    }
+  };
+
+  // Dolda moduler (t.ex. Plugga) slås på per konto här tills de släpps.
+  const onToggleFeature = async (u, key, enabled) => {
+    setActionError('');
+    try {
+      const updated = await setUserFeature(apiFetch, u._id, key, enabled);
       replaceUser(updated);
     } catch (e) {
       setActionError(e.message);
@@ -292,6 +308,22 @@ export default function Admin() {
                   </button>
                 )}
               </div>
+
+              {features.length > 0 && (
+                <div className="row" style={{ gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {features.map((f) => (
+                    <label key={f.key} className="row t-hand" style={{ gap: 6, alignItems: 'center', fontSize: 15, cursor: f.forAll ? 'default' : 'pointer' }} title={f.description}>
+                      <input
+                        type="checkbox"
+                        checked={f.forAll || (u.features || []).includes(f.key)}
+                        disabled={f.forAll}
+                        onChange={(e) => onToggleFeature(u, f.key, e.target.checked)}
+                      />
+                      {f.label} (beta){f.forAll ? ' · på för alla' : ''}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

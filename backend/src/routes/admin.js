@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const User = require('../models/User');
 const { PLANS, PLAN_IDS, isValidPlanId, effectivePlan, monthKey } = require('../config/plans');
+const { FEATURES, FEATURE_KEYS, featuresForAll } = require('../config/features');
 
 const router = express.Router();
 
@@ -29,6 +30,8 @@ function shapeUserForAdmin(user) {
       active: trialActive
     },
     hasUsedTrial: !!user.hasUsedTrial,
+    // Flaggor admin slagit på för just det här kontot (inte FEATURES_FOR_ALL).
+    features: Array.isArray(user.features) ? user.features : [],
     aiUsage: {
       used: usedThisMonth,
       limit: plan.aiCallsPerMonth,
@@ -49,6 +52,41 @@ router.get('/plans', (req, res) => {
       color: PLANS[id].color
     }))
   });
+});
+
+// GET /api/admin/features — flagg-katalogen + vilka som är på för alla, så
+// admin-UI:t kan rita en växel per flagga utan att hårdkoda dem.
+router.get('/features', (req, res) => {
+  const forAll = featuresForAll();
+  res.json({
+    features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key) }))
+  });
+});
+
+// PATCH /api/admin/users/:id/features — slå på/av en flagga för ett konto.
+// Body: { feature: 'study', enabled: true }. Verkar direkt (requireFeature
+// läser flaggan från databasen vid varje anrop).
+router.patch('/users/:id/features', async (req, res) => {
+  const { id } = req.params;
+  const { feature, enabled } = req.body;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  if (!FEATURE_KEYS.includes(feature) || typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: `feature must be one of: ${FEATURE_KEYS.join(', ')}, and enabled a boolean` });
+  }
+  try {
+    const user = await User.findByIdAndUpdate(
+      id,
+      enabled ? { $addToSet: { features: feature } } : { $pull: { features: feature } },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: shapeUserForAdmin(user) });
+  } catch (err) {
+    console.error('Admin set feature error:', err);
+    res.status(500).json({ error: 'Failed to update feature' });
+  }
 });
 
 // GET /api/admin/users — paginerad lista, newest first.

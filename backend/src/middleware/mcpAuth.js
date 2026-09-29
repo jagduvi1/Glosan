@@ -1,6 +1,7 @@
 const McpToken = require('../models/McpToken');
 const User = require('../models/User');
 const { requireAuth } = require('./auth');
+const { effectiveFeatures } = require('../config/features');
 
 const { TOKEN_PREFIX, TOKEN_SCOPES } = McpToken;
 
@@ -19,6 +20,9 @@ const LAST_USED_THROTTLE_MS = 60 * 60 * 1000;
  * - En vanlig JWT — användaren själv (t.ex. curl eller MCP Inspector med en
  *   access-token från webbappen). Får fulla scopes, precis som webbappen.
  *
+ * Sätter även req.mcpFeatures (användarens effektiva funktionsflaggor), så att
+ * verktyg för dolda moduler bara registreras för den som har flaggan.
+ *
  * Fel svarar 401 så att MCP-klienten kör sin refresh-grant; routen lägger på
  * WWW-Authenticate-headern som pekar på discovery-dokumentet.
  */
@@ -26,9 +30,17 @@ async function requireMcpAuth(req, res, next) {
   const header = req.headers.authorization;
   const raw = header && header.startsWith('Bearer ') ? header.substring(7) : null;
   if (!raw || !raw.startsWith(TOKEN_PREFIX)) {
-    return requireAuth(req, res, () => {
-      req.mcpScopes = [...TOKEN_SCOPES];
-      next();
+    return requireAuth(req, res, async () => {
+      try {
+        const user = await User.findById(req.user.id).select('features').lean();
+        if (!user) return res.status(401).json({ error: 'Invalid token' });
+        req.mcpScopes = [...TOKEN_SCOPES];
+        req.mcpFeatures = effectiveFeatures(user);
+        next();
+      } catch (err) {
+        console.error('MCP JWT auth error:', err.message);
+        res.status(500).json({ error: 'Authentication failed' });
+      }
     });
   }
 
@@ -38,7 +50,7 @@ async function requireMcpAuth(req, res, next) {
     if (token.expiresAt.getTime() <= Date.now()) {
       return res.status(401).json({ error: 'Token expired' });
     }
-    const user = await User.findById(token.user).select('roles').lean();
+    const user = await User.findById(token.user).select('roles features').lean();
     if (!user) return res.status(401).json({ error: 'Invalid token' });
 
     req.user = {
@@ -47,6 +59,7 @@ async function requireMcpAuth(req, res, next) {
     };
     req.mcpToken = { id: String(token._id), scopes: token.scopes };
     req.mcpScopes = token.scopes;
+    req.mcpFeatures = effectiveFeatures(user);
 
     if (!token.lastUsedAt || Date.now() - token.lastUsedAt.getTime() > LAST_USED_THROTTLE_MS) {
       McpToken.updateOne({ _id: token._id }, { $set: { lastUsedAt: new Date() } }).catch(() => {});

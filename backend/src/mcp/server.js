@@ -1,5 +1,5 @@
 const { toolsForScopes, promptsForScopes } = require('./registry');
-const { INSTRUCTIONS } = require('./instructions');
+const { buildInstructions } = require('./instructions');
 const { takeMutationSlot } = require('./mutationBudget');
 const pkg = require('../../package.json');
 require('./tools');   // registrera alla verktyg (sidoeffekt)
@@ -80,16 +80,18 @@ function budgetedPromptHandler(prompt, state) {
  * scopes tillåter. Ett otillåtet verktyg registreras aldrig — det är inte
  * gömt i tools/list, det är oanropbart ("unknown tool"). Scope-skyddet är
  * alltså strukturellt, inte ett filter en klient kan prata sig förbi.
- * ctx = { user, scopes }.
+ * ctx = { user, scopes, features } — features = användarens effektiva
+ * funktionsflaggor; verktyg för en dold modul registreras bara med flaggan.
  */
 async function buildServer(ctx) {
   const { McpServer } = await loadSdk();
+  const features = ctx.features || [];
   const server = new McpServer(
     { name: 'glosan', version: pkg.version },
-    { instructions: INSTRUCTIONS }
+    { instructions: buildInstructions(features) }
   );
   const state = { calls: 0 };
-  for (const tool of toolsForScopes(ctx.scopes)) {
+  for (const tool of toolsForScopes(ctx.scopes, features)) {
     server.registerTool(
       tool.name,
       {
@@ -101,7 +103,7 @@ async function buildServer(ctx) {
       budgetedHandler(tool, ctx, state)
     );
   }
-  for (const prompt of promptsForScopes(ctx.scopes)) {
+  for (const prompt of promptsForScopes(ctx.scopes, features)) {
     server.registerPrompt(
       prompt.name,
       { title: prompt.title, description: prompt.description, argsSchema: prompt.argsSchema },

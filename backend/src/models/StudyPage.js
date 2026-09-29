@@ -1,0 +1,24 @@
+const mongoose = require('mongoose');
+
+/**
+ * StudyPage — en "Genomgång" i ett område: förklaring, "så gör du" steg för
+ * steg, exempel och vanliga fel. Markdown med formler i LaTeX ($…$), skriven
+ * av AI:n via MCP. Renderas utan rå HTML (se frontend) — texten kommer från en
+ * AI och ska aldrig kunna bli körbar kod i appen.
+ */
+const studyPageSchema = new mongoose.Schema({
+  unit: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyUnit', required: true, index: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  title: { type: String, required: true, trim: true, maxlength: 120 },
+  body: { type: String, required: true, maxlength: 20000 },
+  order: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+studyPageSchema.pre('save', function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+module.exports = mongoose.model('StudyPage', studyPageSchema);

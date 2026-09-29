@@ -57,7 +57,7 @@ const guard = [mcpIpLimiter, mcpChallenge, requireMcpAuth, mcpUserLimiter];
 // POST /api/mcp — stateless Streamable HTTP MCP-endpoint.
 router.post('/', ...guard, async (req, res, next) => {
   try {
-    await handleMcpRequest(req, res, { user: req.user, scopes: req.mcpScopes });
+    await handleMcpRequest(req, res, { user: req.user, scopes: req.mcpScopes, features: req.mcpFeatures || [] });
   } catch (err) {
     next(err);
   }

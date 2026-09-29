@@ -9,6 +9,10 @@
 //
 // `scope`: 'public' (varje autentiserad anslutning) eller ett token-scope
 // ('read' | 'write').
+//
+// `feature` (valfritt): en funktionsflagga (config/features.js) som krävs —
+// verktyg för en dold modul registreras bara för användare med flaggan, så
+// för alla andra finns de inte ens (samma strukturella filter som scopes).
 
 const tools = [];
 const prompts = [];
@@ -21,6 +25,7 @@ const prompts = [];
  * @param {string}   def.scope         'public' | 'read' | 'write'
  * @param {object}   [def.inputSchema] zod raw shape ({} = inga parametrar)
  * @param {object}   [def.annotations] MCP-hints (readOnlyHint, destructiveHint …)
+ * @param {string}   [def.feature]     funktionsflagga som krävs, t.ex. 'study'
  * @param {Function} def.handler       async (args, ctx) => ({ content: [...] })
  */
 function registerTool(def) {
@@ -42,8 +47,13 @@ function scopeSatisfies(tokenScopes, required) {
   return Array.isArray(tokenScopes) && tokenScopes.includes(required);
 }
 
-function toolsForScopes(tokenScopes) {
-  return tools.filter((t) => scopeSatisfies(tokenScopes, t.scope));
+/** True när en användare med `features` får se något som kräver `feature`. */
+function featureSatisfies(features, feature) {
+  return !feature || (Array.isArray(features) && features.includes(feature));
+}
+
+function toolsForScopes(tokenScopes, features = []) {
+  return tools.filter((t) => scopeSatisfies(tokenScopes, t.scope) && featureSatisfies(features, t.feature));
 }
 
 function allTools() {
@@ -69,8 +79,8 @@ function registerPrompt(def) {
   prompts.push({ argsSchema: {}, ...def });
 }
 
-function promptsForScopes(tokenScopes) {
-  return prompts.filter((p) => scopeSatisfies(tokenScopes, p.scope));
+function promptsForScopes(tokenScopes, features = []) {
+  return prompts.filter((p) => scopeSatisfies(tokenScopes, p.scope) && featureSatisfies(features, p.feature));
 }
 
 function allPrompts() {
@@ -78,6 +88,6 @@ function allPrompts() {
 }
 
 module.exports = {
-  registerTool, toolsForScopes, scopeSatisfies, allTools,
+  registerTool, toolsForScopes, scopeSatisfies, featureSatisfies, allTools,
   registerPrompt, promptsForScopes, allPrompts
 };
