@@ -15,11 +15,11 @@ const COLORS = ['coral', 'leaf', 'sky', 'mustard', 'plum', 'berry'];
 const cleanName = (name) => (typeof name === 'string' ? name.trim().replace(/\s+/g, ' ').slice(0, 60) : '');
 const cleanColor = (c) => (COLORS.includes(c) ? c : null);
 
-/** De av `ids` som användaren får läsa (egna + delade), i given ordning. */
+/** De av `ids` som användaren får läsa (egna + delade) och som inte är arkiverade, i given ordning. */
 async function readableUnitIds(userId, ids) {
   const wanted = [...new Set((ids || []).map(String).filter(isId))];
   if (!wanted.length) return [];
-  const found = await StudyUnit.find({ _id: { $in: wanted.map(oid) }, ...readableFilter(userId) }, '_id').lean();
+  const found = await StudyUnit.find({ _id: { $in: wanted.map(oid) }, ...readableFilter(userId), archivedAt: null }, '_id').lean();
   const ok = new Set(found.map((u) => String(u._id)));
   return wanted.filter((id) => ok.has(id));
 }

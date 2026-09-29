@@ -166,6 +166,8 @@ async function activityFor(userId, { period, anchor } = {}) {
       .sort((a, b) => b.activeSeconds - a.activeSeconds || b.answered - a.answered),
     days: dayList,
     timeline,
+    // Klara prov i perioden (i appen och på papper) — med poäng och betyg.
+    tests: testsDone.map((t) => ({ testTitle: t.testTitle, finishedAt: t.finishedAt, source: t.source, score: t.score, max: t.max, grade: t.grade })),
     streak: effectiveStreak(user)
   };
 }

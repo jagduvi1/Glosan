@@ -74,7 +74,8 @@ registerPrompt({
   },
   handler: (args) => userMessage([
     `Här är ett foto av min lösning${args.code ? ` på uppgift ${args.code}` : ''}. Koden står överst på pappret.`,
-    'Hämta uppgiften i Glosan och rätta min lösning: vad är rätt, var blir det fel första gången, ge mig en ledtråd (inte hela lösningen) och säg vad som skulle lyfta den till nästa nivå.',
+    'Hämta uppgiften i Glosan och kontrollera att dess text stämmer med fotot — gör den inte det, fråga mig vilken uppgift det är.',
+    'Rätta sedan min lösning: vad är rätt, var blir det fel första gången, ge mig en ledtråd (inte hela lösningen) och säg vad som skulle lyfta den till nästa nivå.',
     'Spara sedan resultatet och din återkoppling i Glosan.',
     'Om det inte finns något foto eller koden inte syns: fråga mig.'
   ].join('\n'))
@@ -95,7 +96,7 @@ registerPrompt({
     '1. Hitta området och se vad jag kan och vad jag brukar missa.',
     '2. Fråga hur det riktiga provet brukar se ut (tid, miniräknare, typ av frågor) och gör ett övningsprov som liknar det, om det inte redan finns ett.',
     '3. Ge mig en plan dag för dag fram till provet: vad jag ska repetera i appen, när jag ska göra övningsprovet och vad jag ska fokusera på.',
-    'Spara provdatumet på området om det inte redan står där.'
+    'Är området mitt eget: spara provdatumet på det om det inte redan står där. Har en kompis delat det med mig (is_owner: false) kan du inte ändra det — gör då övningsprovet i ett eget område (fråga mig först) eller quizza mig här i chatten.'
   ].join('\n'))
 });
 
@@ -110,7 +111,7 @@ registerPrompt({
   },
   handler: (args) => userMessage([
     `Här är foton av mina svar på ett övningsprov${args.code ? ` (en av frågorna har koden ${args.code})` : ''}. Koden står vid varje fråga.`,
-    'Hämta provet i Glosan och rätta varje fråga mot facit: poäng per nivå (E/C/A) och en kort kommentar per fråga.',
+    'Hämta provet i Glosan, kontrollera att frågorna stämmer med fotona (annars: fråga mig) och rätta varje fråga mot facit: poäng per nivå (E/C/A) och en kort kommentar per fråga.',
     'Spara resultatet i Glosan med en sammanfattning: vad gick bra, vad ska jag öva mer på och vad skulle lyfta betyget.',
     'Om ett foto är oläsligt eller en kod saknas: fråga mig.'
   ].join('\n'))

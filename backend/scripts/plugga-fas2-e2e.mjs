@@ -79,12 +79,30 @@ async function main() {
     const aDetail = await api(`/api/study/units/${unitId}`, A.token);
     assert.equal(aDetail.body.items.find((i) => i.code === 'MA1-2').state, null, "the friend's progress is the friend's own");
     assert.equal(aDetail.body.unit.sharedCount, 1);
+    // B får ett eget MA1 — samma kod som A:s delade. En papperskod får då aldrig
+    // tyst hamna i B:s eget område: verktyget ger kandidaterna.
+    const bClaude = await connectMcp(B.token);
+    const bOwn = await call(bClaude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'Mitt eget' });
+    assert.equal(bOwn.data.code, 'MA1');
+    await call(bClaude, 'add_flashcards', { unit_id: bOwn.data.unit_id, cards: [{ front: 'Vad är en jon?', back: 'En laddad atom.' }] });
+    const clash = await call(bClaude, 'get_study_item', { code: 'MA1-1' });
+    assert.equal(clash.error?.code, 'conflict');
+    assert.equal(clash.error.candidates.length, 2);
+    assert.ok(clash.error.candidates.some((c) => c.is_owner === false && c.shared_by === A.name));
+    assert.ok(!clash.error.message.includes('Procent'), 'no other user\'s text in the message');
+    const theirs = clash.error.candidates.find((c) => !c.is_owner);
+    const picked = await call(bClaude, 'get_study_item', { item_id: theirs.item_id });
+    assert.deepEqual([picked.data.unit.is_owner, picked.data.unit.written_by_someone_else], [false, true]);
+    await call(bClaude, 'delete_study_unit', { unit_id: bOwn.data.unit_id });
+    await bClaude.close();
     await call(claude, 'update_study_unit', { unit_id: unitId, archived: true });
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404, 'an archived unit disappears for recipients');
+    const withArchived = await call(claude, 'list_study_units', { include_archived: true });
+    assert.ok(withArchived.data.some((u) => u.unit_id === unitId && u.archived), 'include_archived finds it again');
     assert.equal((await api(`/api/study/units/${unitId}`, A.token)).status, 200, '… but not for the creator');
     await call(claude, 'update_study_unit', { unit_id: unitId, archived: false });
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
-    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}unit visible, own progress; non-friends refused; archived = hidden from recipients`);
+    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}unit visible, own progress; non-friends refused; the same code in two units → candidates; archived = hidden from recipients`);
 
     // ── QR-länk ─────────────────────────────────────────────────────────────
     const link = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 7, maxUses: 10 } });

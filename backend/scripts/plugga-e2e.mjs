@@ -78,6 +78,18 @@ async function main() {
     assert.equal(ex.isError, false, JSON.stringify(ex));
     assert.deepEqual(ex.data.codes, ['MA1-4', 'MA1-5', 'MA1-6', 'MA1-7', 'MA1-8', 'MA1-9']);
     assert.equal(ex.warnings, undefined, 'no rounding warning for a short exact decimal (0.5)');
+    const page2 = await call(claude, 'get_study_unit', { unit_id: unitId, codes: ['MA1-4', 'MA1-5'], include_pages: false });
+    assert.deepEqual(page2.data.items.map((i) => i.code), ['MA1-4', 'MA1-5']);
+    const paged = await call(claude, 'get_study_unit', { unit_id: unitId, items_limit: 4, include_pages: false });
+    assert.deepEqual([paged.data.items.length, paged.data.items_total, paged.data.items_next_offset], [4, 9, 4]);
+    const pageId = (await call(claude, 'get_study_unit', { unit_id: unitId, include_items: false })).data.pages[0].page_id;
+    const fullPage = await call(claude, 'get_study_page', { page_id: pageId });
+    const samePage = await call(claude, 'add_study_pages', { unit_id: unitId, pages: [{ title: fullPage.data.title, body: fullPage.data.body }] });
+    assert.equal(samePage.data.length, 0, 'an identical page is skipped');
+    const gone = await call(claude, 'delete_study_page', { page_id: pageId });
+    assert.equal(gone.data.deleted_page.title, fullPage.data.title);
+    await call(claude, 'add_study_pages', { unit_id: unitId, pages: [gone.data.deleted_page] });
+    ok('get_study_unit pages through items (codes, items_limit); get_study_page; identical pages skipped; delete_study_page returns the page');
     ok('flashcards MA1-1…3; exercises MA1-4…9 on E/C/A (missing solution refused, no noise about 0.5)');
 
     const unit = await call(claude, 'get_study_unit', { unit_id: unitId });
@@ -171,10 +183,14 @@ async function main() {
     const flags = await call(claude, 'list_study_flags');
     assert.equal(flags.data.length, 1);
     assert.equal(flags.data[0].code, 'MA1-5');
+    assert.equal(flags.data[0].reporter_note_untrusted, 'Borde inte svaret vara 2,5?', 'the note is labelled as untrusted');
+    assert.equal(flags.total_open, 1);
     const fixed = await call(claude, 'update_study_item', { code: 'MA1-5', solution: 'Dela båda led med 4: $x = \\frac{10}{4} = 2{,}5$' });
     assert.equal(fixed.isError, false);
     await call(claude, 'resolve_study_flag', { flag_id: flags.data[0].flag_id, note: 'Förtydligade lösningen.' });
     assert.equal((await call(claude, 'list_study_flags')).data.length, 0);
+    const closedTwice = await call(claude, 'resolve_study_flag', { flag_id: flags.data[0].flag_id });
+    assert.equal(closedTwice.data.already_closed, true, 'closing twice is fine (idempotent)');
     ok('"fel i facit" → list_study_flags → update_study_item → resolve_study_flag');
 
     const reading = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [unitId], mode: 'reading' } });

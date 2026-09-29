@@ -16,6 +16,7 @@ const { startLevel, ladderStep, pickNext, LEVEL_ORDER } = require('./ladder');
 const { instance, newSeed } = require('./templates');
 const { readableFilter, isId, oid, itemCode } = require('./access');
 const { awardStudyActivity } = require('../gamification');
+const { localYmd, startOfLocalDay } = require('../../utils/localTime');
 
 const MODES = ['cards', 'exercises', 'mixed', 'due', 'wrong', 'reading', 'ladder'];
 const LEVELS = ['E', 'C', 'A'];
@@ -481,6 +482,11 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
     return { duplicate: true, recordedAt: same.createdAt, state, xpEarned: 0, streak: null };
   }
   const activeSeconds = Number.isFinite(minutes) && minutes > 0 ? Math.round(Math.min(minutes, 60) * 60) : 0;
+  // XP för en papperslösning en gång per uppgift och dag (svensk tid) — en ny
+  // rättning samma dag räknas i progressen men ger inga nya XP.
+  const checkedToday = await StudyAttempt.exists({
+    user: oid(userId), item: item._id, source: 'paper', createdAt: { $gte: startOfLocalDay(localYmd(now)) }
+  });
   const session = await StudySession.create({
     user: userId,
     kind: 'paper',
@@ -496,7 +502,7 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
   const state = await recordAttempt({
     userId, item, unit, sessionId: session._id, source: 'paper', mode: 'practice', result, given, feedback
   });
-  const xp = result === 'correct' ? XP_CORRECT : result === 'partial' ? XP_PARTIAL : 0;
+  const xp = checkedToday ? 0 : result === 'correct' ? XP_CORRECT : result === 'partial' ? XP_PARTIAL : 0;
   const award = await awardStudyActivity(userId, { xp, subject: unit.subject });
   return { state, xpEarned: award?.xpEarned || 0, streak: award?.streak || null };
 }

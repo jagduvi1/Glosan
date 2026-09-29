@@ -22,12 +22,13 @@ function ok(summary, data, extra = {}) {
 /**
  * Felsvar. `code`: invalid_input | not_found | forbidden | conflict |
  * rate_limited. Meddelandena skrivs för att den ANROPANDE MODELLEN ska kunna
- * rätta sig själv, inte för människor.
+ * rätta sig själv, inte för människor. Text som andra användare skrivit
+ * (titlar, namn) hör hemma i `extra` — som data, aldrig i meddelandet.
  */
-function fail(code, message) {
+function fail(code, message, extra = {}) {
   return {
     isError: true,
-    content: [{ type: 'text', text: JSON.stringify({ error: { code, message } }) }]
+    content: [{ type: 'text', text: JSON.stringify({ error: { code, message, ...extra } }) }]
   };
 }
 

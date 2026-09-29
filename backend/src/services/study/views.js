@@ -93,13 +93,17 @@ function unitSummary(u, userId, progress, ownerName) {
     sharedCount: isOwner ? (u.sharedWith || []).length : null,
     progress,
     url: unitUrl(u),
+    archived: Boolean(u.archivedAt),
     updatedAt: u.updatedAt
   };
 }
 
-/** Områden användaren kan läsa, filtrerade på ämne/grupp/termin. */
-async function listUnits(userId, { subject, group, term, allTerms } = {}) {
-  const filter = { ...readableFilter(userId), archivedAt: null };
+/**
+ * Områden användaren kan läsa, filtrerade på ämne/grupp/termin.
+ * `includeArchived` tar med egna arkiverade (delade arkiverade syns aldrig).
+ */
+async function listUnits(userId, { subject, group, term, allTerms, includeArchived = false } = {}) {
+  const filter = { ...readableFilter(userId), ...(includeArchived ? {} : { archivedAt: null }) };
   if (SUBJECT_KEYS.includes(subject)) filter.subject = subject;
   else if (group === 'no' || group === 'so') filter.subject = { $in: subjectsInGroup(group) };
   if (isValidTerm(term) && !allTerms) filter.term = term;
