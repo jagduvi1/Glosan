@@ -38,6 +38,7 @@ const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
 const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
 const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
 const PluggaFolder = lazy(() => import('./pages/PluggaFolder'));
+const PluggaActivity = lazy(() => import('./pages/PluggaActivity'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -152,6 +153,14 @@ function AppRoutes() {
           element={
             <FeatureRoute feature="study">
               <Layout><PluggaUnit /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/min-plugg"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaActivity /></Layout>
             </FeatureRoute>
           }
         />

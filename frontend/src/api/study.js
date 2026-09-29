@@ -137,3 +137,14 @@ export async function updateStudyFolder(apiFetch, folderId, changes) {
 export async function deleteStudyFolder(apiFetch, folderId) {
   return readJson(await apiFetch(`/api/study/folders/${folderId}`, { method: 'DELETE' }), 'Kunde inte ta bort mappen');
 }
+
+// ── Min plugg ────────────────────────────────────────────────────────────────
+
+// GET /api/study/activity?period=day|week|month|term&date=YYYY-MM-DD →
+// { period, start, end, prev, next, today, totals, bySubject, days, timeline, streak }
+export async function fetchStudyActivity(apiFetch, { period, date } = {}) {
+  const q = new URLSearchParams();
+  if (period) q.set('period', period);
+  if (date) q.set('date', date);
+  return readJson(await apiFetch(`/api/study/activity?${q}`), 'Kunde inte hämta Min plugg');
+}

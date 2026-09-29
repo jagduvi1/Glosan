@@ -50,3 +50,49 @@
   .self-grade { grid-template-columns: 1fr; }
   .study-md { font-size: 16px; }
 }
+
+/* ── Min plugg ─────────────────────────────────────────────────────────── */
+.activity-when { width: 60px; flex: none; font-size: 14px; line-height: 1.3; }
+
+.activity-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.activity-week-day { display: flex; flex-direction: column; align-items: center; gap: 4px; color: inherit; text-decoration: none; min-width: 0; }
+.activity-week-value { font-size: 12px; min-height: 16px; white-space: nowrap; }
+.activity-week-track { width: 100%; max-width: 44px; height: 120px; background: var(--paper-deep); border: 2px solid var(--ink); border-radius: 10px; display: flex; align-items: flex-end; overflow: hidden; }
+.activity-week-bar { width: 100%; background: var(--sky); }
+.activity-week-label { font-weight: 800; font-size: 14px; }
+.activity-week-label.is-today { text-decoration: underline 3px var(--coral); text-underline-offset: 3px; }
+.activity-week-emojis { font-size: 12px; min-height: 16px; white-space: nowrap; overflow: hidden; max-width: 100%; }
+
+.activity-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.activity-cal-head { font-weight: 800; font-size: 13px; text-align: center; margin-bottom: 6px; }
+.activity-cal-day { aspect-ratio: 1; min-height: 36px; border: 2px solid var(--ink); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: inherit; text-decoration: none; font-weight: 800; }
+.activity-cal-num { font-size: 15px; line-height: 1; }
+.activity-cal-min { font-size: 11px; font-weight: 600; line-height: 1.2; }
+.activity-cal-day.is-today, .activity-heatmap-cell.is-today { box-shadow: 0 0 0 3px var(--coral); }
+
+.activity-heatmap { display: flex; gap: 3px; width: max-content; }
+.activity-heatmap-week { display: flex; flex-direction: column; gap: 3px; }
+.activity-heatmap-month { height: 14px; font-size: 11px; white-space: nowrap; overflow: visible; }
+.activity-heatmap-cell { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--ink-soft); display: block; }
+.activity-heatmap-cell.is-empty { border: none; background: transparent; }
+
+.heat-0 { background: var(--bg-elev); }
+.heat-1 { background: var(--sky-soft); }
+.heat-2 { background: color-mix(in srgb, var(--sky) 45%, var(--sky-soft)); }
+.heat-3 { background: var(--sky); }
+.heat-4 { background: var(--sky-deep); color: #fff; }
+
+@media (max-width: 480px) {
+  .activity-week { gap: 4px; }
+  .activity-week-value { font-size: 10px; }
+  .activity-cal { gap: 4px; }
+  .activity-cal-day { border-radius: 8px; min-height: 30px; }
+}
+
+/* Utskrift (Min plugg, prov på papper): bara innehållet. */
+@media print {
+  .navbar, .nav-drawer, .app-footer, .no-print { display: none !important; }
+  .app-main { max-width: none; padding: 0; }
+  body { background: #fff; }
+  .card { box-shadow: none !important; break-inside: avoid; }
+}

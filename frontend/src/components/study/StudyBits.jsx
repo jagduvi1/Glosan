@@ -117,6 +117,16 @@ export function formatDuration(sec) {
   return `${s} s`;
 }
 
+/** Pluggtid avrundad till minuter: "25 min", "1 h 5 min", "< 1 min". */
+export function formatMinutes(sec) {
+  const s = Math.round(sec || 0);
+  if (s <= 0) return '0 min';
+  const m = Math.round(s / 60);
+  if (m < 1) return '< 1 min';
+  if (m >= 60) return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  return `${m} min`;
+}
+
 export function daysUntil(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);

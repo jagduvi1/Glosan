@@ -15,6 +15,9 @@ const {
   listRecipients, shareWithFriends, removeRecipient, createShareLink, listShareLinks, revokeShareLink
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
+const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
+const { PERIODS, parseYmd } = require('../utils/localTime');
+const User = require('../models/User');
 
 // Plugga — skolämnen. Dold bakom funktionsflaggan 'study' (config/features.js)
 // tills modulen släpps. Innehållet skapas BARA via MCP (användarens egen AI);
@@ -78,13 +81,15 @@ router.get('/overview', async (req, res, next) => {
     const userId = new mongoose.Types.ObjectId(req.user.id);
     const readable = { ...readableFilter(userId), archivedAt: null };
 
-    const [bySubject, terms, readableIds] = await Promise.all([
+    const [bySubject, terms, readableIds, today, me] = await Promise.all([
       StudyUnit.aggregate([
         { $match: { ...readable, term } },
         { $group: { _id: '$subject', n: { $sum: 1 } } }
       ]),
       StudyUnit.distinct('term', readable),
-      StudyUnit.distinct('_id', readable)
+      StudyUnit.distinct('_id', readable),
+      todaySummary(req.user.id),
+      User.findById(req.user.id).select('streak').lean()
     ]);
     const due = readableIds.length
       ? await StudyItemState.countDocuments({ user: userId, unit: { $in: readableIds }, dueAt: { $lte: new Date() } })
@@ -100,8 +105,22 @@ router.get('/overview', async (req, res, next) => {
       groups: Object.values(SUBJECT_GROUPS),
       subjects: SUBJECTS.map((s) => ({ ...s, unitCount: countBy.get(s.key) || 0 })),
       totalUnits: readableIds.length,
-      due
+      due,
+      today,
+      streak: effectiveStreak(me)
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/activity?period=day|week|month|term&date=YYYY-MM-DD — "Min plugg":
+// tid, uppgifter och resultat per ämne och dag, och vad som gjorts (svensk tid).
+router.get('/activity', async (req, res, next) => {
+  try {
+    const period = PERIODS.includes(req.query.period) ? req.query.period : 'week';
+    const anchor = typeof req.query.date === 'string' && parseYmd(req.query.date) ? req.query.date : undefined;
+    res.json(await activityFor(req.user.id, { period, anchor }));
   } catch (err) {
     next(err);
   }

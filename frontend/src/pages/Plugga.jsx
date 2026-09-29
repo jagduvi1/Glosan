@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyOverview, fetchStudyFolders, createStudyFolder } from '../api/study';
 import GloAvatar from '../components/GloAvatar';
 import { ColorChoice } from '../components/study/FolderPicker';
+import { formatMinutes } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -192,6 +193,25 @@ export default function Plugga() {
           </select>
         </label>
       </div>
+
+      {data.totalUnits > 0 && (
+        <Link
+          to="/plugga/min-plugg"
+          className="card row between"
+          style={{ flexWrap: 'wrap', gap: 12, color: 'inherit', textDecoration: 'none', background: 'var(--plum-soft)' }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22 }}>📊 Min plugg</h2>
+            <p className="t-hand muted" style={{ margin: '2px 0 0' }}>
+              {data.today.activeSeconds > 0 || data.today.answered > 0
+                ? `Idag: ${formatMinutes(data.today.activeSeconds)}${data.today.answered ? ` · ${data.today.answered} uppgifter` : ''}`
+                : 'Inget pluggat idag än'}
+              {data.streak.current > 0 ? ` · 🔥 ${data.streak.current} ${data.streak.current === 1 ? 'dag' : 'dagar'} i rad` : ''}
+            </p>
+          </div>
+          <span className="t-hand" style={{ fontSize: 16 }}>Dag, vecka, månad →</span>
+        </Link>
+      )}
 
       {data.due > 0 && (
         <div className="card row between" style={{ background: 'var(--sky-soft)', flexWrap: 'wrap', gap: 12 }}>

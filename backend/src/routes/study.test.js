@@ -22,6 +22,13 @@ jest.mock('../models/StudyUnit', () => ({
   distinct: async (field) => (field === 'term' ? ['2025-HT'] : [])
 }));
 
+// Dagens plugg och streaken på startsidan läses från sessioner/svar — utan Mongo här.
+jest.mock('../services/study/activity', () => ({
+  todaySummary: async () => ({ activeSeconds: 125, answered: 3 }),
+  effectiveStreak: () => ({ current: 2, longest: 5 }),
+  activityFor: async () => ({})
+}));
+
 const app = require('../app');
 const { termFor } = require('../utils/term');
 
@@ -50,6 +57,8 @@ test('overview lists every subject with counts for the term, and the terms that 
   expect(res.body.subjects.find((s) => s.key === 'fysik').unitCount).toBe(0);
   expect(res.body.terms.map((t) => t.key)).toEqual(expect.arrayContaining([termFor(), '2025-HT']));
   expect(res.body.groups.map((g) => g.key)).toEqual(['no', 'so']);
+  expect(res.body.today).toEqual({ activeSeconds: 125, answered: 3 });
+  expect(res.body.streak.current).toBe(2);
 });
 
 test('an explicit, valid term is honoured; garbage falls back to the current term', async () => {

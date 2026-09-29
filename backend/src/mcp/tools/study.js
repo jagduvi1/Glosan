@@ -17,6 +17,7 @@ const { loadUnit, loadItem, findItemByCode, itemCode, isId, oid } = require('../
 const { listUnits, unitUrl, folderUrl } = require('../../services/study/views');
 const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
+const { activityFor } = require('../../services/study/activity');
 const { deleteStudyUnitsCascade } = require('../../services/studyData');
 const { parseStudyCode } = require('../../utils/studyCodes');
 
@@ -347,6 +348,57 @@ registerTool({
       item: itemFull(f.item, f.unit)
     }));
     return ok(`${data.length} open report(s)`, data);
+  }
+});
+
+registerTool({
+  name: 'get_study_activity',
+  title: 'What the student studied (Min plugg)',
+  description:
+    'What the student did in Plugga during a day, week (Monday–Sunday), month or term (Swedish time): time studied, exercises answered and how many right, ' +
+    'per subject and per day, paper solutions you checked, the streak — and for a day or week each study session with the exercise codes and results. ' +
+    'Use it to summarise the week (e.g. for a parent), to praise effort, or to decide what to repeat. The same page is "Min plugg" in the app.',
+  scope: 'read',
+  feature: FEATURE,
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  inputSchema: {
+    period: z.enum(['day', 'week', 'month', 'term']).optional().describe('Default: week'),
+    date: dateStr.optional().describe('Any date in the period (YYYY-MM-DD); default today')
+  },
+  handler: async (args, ctx) => {
+    const a = await activityFor(ctx.user.id, { period: args.period || 'week', anchor: args.date });
+    const mins = (s) => Math.round((s || 0) / 60);
+    const data = {
+      period: a.period,
+      from: a.start,
+      to_exclusive: a.end,
+      totals: {
+        minutes: mins(a.totals.activeSeconds),
+        study_sessions: a.totals.sessions,
+        days_studied: a.totals.daysStudied,
+        answered: a.totals.answered,
+        correct: a.totals.correct,
+        partial: a.totals.partial,
+        wrong: a.totals.wrong,
+        on_paper: a.totals.paper,
+        xp: a.totals.xp
+      },
+      streak_days: a.streak.current,
+      per_subject: a.bySubject.map((s) => ({ subject: s.subject, minutes: mins(s.activeSeconds), answered: s.answered, correct: s.correct })),
+      per_day: a.days.filter((d) => d.activeSeconds || d.answered).map((d) => ({ date: d.date, minutes: mins(d.activeSeconds), answered: d.answered, correct: d.correct }))
+    };
+    if (a.timeline.kind === 'sessions') {
+      data.sessions = a.timeline.sessions.map((s) => ({
+        date: s.date,
+        kind: s.kind,
+        units: s.unitTitles,
+        minutes: mins(s.activeSeconds),
+        answered: s.answered,
+        correct: s.correct,
+        exercises: s.items.map((i) => `${i.code} ${i.result}${i.source === 'paper' ? ' (paper)' : ''}`)
+      }));
+    }
+    return ok(`${a.period} from ${a.start}: ${data.totals.minutes} min, ${a.totals.answered} answered (${a.totals.correct} right)`, data);
   }
 });
 

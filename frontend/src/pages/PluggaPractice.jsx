@@ -223,6 +223,9 @@ export default function PluggaPractice() {
           <button type="button" className="btn" onClick={() => navigate(`${againUrl}&n=${Date.now()}`)}>Öva igen</button>
           <Link to={scope.back} className="btn btn-ghost">Tillbaka</Link>
         </div>
+        <p style={{ margin: '16px 0 0' }}>
+          <Link to="/plugga/min-plugg?p=day" className="t-hand">📊 Se allt du pluggat idag</Link>
+        </p>
       </div>
     );
   }
