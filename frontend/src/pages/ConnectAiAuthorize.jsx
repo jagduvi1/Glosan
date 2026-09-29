@@ -78,7 +78,12 @@ export default function ConnectAiAuthorize() {
     if (!requestValid) return undefined;
     let active = true;
     fetchMcpClientInfo(clientId, redirectUri)
-      .then((info) => { if (active) setClient(info); })
+      .then((info) => {
+        if (!active) return;
+        setClient(info);
+        // En okänd app får börja på "Bara läsa" — att ge mer är ett aktivt val.
+        if (info?.trust === 'unknown') setLevelIndex(0);
+      })
       .catch(() => { if (active) setClient(null); });
     return () => { active = false; };
   }, [requestValid, clientId, redirectUri]);

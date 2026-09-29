@@ -96,9 +96,12 @@ app.use(cors({
 // - Plugga (/api/study): en skolklass delar ofta en IP-adress, och pass och
 //   prov skickar ett anrop per svar. Begränsas per inloggad användare i
 //   routes/study.js.
+// Bara OAuth-endpointsen som finns — en okänd sökväg under /api/mcp/oauth/
+// ska inte slippa undan alla limitrar.
+const MCP_OAUTH_PATHS = new Set(['register', 'authorize', 'client', 'approve', 'token', 'revoke'].map((p) => `/api/mcp/oauth/${p}`));
 const hasOwnLimiter = (req) => {
   const p = (req.baseUrl || '') + (req.path || '');
-  return p === '/api/mcp' || p === '/api/mcp/' || p.startsWith('/api/mcp/oauth/')
+  return p === '/api/mcp' || p === '/api/mcp/' || MCP_OAUTH_PATHS.has(p)
     || p === '/api/study' || p.startsWith('/api/study/');
 };
 
