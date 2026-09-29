@@ -21,14 +21,22 @@ function featuresForAll() {
     .filter((k) => FEATURE_KEYS.includes(k));
 }
 
-/** Användarens effektiva flaggor: egna + de som är på för alla. */
+/**
+ * Användarens effektiva flaggor: egna + de som är på för alla, minus dem
+ * admin blockerat för kontot (User.featureBlocks). Läs med projektionen
+ * FEATURE_FIELDS.
+ */
 function effectiveFeatures(user) {
   const own = Array.isArray(user?.features) ? user.features.filter((k) => FEATURE_KEYS.includes(k)) : [];
-  return [...new Set([...own, ...featuresForAll()])];
+  const blocked = new Set(Array.isArray(user?.featureBlocks) ? user.featureBlocks : []);
+  return [...new Set([...own, ...featuresForAll()])].filter((k) => !blocked.has(k));
 }
+
+/** Fälten effectiveFeatures behöver, för .select(). */
+const FEATURE_FIELDS = 'features featureBlocks';
 
 function hasFeature(user, key) {
   return effectiveFeatures(user).includes(key);
 }
 
-module.exports = { FEATURES, FEATURE_KEYS, featuresForAll, effectiveFeatures, hasFeature };
+module.exports = { FEATURES, FEATURE_KEYS, FEATURE_FIELDS, featuresForAll, effectiveFeatures, hasFeature };

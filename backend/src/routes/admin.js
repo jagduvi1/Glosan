@@ -32,6 +32,8 @@ function shapeUserForAdmin(user) {
     hasUsedTrial: !!user.hasUsedTrial,
     // Flaggor admin slagit på för just det här kontot (inte FEATURES_FOR_ALL).
     features: Array.isArray(user.features) ? user.features : [],
+    // Flaggor som är AVSTÄNGDA för kontot — vinner över "på för alla" och inbjudningar.
+    featureBlocks: Array.isArray(user.featureBlocks) ? user.featureBlocks : [],
     aiUsage: {
       used: usedThisMonth,
       limit: plan.aiCallsPerMonth,
@@ -78,7 +80,10 @@ router.patch('/users/:id/features', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       id,
-      enabled ? { $addToSet: { features: feature } } : { $pull: { features: feature } },
+      // Av = blockerad: varken FEATURES_FOR_ALL eller en delning slår på den igen.
+      enabled
+        ? { $addToSet: { features: feature }, $pull: { featureBlocks: feature } }
+        : { $pull: { features: feature }, $addToSet: { featureBlocks: feature } },
       { new: true }
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });

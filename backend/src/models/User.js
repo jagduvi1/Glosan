@@ -89,6 +89,13 @@ const userSchema = new mongoose.Schema({
     type: [{ type: String, enum: FEATURE_KEYS }],
     default: []
   },
+  // Flaggor admin uttryckligen slagit AV för kontot. Vinner över
+  // FEATURES_FOR_ALL och över inbjudningar (grantStudyFeature slår aldrig på
+  // en blockerad flagga igen).
+  featureBlocks: {
+    type: [{ type: String, enum: FEATURE_KEYS }],
+    default: []
+  },
   // Plugga: löpnummer per ämnesprefix för områdeskoderna, t.ex. { MA: 3 } →
   // nästa matteområde blir MA4. Räknas upp atomärt i StudyUnit.nextCode och
   // går aldrig bakåt, så en kod på ett gammalt papper pekar alltid rätt.
@@ -173,6 +180,7 @@ userSchema.methods.toJSON = function () {
   // De EFFEKTIVA flaggorna (egna + FEATURES_FOR_ALL), så frontend kan visa
   // dolda moduler utan att känna till env-variabeln.
   obj.features = effectiveFeatures(obj);
+  delete obj.featureBlocks;
   delete obj.studyCodeCounters;
   delete obj.authProviders;
   delete obj.password;

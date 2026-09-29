@@ -9,7 +9,7 @@ import { useModalFocus } from '../../utils/modalFocus';
 import AvatarDisplay from '../AvatarDisplay';
 
 // Dela ett område i Plugga — med kompisar (de ser det direkt) eller med en
-// länk/QR-kod till klasskompisar (de blir kompisar med dig när de går med).
+// länk/QR-kod till klasskompisar (de får området, men blir inte kompisar med dig).
 // Ingen får en kopia: alla övar med sin egen statistik, och bara du (och din
 // AI) kan ändra innehållet — rättar du något når det alla.
 
@@ -58,7 +58,7 @@ function FriendsTab({ friends, recipients, busy, onShare, onRemove }) {
 
       {friends.length === 0 ? (
         <p className="t-hand muted" style={{ margin: 0 }}>
-          Du har inga kompisar i Glosan än. Lägg till dem på kompis-sidan — eller använd en QR-kod, så blir ni kompisar när de går med.
+          Du har inga kompisar i Glosan än. Lägg till dem på kompis-sidan — eller använd en QR-kod.
         </p>
       ) : available.length === 0 ? (
         <p className="t-hand muted" style={{ margin: 0 }}>Alla dina kompisar har redan området.</p>

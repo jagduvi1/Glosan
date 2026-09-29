@@ -109,8 +109,6 @@ export default function JoinStudyUnit() {
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <span className="pill">{u.subjectLabel}</span>
                 <span className="pill">{u.termLabel}</span>
-                {u.gradeYear && <span className="pill">åk {u.gradeYear}</span>}
-                {u.book && <span className="pill">{u.book}</span>}
               </div>
               <p className="t-hand" style={{ margin: '10px 0 0', fontSize: 16 }}>
                 {[
@@ -119,7 +117,6 @@ export default function JoinStudyUnit() {
                   `${u.exercises} övningar`
                 ].filter(Boolean).join(' · ')}
               </p>
-              {u.description && <p style={{ margin: '8px 0 0', fontSize: 15 }}>{u.description}</p>}
             </div>
 
             {user ? (

@@ -20,6 +20,13 @@ const { awardStudyActivity } = require('../gamification');
 const MODES = ['cards', 'exercises', 'mixed', 'due', 'wrong', 'reading', 'ladder'];
 const LEVELS = ['E', 'C', 'A'];
 const MAX_SESSION_ITEMS = 50;
+// Taket för vad ett pass väljer bland ("Repetera allt" över många områden):
+// urvalet görs på ett fåtal fält, och bara de valda hämtas hela.
+const MAX_SCOPE_UNITS = 200;
+const MAX_CANDIDATES = 3000;
+const UNIT_FIELDS = '_id user code title subject term';
+const PICK_FIELDS = '_id unit kind level number';
+const STATE_FIELDS = 'item box dueAt lastResult correct wrong lastSeenAt';
 // XP: samma skala som glos-quizzen (10 per rätt), halva för "nästan".
 const XP_CORRECT = 10;
 const XP_PARTIAL = 5;
@@ -52,7 +59,14 @@ async function resolveScopeUnits(userId, scope = {}) {
     else if (scope.group === 'no' || scope.group === 'so') filter.subject = { $in: subjectsInGroup(scope.group) };
     if (isValidTerm(scope.term) && !scope.allTerms) filter.term = scope.term;
   }
-  return StudyUnit.find(filter).lean();
+  return StudyUnit.find(filter, UNIT_FIELDS).sort({ createdAt: -1 }).limit(MAX_SCOPE_UNITS).lean();
+}
+
+/** De valda uppgifterna hela, i urvalets ordning. */
+async function loadPicked(picked) {
+  const full = await StudyItem.find({ _id: { $in: picked.map((i) => i._id) } }).lean();
+  const byId = new Map(full.map((i) => [String(i._id), i]));
+  return picked.map((i) => byId.get(String(i._id))).filter(Boolean);
 }
 
 /**
@@ -131,9 +145,9 @@ function publicItem(item, unit, userId = null) {
 async function startLadder(userId, units, count) {
   const items = await StudyItem.find({
     unit: { $in: units.map((u) => u._id) }, usage: 'practice', kind: 'exercise', level: { $in: LEVELS }
-  }).lean();
+  }, PICK_FIELDS).limit(MAX_CANDIDATES).lean();
   if (!items.length) return { error: 'empty', message: 'Nivåstegen behöver övningar på nivåerna E, C och A — här finns inga än.' };
-  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }).lean();
+  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }, STATE_FIELDS).lean();
   const stateMap = new Map(states.map((st) => [String(st.item), st]));
   const start = startLevel(items, stateMap);
   const pools = {};
@@ -141,7 +155,7 @@ async function startLadder(userId, units, count) {
     pools[l] = pickItems(items.filter((i) => i.level === l), stateMap, { mode: 'mixed', count: MAX_SESSION_ITEMS }).map((i) => i._id);
   }
   const first = pickNext(pools, [], start);
-  const firstItem = items.find((i) => String(i._id) === first.itemId);
+  const firstItem = await StudyItem.findById(first.itemId).lean();
   const unitById = new Map(units.map((u) => [String(u._id), u]));
   const unit = unitById.get(String(firstItem.unit));
   const session = await StudySession.create({
@@ -184,10 +198,10 @@ async function startSession(userId, params = {}) {
   const skills = Array.isArray(params.skills) ? params.skills.filter((x) => typeof x === 'string' && x.trim()).slice(0, 10) : [];
   if (skills.length) query.skill = { $in: skills };
 
-  const items = await StudyItem.find(query).lean();
-  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }).lean();
+  const items = await StudyItem.find(query, PICK_FIELDS).limit(MAX_CANDIDATES).lean();
+  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }, STATE_FIELDS).lean();
   const stateMap = new Map(states.map((s) => [String(s.item), s]));
-  const picked = pickItems(items, stateMap, { mode, count });
+  const picked = await loadPicked(pickItems(items, stateMap, { mode, count }));
   if (!picked.length) {
     const why = mode === 'due' ? 'Inget att repetera just nu — bra jobbat!'
       : mode === 'wrong' ? 'Du har inga missade uppgifter här.'

@@ -8,7 +8,8 @@ const mongoose = require('mongoose');
  * med sin egen progress (StudyItemState är per användare).
  *
  * Kan användas flera gånger (upp till maxUses), går ut vid expiresAt och kan
- * stängas av (revokedAt). Ingen TTL-index — "går ut om X dagar" visas i UI:t.
+ * stängas av (revokedAt). 30 dagar efter att den gått ut raderas den (TTL) —
+ * usedBy säger vilka som gått med, och det behöver inte sparas för alltid.
  */
 const studyShareLinkSchema = new mongoose.Schema({
   unit: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyUnit', required: true, index: true },
@@ -20,6 +21,8 @@ const studyShareLinkSchema = new mongoose.Schema({
   revokedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
+
+studyShareLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 studyShareLinkSchema.methods.isActive = function (now = new Date()) {
   if (this.revokedAt) return false;

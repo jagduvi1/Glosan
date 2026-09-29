@@ -9,10 +9,13 @@ const { parseStudyCode, formatItemCode } = require('../../utils/studyCodes');
 const isId = (id) => mongoose.Types.ObjectId.isValid(String(id));
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
 
-/** Filter för områden användaren får läsa. */
+/**
+ * Filter för områden användaren får läsa: egna (även arkiverade) och delade
+ * med en — utom dem skaparen arkiverat, som försvinner för mottagarna.
+ */
 function readableFilter(userId) {
   const uid = oid(userId);
-  return { $or: [{ user: uid }, { sharedWith: uid }] };
+  return { $or: [{ user: uid }, { sharedWith: uid, archivedAt: null }] };
 }
 
 /**

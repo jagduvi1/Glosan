@@ -54,7 +54,8 @@ router.get('/friends', async (req, res) => {
       .sort({ addedAt: -1 })
       .lean();
     res.json({
-      friends: rows.map((r) => ({
+      // Ett raderat konto kan lämna en vänrad efter sig — hoppa över den.
+      friends: rows.filter((r) => r.friend).map((r) => ({
         _id: r.friend._id,
         username: r.friend.username,
         avatar: r.friend.avatar || { kind: 'initial', value: '' },

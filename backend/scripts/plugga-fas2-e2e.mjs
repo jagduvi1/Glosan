@@ -79,7 +79,12 @@ async function main() {
     const aDetail = await api(`/api/study/units/${unitId}`, A.token);
     assert.equal(aDetail.body.items.find((i) => i.code === 'MA1-2').state, null, "the friend's progress is the friend's own");
     assert.equal(aDetail.body.unit.sharedCount, 1);
-    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}unit visible, own progress; non-friends refused`);
+    await call(claude, 'update_study_unit', { unit_id: unitId, archived: true });
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404, 'an archived unit disappears for recipients');
+    assert.equal((await api(`/api/study/units/${unitId}`, A.token)).status, 200, '… but not for the creator');
+    await call(claude, 'update_study_unit', { unit_id: unitId, archived: false });
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
+    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}unit visible, own progress; non-friends refused; archived = hidden from recipients`);
 
     // ── QR-länk ─────────────────────────────────────────────────────────────
     const link = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 7, maxUses: 10 } });
@@ -90,6 +95,7 @@ async function main() {
     assert.equal(preview.body.unit.title, 'Kapitel 4 — Procent');
     assert.equal(preview.body.unit.exercises, 3);
     assert.equal(preview.body.creator.username, A.name);
+    for (const k of ['gradeYear', 'description', 'book']) assert.equal(preview.body.unit[k], undefined, `the public preview has no ${k}`);
     assert.equal((await api(`/api/study-invite/${code}/accept`, null, { method: 'POST' })).status, 401);
     if (!forAll) assert.equal(await hasPlugga(C), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
@@ -103,13 +109,13 @@ async function main() {
     assert.deepEqual(shares.body.recipients.map((r) => r.username).sort(), [B.name, C.name].sort());
     assert.equal(shares.body.links[0].usedCount, 1, 'joining twice uses one place');
     const cFriends = await api('/api/me/friends', C.token);
-    assert.ok(cFriends.body.friends.some((f) => f.username === A.name), 'joining befriends the creator');
+    assert.ok(!cFriends.body.friends.some((f) => f.username === A.name), 'joining does not befriend the creator');
     await api(`/api/study/units/${unitId}/share-links/${code}`, A.token, { method: 'DELETE' });
     assert.equal((await api(`/api/study-invite/${code}`)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/leave`, C.token, { method: 'POST' })).status, 200);
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
-    ok('QR link: public preview, join (idempotent, befriends the creator), revoke, leave; only the creator shares');
+    ok('QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares');
 
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });
@@ -403,6 +409,16 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     await claude.close();
     ok('delete_practice_test keeps the results; removing the friend takes the unit away');
+
+    // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
+    assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);
+    const orphan = await api(`/api/study/tests/attempts/${attemptId}`, B.token);
+    assert.equal(orphan.status, 200);
+    assert.equal(orphan.body.unitTitle, 'Raderat område');
+    assert.equal(orphan.body.testTitle, 'Raderat prov');
+    assert.ok(orphan.body.answers.every((a) => a.prompt === '' && a.solution === ''), 'no questions or solutions left from the creator');
+    assert.equal(orphan.body.score.total, 4);
+    ok('the creator deletes the account: the friend keeps the result, without the creator\'s titles and questions');
   } finally {
     for (const u of [A, B, C]) await api('/api/me', u.token, { method: 'DELETE' }).catch(() => {});
     console.log('  · deleted throwaway users');

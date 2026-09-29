@@ -33,8 +33,9 @@ async function deleteItems(unit, items, { userId, via }) {
     };
   }));
   await StudyItem.deleteMany({ _id: { $in: ids } });
-  await StudyItemState.deleteMany({ item: { $in: ids } });
-  await StudyFlag.deleteMany({ item: { $in: ids } });
+  // unit med i filtret: indexet { unit } används i stället för att läsa allt.
+  await StudyItemState.deleteMany({ unit: unit._id, item: { $in: ids } });
+  await StudyFlag.deleteMany({ unit: unit._id, item: { $in: ids } });
   // Provfrågor försvinner ur sina prov; ett prov utan frågor tas bort.
   await StudyTest.updateMany({ unit: unit._id }, { $pull: { questions: { item: { $in: ids } } } });
   await StudyTest.deleteMany({ unit: unit._id, questions: { $size: 0 } });

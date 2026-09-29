@@ -46,7 +46,18 @@ const studyLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: 'Lugn i stormen — vänta några minuter och fortsätt sedan plugga.' })
 });
 
-router.use(requireAuth, requireFeature('study'), studyLimiter);
+// Skydd mot översvämning från en adress (före inloggning och flaggkoll, som
+// läser databasen). Högt tak: en hel skola kan dela IP, och bakom Cloudflare
+// kan flera skolor dela kant-IP om proxykedjan inte ger rätt klient-IP.
+const studyFloodLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'För många anrop just nu — vänta en minut.' })
+});
+
+router.use(studyFloodLimiter, requireAuth, requireFeature('study'), studyLimiter);
 
 // Nya delningslänkar kostar en skrivning + kollisionskoll — begränsa per användare.
 const shareLinkLimiter = rateLimit({

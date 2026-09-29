@@ -8,6 +8,7 @@ const StudyPage = require('../../models/StudyPage');
 const StudyItem = require('../../models/StudyItem');
 const StudyShareLink = require('../../models/StudyShareLink');
 const StudyFolder = require('../../models/StudyFolder');
+const StudyFlag = require('../../models/StudyFlag');
 const User = require('../../models/User');
 const Friendship = require('../../models/Friendship');
 const { getSubject } = require('../../config/subjects');
@@ -26,17 +27,12 @@ const LINK_GONE = 'Den här länken är ogiltig eller har gått ut.';
 /**
  * Inbjudningsbeta: den som får ett område delat får Plugga påslaget, annars
  * skulle hen inte se det hen fått. Modulen sprids alltså bara till dem som
- * någon med Plugga bjuder in. Admin kan fortfarande slå av flaggan per konto.
+ * någon med Plugga bjuder in. Har admin slagit av Plugga för ett konto
+ * (featureBlocks) slås den inte på igen.
  */
 async function grantStudyFeature(userIds) {
   if (!userIds.length) return;
-  await User.updateMany({ _id: { $in: userIds.map(oid) } }, { $addToSet: { features: 'study' } });
-}
-
-async function befriend(a, b) {
-  const now = new Date();
-  await Friendship.updateOne({ user: a, friend: b }, { $setOnInsert: { user: a, friend: b, addedAt: now } }, { upsert: true });
-  await Friendship.updateOne({ user: b, friend: a }, { $setOnInsert: { user: b, friend: a, addedAt: now } }, { upsert: true });
+  await User.updateMany({ _id: { $in: userIds.map(oid) }, featureBlocks: { $ne: 'study' } }, { $addToSet: { features: 'study' } });
 }
 
 /** Vilka har området delat med sig? (bara för skaparen) */
@@ -70,11 +66,12 @@ async function shareWithFriends(ownerId, unit, friendIds) {
   return { recipients: await listRecipients(fresh), added: toAdd.length };
 }
 
-/** Ta bort någon ur delningen — och området ur hens mappar. */
+/** Ta bort någon ur delningen — och området ur hens mappar och hens öppna felrapporter. */
 async function removeRecipient(unit, userId) {
   if (!isId(userId)) return;
   await StudyUnit.updateOne({ _id: unit._id }, { $pull: { sharedWith: oid(userId) } });
   await StudyFolder.updateMany({ user: oid(userId), units: unit._id }, { $pull: { units: unit._id } });
+  await StudyFlag.deleteMany({ unit: unit._id, reporter: oid(userId), status: 'open' });
 }
 
 // ── länkar / QR ──────────────────────────────────────────────────────────────
@@ -136,7 +133,11 @@ async function loadActiveLink(code) {
   return link && link.isActive() ? link : null;
 }
 
-/** Publik förhandsvisning av en länk (ingen inloggning). null = ogiltig. */
+/**
+ * Publik förhandsvisning av en länk (ingen inloggning). null = ogiltig.
+ * Bara det som behövs för att känna igen området — inte årskurs, bok eller
+ * beskrivning, som säger mer om skaparen (ofta ett barn) än om innehållet.
+ */
 async function previewInvite(code) {
   const link = await loadActiveLink(code);
   if (!link) return null;
@@ -158,13 +159,10 @@ async function previewInvite(code) {
     unit: {
       code: unit.code,
       title: unit.title,
-      description: unit.description || '',
       subject: unit.subject,
       subjectLabel: subject?.label || unit.subject,
       emoji: subject?.emoji || '',
       termLabel: termLabel(unit.term),
-      gradeYear: unit.gradeYear ?? null,
-      book: unit.source?.book || '',
       pages,
       cards: count('card'),
       exercises: count('exercise')
@@ -178,11 +176,15 @@ async function previewInvite(code) {
 /**
  * Gå med i ett delat område via länk. Idempotent: den som redan är med (eller
  * äger området) skickas bara vidare, utan att förbruka en plats på länken.
+ * Man blir INTE kompis med skaparen — en länk kan ha spridits vidare, och
+ * kompisar ser varandras streak och kan dela och utmana.
  * Returnerar { unitId, joined } eller { error, status }.
  */
 async function acceptInvite(userId, code) {
   const link = await loadActiveLink(code);
   if (!link) return { error: LINK_GONE, status: 404 };
+  // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökmedlemmar.
+  if (!(await User.exists({ _id: oid(userId) }))) return { error: 'Logga in igen.', status: 401 };
   const unit = await StudyUnit.findOne({ _id: link.unit, archivedAt: null }, 'user sharedWith').lean();
   if (!unit) return { error: 'Området finns inte längre.', status: 404 };
   const uid = oid(userId);
@@ -208,7 +210,6 @@ async function acceptInvite(userId, code) {
   );
   if (!claimed) return { error: LINK_GONE, status: 404 };
   await StudyUnit.updateOne({ _id: unit._id }, { $addToSet: { sharedWith: uid } });
-  await befriend(uid, unit.user);
   await grantStudyFeature([userId]);
   return { unitId: String(unit._id), joined: true };
 }

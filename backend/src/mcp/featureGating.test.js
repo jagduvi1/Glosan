@@ -57,3 +57,17 @@ test('instructions only mention modules the user has', () => {
   expect(buildInstructions([])).not.toContain('STUDY SECTION');
   delete FEATURE_SECTIONS.study;
 });
+
+test('an admin block wins over the account flag and FEATURES_FOR_ALL (audit)', () => {
+  const { effectiveFeatures } = require('../config/features');
+  const before = process.env.FEATURES_FOR_ALL;
+  process.env.FEATURES_FOR_ALL = 'study';
+  try {
+    expect(effectiveFeatures({ features: [] })).toEqual(['study']);
+    expect(effectiveFeatures({ features: ['study'], featureBlocks: ['study'] })).toEqual([]);
+    expect(effectiveFeatures({ featureBlocks: ['study'] })).toEqual([]);
+  } finally {
+    if (before === undefined) delete process.env.FEATURES_FOR_ALL;
+    else process.env.FEATURES_FOR_ALL = before;
+  }
+});

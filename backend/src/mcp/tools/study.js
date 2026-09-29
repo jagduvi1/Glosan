@@ -427,9 +427,14 @@ registerTool({
       isOwner ? StudyItemDeletion.find({ unit: unit._id, restoredAt: null }).sort({ deletedAt: -1 }).limit(20).lean() : []
     ]);
     const codeById = new Map(items.map((i) => [String(i._id), itemCode(unit, i)]));
-    return ok(`"${unit.title}" (${unit.code}) — ${pages.length} page(s), ${items.length} card(s)/exercise(s)`, {
+    // Provfrågor med facit bara för skaparen — en mottagare ska kunna göra
+    // provet utan att svaren redan hamnat i chatten (get_practice_test finns
+    // för att rätta ett prov gjort på papper).
+    const shown = isOwner ? items : items.filter((i) => i.usage !== 'test');
+    return ok(`"${unit.title}" (${unit.code}) — ${pages.length} page(s), ${shown.length} card(s)/exercise(s)`, {
       ...unitMeta(unit),
       is_owner: isOwner,
+      ...(shown.length < items.length ? { test_questions_hidden: items.length - shown.length } : {}),
       ...(deletions.length ? {
         recently_deleted: deletions.map((d) => ({
           code: d.code,
@@ -440,7 +445,7 @@ registerTool({
         }))
       } : {}),
       pages: pages.map((p) => ({ page_id: String(p._id), title: p.title, body: p.body, order: p.order })),
-      items: items.map((i) => itemFull(i, unit)),
+      items: shown.map((i) => itemFull(i, unit)),
       tests: tests.map((t) => ({
         test_id: String(t._id),
         title: t.title,
@@ -732,9 +737,10 @@ registerTool({
     const badFigure = figureError('The page', args.body);
     if (badFigure) return badFigure;
     const page = isId(args.page_id) ? await StudyPage.findById(args.page_id) : null;
-    if (!page) return fail('not_found', 'No such page. get_study_unit lists page ids.');
-    const access = await loadUnit(ctx.user.id, page.unit, 'owner');
-    if (access.error) return unitError(access);
+    // Samma svar för en sida som inte finns och en i ett område man inte ser.
+    const access = page ? await loadUnit(ctx.user.id, page.unit, 'owner') : { error: 'not_found' };
+    if (access.error === 'forbidden') return unitError(access);
+    if (access.error) return fail('not_found', 'No such page. get_study_unit lists page ids.');
     if (args.title !== undefined) page.title = args.title;
     if (args.body !== undefined) page.body = args.body;
     if (args.order !== undefined) page.order = args.order;

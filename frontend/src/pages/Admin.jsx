@@ -311,17 +311,21 @@ export default function Admin() {
 
               {features.length > 0 && (
                 <div className="row" style={{ gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {features.map((f) => (
-                    <label key={f.key} className="row t-hand" style={{ gap: 6, alignItems: 'center', fontSize: 15, cursor: f.forAll ? 'default' : 'pointer' }} title={f.description}>
-                      <input
-                        type="checkbox"
-                        checked={f.forAll || (u.features || []).includes(f.key)}
-                        disabled={f.forAll}
-                        onChange={(e) => onToggleFeature(u, f.key, e.target.checked)}
-                      />
-                      {f.label} (beta){f.forAll ? ' · på för alla' : ''}
-                    </label>
-                  ))}
+                  {features.map((f) => {
+                    // Av = blockerad för kontot: vinner över "på för alla" och delningar.
+                    const blocked = (u.featureBlocks || []).includes(f.key);
+                    const on = !blocked && (f.forAll || (u.features || []).includes(f.key));
+                    return (
+                      <label key={f.key} className="row t-hand" style={{ gap: 6, alignItems: 'center', fontSize: 15, cursor: 'pointer' }} title={f.description}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) => onToggleFeature(u, f.key, e.target.checked)}
+                        />
+                        {f.label} (beta){f.forAll ? ' · på för alla' : ''}{blocked ? ' · avstängd för kontot' : ''}
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

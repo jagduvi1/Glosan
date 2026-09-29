@@ -15,16 +15,23 @@ const StudyTest = require('../models/StudyTest');
 const StudyTestAttempt = require('../models/StudyTestAttempt');
 const StudyItemDeletion = require('../models/StudyItemDeletion');
 
+const DELETED_UNIT = 'Raderat område';
+const DELETED_TEST = 'Raderat prov';
+
 /**
  * Radera områden med genomgångar, kort/övningar och ALLAS progress på dem
  * (även kompisar de delats med), och plocka bort dem ur allas mappar.
- * Svarshistorik, pass och provresultat (StudyAttempt/StudySession/
+ * Svarshistorik, pass och klara provresultat (StudyAttempt/StudySession/
  * StudyTestAttempt) lämnas kvar som historik — de är denormaliserade och går
- * att läsa utan området.
+ * att läsa utan området. Påbörjade prov kan aldrig bli klara och raderas.
  */
 async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   if (!unitIds.length) return;
   const inUnits = { $in: unitIds };
+  const tests = await StudyTest.find({ unit: inUnits }, '_id', opts).lean();
+  if (tests.length) {
+    await StudyTestAttempt.deleteMany({ test: { $in: tests.map((t) => t._id) }, status: { $ne: 'done' } }, opts);
+  }
   await StudyPage.deleteMany({ unit: inUnits }, opts);
   await StudyItem.deleteMany({ unit: inUnits }, opts);
   await StudyItemState.deleteMany({ unit: inUnits }, opts);
@@ -37,10 +44,23 @@ async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   await StudyUnit.deleteMany({ _id: inUnits }, opts);
 }
 
-/** Kontoradering: allt användaren skapat och all användarens egen progress. */
+/**
+ * Kontoradering: allt användaren skapat och all användarens egen progress.
+ * I andras historik på mina områden blir titlarna och frågornas text
+ * anonyma — det är mitt innehåll, poängen och koderna är deras.
+ */
 async function deleteStudyDataForUser(userId, opts = {}) {
   const own = await StudyUnit.find({ user: userId }, '_id', opts).lean();
-  await deleteStudyUnitsCascade(own.map((u) => u._id), opts);
+  const ownIds = own.map((u) => u._id);
+  if (ownIds.length) {
+    const others = { unit: { $in: ownIds }, user: { $ne: userId } };
+    await StudyAttempt.updateMany(others, { $set: { unitTitle: DELETED_UNIT } }, opts);
+    await StudyTestAttempt.updateMany(others, {
+      $set: { unitTitle: DELETED_UNIT, testTitle: DELETED_TEST },
+      $unset: { 'answers.$[].prompt': '', 'answers.$[].expected': '', 'answers.$[].solution': '', 'answers.$[].modelAnswer': '' }
+    }, opts);
+  }
+  await deleteStudyUnitsCascade(ownIds, opts);
   await StudyItemState.deleteMany({ user: userId }, opts);
   await StudyAttempt.deleteMany({ user: userId }, opts);
   await StudySession.deleteMany({ user: userId }, opts);
