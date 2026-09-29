@@ -135,6 +135,8 @@ cd backend && npm test
 # MCP end-to-end against a running stack (see docs/mcp.md)
 FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
+# Plugga end-to-end (needs FEATURES_FOR_ALL=study on the stack)
+cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
 # Frontend tests not configured yet — add Vitest when you write the first test.
 ```
 
