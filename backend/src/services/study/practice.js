@@ -12,10 +12,11 @@ const { SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm } = require('../../utils/term');
 const { gradeAnswer } = require('./grading');
 const { nextState, pickItems } = require('./scheduler');
+const { startLevel, ladderStep, pickNext, LEVEL_ORDER } = require('./ladder');
 const { readableFilter, isId, oid, itemCode } = require('./access');
 const { awardStudyActivity } = require('../gamification');
 
-const MODES = ['cards', 'exercises', 'mixed', 'due', 'wrong', 'reading'];
+const MODES = ['cards', 'exercises', 'mixed', 'due', 'wrong', 'reading', 'ladder'];
 const LEVELS = ['E', 'C', 'A'];
 const MAX_SESSION_ITEMS = 50;
 // XP: samma skala som glos-quizzen (10 per rätt), halva för "nästan".
@@ -80,6 +81,42 @@ function publicItem(item, unit) {
   return out;
 }
 
+/**
+ * Nivåstegen: bara övningar med nivå. Varje nivå får en turordning (dags att
+ * repetera → svaga → nya → resten); passet börjar på elevens nivå och nästa
+ * uppgift väljs efter varje svar (answerInSession).
+ */
+async function startLadder(userId, units, count) {
+  const items = await StudyItem.find({
+    unit: { $in: units.map((u) => u._id) }, usage: 'practice', kind: 'exercise', level: { $in: LEVELS }
+  }).lean();
+  if (!items.length) return { error: 'empty', message: 'Nivåstegen behöver övningar på nivåerna E, C och A — här finns inga än.' };
+  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }).lean();
+  const stateMap = new Map(states.map((st) => [String(st.item), st]));
+  const start = startLevel(items, stateMap);
+  const pools = {};
+  for (const l of LEVELS) {
+    pools[l] = pickItems(items.filter((i) => i.level === l), stateMap, { mode: 'mixed', count: MAX_SESSION_ITEMS }).map((i) => i._id);
+  }
+  const first = pickNext(pools, [], start);
+  const firstItem = items.find((i) => String(i._id) === first.itemId);
+  const unitById = new Map(units.map((u) => [String(u._id), u]));
+  const unit = unitById.get(String(firstItem.unit));
+  const session = await StudySession.create({
+    user: userId,
+    kind: 'practice',
+    units: [unit._id],
+    subjects: [unit.subject],
+    ladder: { level: first.level, reached: first.level, count, pools, served: [firstItem._id] }
+  });
+  return {
+    session: { id: String(session._id), kind: session.kind },
+    items: [publicItem(firstItem, unit)],
+    total: items.length,
+    ladder: { level: first.level, reached: first.level, count, levels: LEVELS.filter((l) => pools[l].length) }
+  };
+}
+
 /** Starta ett pass. Returnerar { session, items, total } eller { error }. */
 async function startSession(userId, params = {}) {
   const mode = MODES.includes(params.mode) ? params.mode : 'mixed';
@@ -94,6 +131,7 @@ async function startSession(userId, params = {}) {
 
   const levels = Array.isArray(params.levels) ? params.levels.filter((l) => LEVELS.includes(l)) : [];
   const count = Math.min(Math.max(parseInt(params.count, 10) || 15, 1), MAX_SESSION_ITEMS);
+  if (mode === 'ladder') return startLadder(userId, units, count);
   const query = { unit: { $in: units.map((u) => u._id) }, usage: 'practice' };
   if (mode === 'cards') query.kind = 'card';
   if (mode === 'exercises') query.kind = 'exercise';
@@ -197,8 +235,41 @@ async function answerInSession(userId, sessionId, item, unit, payload) {
     note: graded.note || null,
     solution: item.solution || '',
     modelAnswer: item.answer?.modelAnswer || '',
-    state: state ? { box: state.box, dueAt: state.dueAt } : null
+    state: state ? { box: state.box, dueAt: state.dueAt } : null,
+    ...(session.ladder ? { ladder: await climbLadder(session, item, graded.result) } : {})
   };
+}
+
+/** Nivåstegen efter ett svar: ny nivå och nästa uppgift (null = passet är klart). */
+async function climbLadder(session, item, result) {
+  const lad = session.ladder;
+  const levels = LEVELS.filter((l) => (lad.pools?.[l] || []).length);
+  const step = ladderStep({ level: lad.level, up: lad.up, down: lad.down, reached: lad.reached }, result, levels);
+  const served = [...(lad.served || []), item._id];
+  const answered = (session.answered || 0) + 1;
+  const pick = answered < lad.count ? pickNext(lad.pools, served, step.level) : null;
+  // Tar nivån slut hamnar man på närmaste nivå som har kvar.
+  const level = pick ? pick.level : step.level;
+  const reached = LEVEL_ORDER.indexOf(level) > LEVEL_ORDER.indexOf(step.reached) ? level : step.reached;
+  const order = (l) => LEVEL_ORDER.indexOf(l);
+  const moved = order(level) > order(lad.level) ? 'up' : order(level) < order(lad.level) ? 'down' : null;
+  let next = null;
+  if (pick) {
+    const nextItem = await StudyItem.findById(pick.itemId).lean();
+    const nextUnit = nextItem ? await StudyUnit.findById(nextItem.unit).lean() : null;
+    if (nextItem && nextUnit) next = publicItem(nextItem, nextUnit);
+    served.push(oid(pick.itemId));
+  }
+  await StudySession.updateOne({ _id: session._id }, {
+    $set: {
+      'ladder.level': level,
+      'ladder.up': moved ? 0 : step.up,
+      'ladder.down': moved ? 0 : step.down,
+      'ladder.reached': reached,
+      'ladder.served': served
+    }
+  });
+  return { level, reached, moved, answered, count: lad.count, next };
 }
 
 async function pingSession(userId, sessionId) {
@@ -258,7 +329,8 @@ async function finishSession(userId, sessionId) {
     xpEarned,
     xp: award?.xp ?? null,
     streak: award?.streak ?? null,
-    streakChange: award?.streakChange ?? 'unchanged'
+    streakChange: award?.streakChange ?? 'unchanged',
+    ladderReached: fresh.ladder?.reached || null
   };
 }
 

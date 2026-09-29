@@ -123,3 +123,19 @@
 @media print {
   .test-sheet { border: none; padding: 0; background: #fff; }
 }
+
+/* ── Nivåstegen ────────────────────────────────────────────────────────── */
+.ladder-steps { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ladder-step { padding: 3px 10px; border: 2px dashed var(--ink-soft); border-radius: 999px; font-size: 13px; font-weight: 800; opacity: 0.55; background: var(--bg-elev); }
+.ladder-step.is-reached { opacity: 0.85; border-style: solid; }
+.ladder-step.is-current { opacity: 1; border: 2px solid var(--ink); box-shadow: 2px 2px 0 0 var(--ink); }
+.ladder-step.level-E.is-current { background: var(--leaf-soft); }
+.ladder-step.level-C.is-current { background: var(--mustard-soft); }
+.ladder-step.level-A.is-current { background: var(--berry-soft); }
+.ladder-moved { border: 2px solid var(--ink); border-radius: 14px; padding: 10px 14px; font-weight: 800; }
+.ladder-moved.is-up { background: var(--leaf-soft); }
+.ladder-moved.is-down { background: var(--sky-soft); font-weight: 700; }
+.level-meter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 480px) {
+  .level-meter { grid-template-columns: 1fr; gap: 8px; }
+}

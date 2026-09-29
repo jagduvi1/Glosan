@@ -37,7 +37,8 @@ const MODES = [
   { key: 'cards', label: 'Kort' },
   { key: 'exercises', label: 'Övningar' },
   { key: 'due', label: 'Repetera' },
-  { key: 'wrong', label: 'Bara fel' }
+  { key: 'wrong', label: 'Bara fel' },
+  { key: 'ladder', label: '🪜 Nivåstege', title: 'Börja på din nivå — 3 rätt i rad tar dig upp, 2 fel i rad ner' }
 ];
 
 /**
@@ -49,7 +50,7 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
   const [levels, setLevels] = useState([]);
   const [count, setCount] = useState(15);
   const toggleLevel = (l) => setLevels((cur) => (cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]));
-  const levelsApply = mode !== 'cards';
+  const levelsApply = mode !== 'cards' && mode !== 'ladder';
 
   return (
     <div className="stack" style={{ gap: 12 }}>
@@ -60,7 +61,8 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
             type="button"
             className="chip"
             aria-pressed={mode === m.key}
-            disabled={busy || (m.key === 'cards' && !hasCards) || (m.key === 'exercises' && !hasExercises)}
+            title={m.title}
+            disabled={busy || (m.key === 'cards' && !hasCards) || ((m.key === 'exercises' || m.key === 'ladder') && !hasExercises)}
             onClick={() => setMode(m.key)}
           >
             {m.label}
@@ -107,6 +109,23 @@ export function practiceUrl(scope, { mode, levels, count }) {
   if (count) q.set('count', String(count));
   if (scope.back) q.set('back', scope.back);
   return `/plugga/ova?${q}`;
+}
+
+/** Nivåstegen E → C → A med aktuell nivå markerad. */
+export function LadderSteps({ levels = ['E', 'C', 'A'], level, reached }) {
+  const order = ['E', 'C', 'A'];
+  return (
+    <div className="ladder-steps" aria-label={`Nivåstege: du är på ${LEVEL_LABEL[level] || level}`}>
+      {order.filter((l) => levels.includes(l)).map((l, i) => (
+        <span key={l} className="row" style={{ gap: 6, alignItems: 'center' }}>
+          {i > 0 && <span aria-hidden="true" className="muted">→</span>}
+          <span className={`ladder-step level-${l} ${l === level ? 'is-current' : ''} ${order.indexOf(l) <= order.indexOf(reached) ? 'is-reached' : ''}`}>
+            {LEVEL_LABEL[l]} · {l}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function formatDuration(sec) {

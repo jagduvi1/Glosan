@@ -131,11 +131,19 @@ async function unitDetail(userId, unitId) {
   ]);
   const stateBy = new Map(states.map((s) => [String(s.item), s]));
   const paperBy = new Map(papers.map((p) => [String(p._id), p]));
+  // Nivåstegen: hur mycket som sitter per nivå (övningar med nivå).
+  const levelProgress = { E: { total: 0, mastered: 0 }, C: { total: 0, mastered: 0 }, A: { total: 0, mastered: 0 } };
+  for (const i of items) {
+    if (i.kind !== 'exercise' || !levelProgress[i.level]) continue;
+    levelProgress[i.level].total += 1;
+    if ((stateBy.get(String(i._id))?.box || 0) >= MASTERED_BOX) levelProgress[i.level].mastered += 1;
+  }
   const u = unit.toObject();
   return {
     unit: unitSummary(u, userId, progress.get(String(unit._id)), owner?.username),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
     tests,
+    levelProgress,
     items: items.map((i) => {
       const s = stateBy.get(String(i._id));
       const paper = paperBy.get(String(i._id));

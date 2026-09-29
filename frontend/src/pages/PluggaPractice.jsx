@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
-import { LevelPill, CodeTag, practiceUrl, formatDuration } from '../components/study/StudyBits';
+import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -95,6 +95,8 @@ export default function PluggaPractice() {
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState(null);
   const [missed, setMissed] = useState(0);
+  // Nivåstegen: { level, reached, levels, count, moved } — nästa uppgift kommer med varje svar.
+  const [ladder, setLadder] = useState(null);
   const finished = useRef(false);
   const answeredCount = useRef(0);
   const sessionRef = useRef(null);
@@ -111,6 +113,7 @@ export default function PluggaPractice() {
         setSession(r.session);
         sessionRef.current = r.session;
         setItems(r.items);
+        setLadder(r.ladder ? { ...r.ladder, moved: null } : null);
         setIndex(0);
         setPhase('question');
       })
@@ -150,6 +153,10 @@ export default function PluggaPractice() {
       const res = await answerStudyItem(apiFetch, session.id, { itemId: current.id, ...payload });
       answeredCount.current += 1;
       if (res.result !== 'correct') setMissed((m) => m + 1);
+      if (res.ladder) {
+        setLadder((cur) => ({ ...cur, level: res.ladder.level, reached: res.ladder.reached, moved: res.ladder.moved }));
+        if (res.ladder.next) setItems((cur) => (cur.some((i) => i.id === res.ladder.next.id) ? cur : [...cur, res.ladder.next]));
+      }
       setFeedback(res);
       setPhase('feedback');
     } catch (e) {
@@ -208,6 +215,7 @@ export default function PluggaPractice() {
         </p>
         <div className="row" style={{ gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           {summary.xpEarned > 0 && <span className="pill" style={{ background: 'var(--mustard-soft)' }}>+{summary.xpEarned} XP</span>}
+          {summary.ladderReached && <span className="pill" style={{ background: 'var(--sky-soft)' }}>🪜 Högsta nivå: {LEVEL_LABEL[summary.ladderReached]} · {summary.ladderReached}</span>}
           {summary.streak && (
             <span className="pill" style={{ background: 'var(--coral-soft)' }}>
               🔥 {summary.streak.current} {summary.streak.current === 1 ? 'dag' : 'dagar'} i rad
@@ -238,11 +246,12 @@ export default function PluggaPractice() {
     <div className="practice-shell stack" style={{ gap: 16 }}>
       <div className="row between" style={{ gap: 10, flexWrap: 'wrap' }}>
         <Link to={scope.back} className="t-hand" style={{ fontSize: 15 }}>← Avsluta</Link>
-        <span className="t-hand muted">{index + 1} / {items.length}</span>
+        <span className="t-hand muted">{index + 1} / {ladder ? ladder.count : items.length}</span>
       </div>
       <div className="bar-shell" style={{ height: 10 }}>
-        <div className="bar-fill bar-fill-coral" style={{ width: `${Math.round((index / items.length) * 100)}%` }} />
+        <div className="bar-fill bar-fill-coral" style={{ width: `${Math.round((index / (ladder ? ladder.count : items.length)) * 100)}%` }} />
       </div>
+      {ladder && <LadderSteps levels={ladder.levels} level={ladder.level} reached={ladder.reached} />}
 
       <div className="card card-lg">
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -360,6 +369,12 @@ export default function PluggaPractice() {
 
       {phase === 'feedback' && feedback && (
         <div className="stack" style={{ gap: 12 }}>
+          {ladder?.moved === 'up' && (
+            <div className="ladder-moved is-up">🎉 Snyggt — upp till {LEVEL_LABEL[ladder.level]} · {ladder.level}!</div>
+          )}
+          {ladder?.moved === 'down' && (
+            <div className="ladder-moved is-down">Vi tar det lite lugnare — tillbaka till {LEVEL_LABEL[ladder.level]} · {ladder.level}. Du klättrar snart igen.</div>
+          )}
           <div className={`result-banner result-${feedback.result}`}>
             {RESULT_TEXT[feedback.result]}
             {feedback.note && <div style={{ fontWeight: 600, fontSize: 16, marginTop: 4 }}>{feedback.note}</div>}

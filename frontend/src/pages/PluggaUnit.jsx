@@ -167,6 +167,24 @@ export default function PluggaUnit() {
 
       <div className="card">
         <ProgressBar progress={unit.progress} />
+        {data.levelProgress && ['E', 'C', 'A'].some((l) => data.levelProgress[l].total > 0) && (
+          <div className="level-meter" style={{ marginTop: 12 }} aria-label="Hur mycket som sitter per nivå">
+            {['E', 'C', 'A'].filter((l) => data.levelProgress[l].total > 0).map((l) => {
+              const lp = data.levelProgress[l];
+              return (
+                <div key={l}>
+                  <div className="row between" style={{ gap: 6, alignItems: 'center' }}>
+                    <LevelPill level={l} />
+                    <span className="t-hand muted" style={{ fontSize: 13 }}>{lp.mastered}/{lp.total}</span>
+                  </div>
+                  <div className="bar-shell" style={{ height: 8, marginTop: 4 }}>
+                    <div className="bar-fill bar-fill-leaf" style={{ width: `${Math.round((lp.mastered / lp.total) * 100)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {items.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <PracticePicker
