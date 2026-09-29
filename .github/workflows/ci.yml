@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     env:
-      JWT_SECRET: ci-only-not-a-secret
+      JWT_SECRET: ci-only-not-a-secret-0123456789abcdef-0123
       FRONTEND_URL: http://localhost:8080
     steps:
       - uses: actions/checkout@v4
