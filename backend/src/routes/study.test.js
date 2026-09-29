@@ -18,7 +18,8 @@ jest.mock('../models/User', () => {
 });
 jest.mock('../models/StudyUnit', () => ({
   aggregate: async () => [{ _id: 'matematik', n: 2 }, { _id: 'historia', n: 1 }],
-  distinct: async () => ['2025-HT']
+  // 'term' → terminer som finns; '_id' → läsbara områden (tomt: inget att repetera).
+  distinct: async (field) => (field === 'term' ? ['2025-HT'] : [])
 }));
 
 const app = require('../app');
