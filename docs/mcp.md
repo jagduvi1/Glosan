@@ -211,8 +211,9 @@ build you need a public HTTPS tunnel with `FRONTEND_URL` set to its URL.
 Remove the two `/.well-known/oauth-*` blocks from `nginx.conf` and redeploy
 (that is a new **frontend** release — nginx.conf is baked into that image) —
 discovery stops resolving, so no new connections can be made. Clients that
-already know the endpoints can still reach `/api/mcp/oauth/*`. To cut off
-existing connections too:
+already know the endpoints can still reach `/api/mcp/oauth/*`. Faster, with no
+release: `MCP_DISABLED=true` in the VM's `.env` and a backend restart answers
+503 on discovery, OAuth and `/api/mcp`. To cut off existing connections too:
 
 ```js
 db.mcptokens.updateMany({ revokedAt: null }, { $set: { revokedAt: new Date() } })

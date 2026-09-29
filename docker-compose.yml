@@ -37,6 +37,7 @@ services:
       - FEATURES_FOR_ALL=${FEATURES_FOR_ALL:-}
       - FEATURES_DISABLED=${FEATURES_DISABLED:-}
       - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
+      - MCP_DISABLED=${MCP_DISABLED:-}
       - NODE_ENV=${NODE_ENV:-production}
     deploy:
       resources:

@@ -54,6 +54,8 @@ services:
       - FEATURES_DISABLED=${FEATURES_DISABLED:-}
       # Fler AI-tjänster vars redirect-värd samtyckessidan känner igen (services/mcpOAuth.js).
       - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
+      # Nödbroms: true stänger AI-anslutningen (discovery, OAuth, /api/mcp) med 503.
+      - MCP_DISABLED=${MCP_DISABLED:-}
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       mongo:

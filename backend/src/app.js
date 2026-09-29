@@ -52,6 +52,13 @@ app.use(cookieParser());
 // OAuth-discovery för MCP-connectorn (RFC 8414 + RFC 9728). Måste ligga på
 // originets rot och före CORS/limitrarna — se routes/wellKnownOAuth.js.
 // nginx proxar /.well-known/oauth-* hit (frontend/nginx.conf).
+// Nödbroms för AI-anslutningen (MCP): MCP_DISABLED=true stänger discovery,
+// OAuth och /api/mcp med 503 — utan ny release (starta om backend).
+if (process.env.MCP_DISABLED === 'true') {
+  app.use(['/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource', '/api/mcp'], (req, res) => {
+    res.status(503).json({ error: 'The Glosan AI connection is switched off for now.' });
+  });
+}
 app.use('/.well-known', wellKnownOAuthRoute);
 
 // Bildimporten skickar en nerskalad JPEG som base64 och spränger därför
