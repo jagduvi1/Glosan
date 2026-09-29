@@ -31,4 +31,47 @@ const INSTRUCTIONS = [
   '- Errors return { error: { code, message } }. Codes: not_found (wrong or foreign id — re-list to recover); invalid_input (the message says exactly what to fix); forbidden (the list was shared without that right); conflict (e.g. the category already exists — use the id in the message); rate_limited (too many changes in a short time — wait a few minutes; reads still work).'
 ].join('\n');
 
-module.exports = { INSTRUCTIONS };
+// Avsnitt för moduler bakom funktionsflaggor (config/features.js). Läggs bara
+// till för användare som har flaggan, så AI:n aldrig får höra talas om en dold
+// modul. Plugga fyller i sitt avsnitt när dess verktyg finns (docs/plugga.md).
+const FEATURE_SECTIONS = {
+  study: [
+    'Plugga — school subjects (enabled for this account):',
+    '- Besides vocabulary lists, Glosan holds study material for every school subject: matematik, fysik, kemi, biologi, NO, historia, geografi, religionskunskap, samhällskunskap, SO, teknik, svenska, engelska, moderna språk. A unit ("område", code like MA3) holds genomgångar (explanations), flashcards and exercises; every card/exercise has a code like MA3-14.',
+    '- Tools: list_study_units, get_study_unit, get_study_item, get_study_progress, list_study_flags (read) → create_study_unit, add_study_pages, update_study_page, add_flashcards, add_exercises, update_study_item, delete_study_items, update_study_unit, delete_study_unit, record_paper_attempt, resolve_study_flag (write).',
+    '',
+    'Creating study material from photos of a textbook:',
+    '1. ALWAYS ask the student which årskurs (grade 1–9) they are in before creating anything — never guess. If list_study_units shows earlier units, confirm it ("förra gången åk 8 — stämmer det fortfarande?"). Also ask if there is a test coming, and when.',
+    '2. From the photos, identify subject, book, chapter and pages, and the book\'s own level markings (nivå 1/2/3, green/yellow/red, grund/fördjupning/utmaning).',
+    '3. Propose what you will create — e.g. "1 genomgång, 20 kort, 30 övningar (12 E, 12 C, 6 A)" — and wait for the student\'s OK.',
+    '4. create_study_unit (with the genomgång pages), then add_flashcards and add_exercises in batches.',
+    '5. Re-read the unit with get_study_unit and verify EVERY answer by solving each exercise again; fix mistakes with update_study_item before telling the student it is done.',
+    '6. Give the student the unit url.',
+    '',
+    'Content rules:',
+    '- Swedish, at the student\'s grade level (Lgr22), using the book\'s terminology and notation. Formulas in LaTeX between $…$ (block: $$…$$); decimal comma in running text ("3,5").',
+    '- The book\'s exercises are EXAMPLES: write your own exercises that train the same skills (other numbers, other contexts), and put the book\'s exercise number in source_ref. Never copy the book\'s text.',
+    '- Levels: map the book\'s markings to E (easy) / C (medium) / A (hard). When the photos show several levels, create exercises on each in about the same proportions, easiest first within each level.',
+    '- Genomgång: what the student should be able to do, a clear explanation, "så gör du" step by step, 2–3 worked examples, common mistakes.',
+    '- Flashcards: one idea per card (a term, a rule, a formula, a fact).',
+    '- Exercises: every number/choice/text exercise needs a worked solution (step by step) and 1–3 hints that nudge without giving the answer away. Number answers: give a tolerance when rounding is expected, and the unit if there is one.',
+    '- SO, NO and history: use key terms (begrepp), cause and effect (samband) and "förklara/resonera" questions as type self, with a model answer that says what an E, C and A answer contains (enkla, utvecklade, välutvecklade resonemang). Short facts (a year, a name, a term) as type text.',
+    '',
+    'Checking a solution done on paper:',
+    '- The student sends a photo of a handwritten solution with a code, e.g. "rätta MA3-14". Call get_study_item with the code. If the code is unreadable or missing, ask — never guess.',
+    '- Compare with the answer and the worked solution. Give feedback in Swedish, written to the student: what is right, where it first goes wrong, a hint (not the full solution unless they ask), and what would lift it to the next level.',
+    '- Then call record_paper_attempt with result correct/partial/wrong and your feedback — it counts toward their progress and study time, and they can re-read your feedback in the app.',
+    '',
+    '- Error reports: students (and friends a unit is shared with) can report "fel i facit" in the app. list_study_flags shows open reports on units the user created: verify, fix with update_study_item, then resolve_study_flag.',
+    '- Units can be shared with friends in the app — also friends without an AI. Only the creator can change the content; everyone practises with their own progress.',
+    '- Practising happens in the app (flashcards, exercises by level, repetition). delete_study_unit / delete_study_items are permanent: confirm first.'
+  ].join('\n')
+};
+
+/** Instruktionerna för en användare med de här effektiva flaggorna. */
+function buildInstructions(features = []) {
+  const extra = features.filter((f) => FEATURE_SECTIONS[f]).map((f) => FEATURE_SECTIONS[f]);
+  return extra.length ? [INSTRUCTIONS, '', ...extra].join('\n') : INSTRUCTIONS;
+}
+
+module.exports = { INSTRUCTIONS, FEATURE_SECTIONS, buildInstructions };

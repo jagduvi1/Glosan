@@ -39,3 +39,43 @@ registerPrompt({
     'At the end, summarise which words still need work.'
   ].join('\n'))
 });
+
+// ── Plugga (funktionsflaggan 'study') ────────────────────────────────────────
+
+registerPrompt({
+  name: 'study_from_photos',
+  title: 'Plugga: skapa ett område från bokens sidor',
+  description: 'Turn photos of textbook pages (any subject) into a Plugga unit with genomgång, flashcards and exercises on the book\'s levels.',
+  scope: 'write',
+  feature: 'study',
+  argsSchema: {
+    subject: z.string().optional().describe('e.g. "matte", "fysik", "historia" (optional — detected from the photos)'),
+    grade: z.string().optional().describe('Årskurs, e.g. "8" (optional — you will be asked)'),
+    test_date: z.string().optional().describe('When the test is, if there is one')
+  },
+  handler: (args) => userMessage([
+    'Jag har bifogat foton från min lärobok. Hjälp mig plugga på det här i Glosan:',
+    `1. ${args.grade ? `Jag går i årskurs ${args.grade} — bekräfta det.` : 'Fråga vilken årskurs jag går i innan du skapar något.'}${args.test_date ? ` Provet är ${args.test_date}.` : ' Fråga om det är ett prov på gång.'}`,
+    `2. Ta reda på ämne${args.subject ? ` (${args.subject})` : ''}, bok, kapitel och vilka nivåer boken visar (lätt/medel/svår).`,
+    '3. Föreslå vad du skapar — genomgång, kort, och egna övningar på bokens nivåer (E/C/A) — och vänta på mitt OK.',
+    '4. Skapa området, kontrollera alla svar och ge mig länken.',
+    'Om inga foton är bifogade: be mig fota sidorna.'
+  ].join('\n'))
+});
+
+registerPrompt({
+  name: 'check_my_solution',
+  title: 'Plugga: rätta min lösning på papper',
+  description: 'Check a photographed handwritten solution to a Plugga exercise (code like MA3-14) and record the result.',
+  scope: 'write',
+  feature: 'study',
+  argsSchema: {
+    code: z.string().optional().describe('The exercise code, e.g. "MA3-14" (optional — read from the photo)')
+  },
+  handler: (args) => userMessage([
+    `Här är ett foto av min lösning${args.code ? ` på uppgift ${args.code}` : ''}. Koden står överst på pappret.`,
+    'Hämta uppgiften i Glosan och rätta min lösning: vad är rätt, var blir det fel första gången, ge mig en ledtråd (inte hela lösningen) och säg vad som skulle lyfta den till nästa nivå.',
+    'Spara sedan resultatet och din återkoppling i Glosan.',
+    'Om det inte finns något foto eller koden inte syns: fråga mig.'
+  ].join('\n'))
+});

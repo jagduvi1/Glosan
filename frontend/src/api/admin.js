@@ -47,3 +47,23 @@ export async function resetUsage(apiFetch, userId) {
   if (!res.ok) throw new Error(data.error || 'Kunde inte nollställa användning');
   return data.user;
 }
+
+// Funktionsflaggor (dolda moduler, t.ex. Plugga). Katalogen + vilka som är på
+// för alla kommer från backend (config/features.js).
+export async function fetchAdminFeatures(apiFetch) {
+  const res = await apiFetch('/api/admin/features');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte hämta funktioner');
+  return data.features;
+}
+
+export async function setUserFeature(apiFetch, userId, feature, enabled) {
+  const res = await apiFetch(`/api/admin/users/${userId}/features`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feature, enabled })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Kunde inte ändra funktion');
+  return data.user;
+}

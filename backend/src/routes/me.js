@@ -10,22 +10,14 @@ const XpEvent = require('../models/XpEvent');
 const QuizRunEvent = require('../models/QuizRunEvent');
 const McpToken = require('../models/McpToken');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
+const { exportStudyData, deleteStudyDataForUser } = require('../services/studyData');
+const { startOfDay, tickStreak, tickCoopStreaks, subjectXpTotal } = require('../services/gamification');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
 const router = express.Router();
 
 router.use(requireAuth);
-
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function daysBetween(a, b) {
-  return Math.round((startOfDay(b) - startOfDay(a)) / (24 * 60 * 60 * 1000));
-}
 
 // XP curve: level N requires (N-1)² × 100 XP.
 // So L2=100, L3=400, L5=1600, L7=3600, L10=8100, L15=19600, L20=36100, L30=84100.
@@ -174,36 +166,17 @@ router.post('/quiz-complete', async (req, res) => {
     const existingLangXp = user.languageXp && typeof user.languageXp === 'object' ? { ...user.languageXp } : {};
     const hasAnyLanguageXp = Object.keys(existingLangXp).length > 0;
     if (!hasAnyLanguageXp) {
-      // user.xp was just incremented by xpEarned above; seed with the full total.
-      existingLangXp[sourceLang] = user.xp;
+      // user.xp was just incremented by xpEarned above; seed with the full
+      // total — minus Plugga-XP, som hör till ett ämne och inte ett språk.
+      existingLangXp[sourceLang] = Math.max(0, user.xp - subjectXpTotal(user));
     } else {
       existingLangXp[sourceLang] = (Number(existingLangXp[sourceLang]) || 0) + xpEarned;
     }
     user.languageXp = existingLangXp;
     user.markModified('languageXp');
 
-    if (!user.streak) user.streak = { current: 0, longest: 0, lastActiveDay: null };
     const today = startOfDay(new Date());
-    let streakChange = 'unchanged';
-    if (!user.streak.lastActiveDay) {
-      user.streak.current = 1;
-      streakChange = 'started';
-    } else {
-      const gap = daysBetween(user.streak.lastActiveDay, today);
-      if (gap <= 0) {
-        // Already counted today (or clock skew) — no change
-      } else if (gap === 1) {
-        user.streak.current += 1;
-        streakChange = 'continued';
-      } else {
-        user.streak.current = 1;
-        streakChange = 'reset';
-      }
-    }
-    if (user.streak.current > user.streak.longest) {
-      user.streak.longest = user.streak.current;
-    }
-    user.streak.lastActiveDay = today;
+    const streakChange = tickStreak(user, today);
 
     await user.save();
 
@@ -226,48 +199,8 @@ router.post('/quiz-complete', async (req, res) => {
       ratio: total > 0 ? correct / total : 0
     }).catch((e) => console.error('QuizRunEvent log error:', e.message));
 
-    // Co-op-streaks: för varje par jag är med i, tickas streaken upp om
-    // den andre också är aktiv idag. Brytlogiken körs implicit — om
-    // lastBothActiveDay är äldre än igår sätts current till 1 vid nästa
-    // gemensamma dag.
-    let coopUpdates = [];
-    try {
-      const coops = await CoopStreak.find({ users: user._id });
-      if (coops.length > 0) {
-        // Hämta alla "andra"-users i ett enda anrop (slipper N+1).
-        const otherIds = coops
-          .map((c) => c.users.find((u) => u.toString() !== req.user.id))
-          .filter(Boolean);
-        const others = await User.find(
-          { _id: { $in: otherIds } },
-          'streak'
-        ).lean();
-        const streakByUser = new Map(others.map((u) => [u._id.toString(), u.streak]));
-
-        for (const coop of coops) {
-          const otherId = coop.users.find((u) => u.toString() !== req.user.id);
-          if (!otherId) continue;
-          const otherStreak = streakByUser.get(otherId.toString());
-          if (!otherStreak?.lastActiveDay) continue;
-          const otherActiveToday = startOfDay(otherStreak.lastActiveDay).getTime() === today.getTime();
-          if (!otherActiveToday) continue;
-          if (coop.lastBothActiveDay && startOfDay(coop.lastBothActiveDay).getTime() === today.getTime()) {
-            continue; // redan räknad idag
-          }
-          if (coop.lastBothActiveDay && daysBetween(coop.lastBothActiveDay, today) === 1) {
-            coop.current += 1;
-          } else {
-            coop.current = 1;
-          }
-          if (coop.current > coop.longest) coop.longest = coop.current;
-          coop.lastBothActiveDay = today;
-          await coop.save();
-          coopUpdates.push({ otherId: String(otherId), current: coop.current });
-        }
-      }
-    } catch (e) {
-      console.error('Co-op streak update error:', e.message);
-    }
+    // Co-op-streaks (services/gamification.js — delad med Plugga).
+    const coopUpdates = await tickCoopStreaks(user, today);
 
     res.json({
       xpEarned,
@@ -446,6 +379,7 @@ router.get('/export', async (req, res) => {
       InviteCode.find({ user: userId }).lean(),
       McpToken.find({ user: userId }).lean()
     ]);
+    const study = await exportStudyData(userId);
 
     // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
     // ens till användaren själv.
@@ -508,6 +442,9 @@ router.get('/export', async (req, res) => {
         usedAt: c.usedAt,
         createdAt: c.createdAt
       })),
+      // Plugga: egna områden (med genomgångar och uppgifter), delade med mig,
+      // mappar, pass, svar och progress.
+      study,
       // Anslutna AI:er (MCP) — bara metadata, aldrig token-hashar.
       aiConnections: mcpTokens.map((t) => ({
         name: t.name,
@@ -526,7 +463,7 @@ router.get('/export', async (req, res) => {
 // DELETE /api/me — GDPR Art. 17: rätt att raderas. Hård delete på allt jag
 // äger eller är knuten till. Cascading: User, GlosList, Glos, Friendship,
 // CoopStreak, Duel, XpEvent, QuizRunEvent, InviteCode, McpToken,
-// OAuthAuthCode. Pull också ut mig
+// OAuthAuthCode och all Plugga-data (services/studyData.js). Pull också ut mig
 // från andras GlosList.sharedWith så jag inte syns kvar i deras "delade
 // med dig"-sektion.
 //
@@ -576,6 +513,9 @@ router.delete('/', async (req, res) => {
     // är connector-metadata utan user-ref och lämnas kvar.
     await McpToken.deleteMany({ user: userId }, opts);
     await OAuthAuthCode.deleteMany({ user: userId }, opts);
+    // Plugga: egna områden med allt innehåll + allas progress på dem, min
+    // egen progress/historik/mappar, och mig ur andras delningar.
+    await deleteStudyDataForUser(userId, opts);
 
     await User.deleteOne({ _id: userId }, opts);
   }

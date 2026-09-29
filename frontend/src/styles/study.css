@@ -1,0 +1,52 @@
+/* Plugga — skolämnen. Typografi för genomgångar (Markdown + KaTeX) och
+   spelarna för kort/övningar. Bygger på tokens.css/kit.css. */
+
+.study-md { font-family: var(--font-body); font-size: 17px; line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.study-md > :first-child { margin-top: 0; }
+.study-md > :last-child { margin-bottom: 0; }
+.study-md h1, .study-md h2, .study-md h3 { font-family: var(--font-headline); font-weight: 400; margin: 1.2em 0 0.4em; line-height: 1.2; }
+.study-md h1 { font-size: 28px; }
+.study-md h2 { font-size: 24px; }
+.study-md h3 { font-size: 20px; }
+.study-md p { margin: 0.6em 0; }
+.study-md ul, .study-md ol { margin: 0.6em 0; padding-left: 1.4em; }
+.study-md li { margin: 0.25em 0; }
+.study-md blockquote { margin: 0.8em 0; padding: 8px 14px; border-left: 4px solid var(--mustard); background: var(--mustard-soft); border-radius: 0 10px 10px 0; }
+.study-md code { font-family: var(--font-mono); font-size: 0.92em; background: var(--paper-deep); padding: 1px 5px; border-radius: 5px; }
+.study-md pre { background: var(--paper-deep); padding: 12px; border-radius: 10px; overflow-x: auto; }
+.study-md table { border-collapse: collapse; margin: 0.8em 0; display: block; overflow-x: auto; }
+.study-md th, .study-md td { border: 2px solid var(--ink); padding: 6px 10px; text-align: left; }
+.study-md th { background: var(--paper-deep); }
+.study-md .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.study-md-inline, .study-md-inline p { display: inline; margin: 0; }
+
+.level-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border: 2px solid var(--ink); border-radius: 999px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.level-E { background: var(--leaf-soft, #dff3d8); }
+.level-C { background: var(--mustard-soft); }
+.level-A { background: var(--berry-soft); }
+
+.study-code { font-family: var(--font-mono); font-weight: 800; font-size: 13px; padding: 2px 8px; border: 2px dashed var(--ink-soft); border-radius: 8px; background: var(--bg-elev); white-space: nowrap; }
+
+.study-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 2px solid var(--ink); border-radius: 999px; background: var(--bg-elev); font-weight: 700; font-size: 15px; cursor: pointer; user-select: none; }
+.chip[aria-pressed="true"] { background: var(--mustard); box-shadow: 2px 2px 0 0 var(--ink); }
+.chip:disabled { opacity: 0.5; cursor: default; }
+
+.practice-shell { max-width: 720px; margin: 0 auto; }
+.practice-choice { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: flex-start; padding: 14px 18px; font-size: 17px; text-align: left; }
+.practice-choice-key { width: 28px; height: 28px; border: 2px solid var(--ink); border-radius: 6px; font-family: var(--font-mono); font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; background: var(--paper-deep); flex: none; }
+
+.result-banner { border: 3px solid var(--ink); border-radius: 16px; padding: 14px 18px; font-weight: 800; font-size: 19px; }
+.result-correct { background: var(--leaf-soft, #dff3d8); }
+.result-partial { background: var(--mustard-soft); }
+.result-wrong { background: var(--berry-soft); }
+
+.unit-item { border-top: 2px dashed var(--paper-edge); padding: 12px 0; }
+.unit-item:first-child { border-top: none; }
+
+.self-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 480px) {
+  .self-grade { grid-template-columns: 1fr; }
+  .study-md { font-size: 16px; }
+}

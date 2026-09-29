@@ -22,8 +22,12 @@ describe('scope filtering', () => {
     expect(promptsForScopes(['read']).map((p) => p.name)).not.toContain('list_from_photo');
   });
 
-  test('a read+write connection sees everything', () => {
-    expect(toolsForScopes(['read', 'write'])).toHaveLength(allTools().length);
+  test('a read+write connection sees every tool it has the flags for', () => {
+    expect(toolsForScopes(['read', 'write'], ['study'])).toHaveLength(allTools().length);
+    // Plugga-verktygen finns inte alls utan flaggan 'study'.
+    const withoutFlag = toolsForScopes(['read', 'write']).map((t) => t.name);
+    expect(withoutFlag).toContain('create_list');
+    expect(withoutFlag).not.toContain('create_study_unit');
   });
 
   test('public tools need no scope; others need the exact scope', () => {
@@ -49,7 +53,7 @@ describe('tool invariants', () => {
 
   test('the permanent deletions are flagged destructive', () => {
     const destructive = allTools().filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort();
-    expect(destructive).toEqual(['delete_list', 'delete_words']);
+    expect(destructive).toEqual(['delete_list', 'delete_study_items', 'delete_study_unit', 'delete_words']);
   });
 
   test('every tool has a description the model can choose by', () => {

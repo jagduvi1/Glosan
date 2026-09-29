@@ -32,6 +32,8 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      # Funktionsflaggor som är på för ALLA (t.ex. "study" = Plugga) — se config/features.js.
+      - FEATURES_FOR_ALL=${FEATURES_FOR_ALL:-}
       - NODE_ENV=${NODE_ENV:-production}
     deploy:
       resources:

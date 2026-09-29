@@ -119,10 +119,12 @@ async function main() {
     const client = await mcpClient(full.access_token);
     assert.match(client.getInstructions() || '', /Glosan/);
     const tools = (await client.listTools()).tools.map((t) => t.name);
-    assert.equal(tools.length, 14, `tools: ${tools}`);
+    // De 14 glosverktygen — fler finns om kontot har Plugga (funktionsflagga).
+    const VOCAB_TOOLS = ['get_source_info', 'get_profile', 'list_lists', 'get_list', 'create_list', 'update_list', 'swap_list_direction', 'delete_list', 'add_words', 'update_word', 'delete_words', 'list_hard_words', 'list_categories', 'create_category'];
+    assert.deepEqual(VOCAB_TOOLS.filter((t) => !tools.includes(t)), [], `tools: ${tools}`);
     const prompts = (await client.listPrompts()).prompts.map((p) => p.name);
-    assert.deepEqual(prompts.sort(), ['list_from_photo', 'practice_hard_words']);
-    ok(`initialize + tools/list (${tools.length} tools) + prompts/list`);
+    assert.ok(prompts.includes('list_from_photo') && prompts.includes('practice_hard_words'));
+    ok(`initialize + tools/list (${tools.length} tools, incl. all 14 vocabulary tools) + prompts/list`);
 
     const created = await call(client, 'create_list', {
       title: 'Engelska v. 38 — Mat',

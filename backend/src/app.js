@@ -22,6 +22,7 @@ const adminRoute = require('./routes/admin');
 const mcpRoute = require('./routes/mcp');
 const mcpOAuthRoute = require('./routes/mcpOAuth');
 const wellKnownOAuthRoute = require('./routes/wellKnownOAuth');
+const studyRoute = require('./routes/study');
 
 const app = express();
 
@@ -82,14 +83,18 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// MCP-protokollet och dess OAuth-endpoints är undantagna från de globala
-// per-IP-limitrarna: hostade AI-connectors (claude.ai, ChatGPT) går ut från en
-// liten delad IP-pool, så alla deras användare skulle dela EN hink. De har egna
-// limitrar i routes/mcp.js och routes/mcpOAuth.js. /api/mcp/connections (Profil-
-// sidan) är en vanlig webbapp-route och omfattas som vanligt.
-const isMcpProtocol = (req) => {
+// Routes med EGNA limitrar är undantagna från de globala per-IP-limitrarna,
+// eftersom många användare delar IP-adress där:
+// - MCP-protokollet och dess OAuth-endpoints: hostade AI-connectors
+//   (claude.ai, ChatGPT) går ut från en liten delad IP-pool. Egna limitrar i
+//   routes/mcp.js och routes/mcpOAuth.js. (/api/mcp/connections, Profil-sidan,
+//   är en vanlig webbapp-route och omfattas som vanligt.)
+// - Plugga-pass (ett anrop per svar): en skolklass delar ofta en IP-adress.
+//   Begränsas per inloggad användare i routes/study.js.
+const hasOwnLimiter = (req) => {
   const p = (req.baseUrl || '') + (req.path || '');
-  return p === '/api/mcp' || p === '/api/mcp/' || p.startsWith('/api/mcp/oauth/');
+  return p === '/api/mcp' || p === '/api/mcp/' || p.startsWith('/api/mcp/oauth/')
+    || p === '/api/study/sessions' || p.startsWith('/api/study/sessions/');
 };
 
 const apiLimiter = rateLimit({
@@ -97,7 +102,7 @@ const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: isMcpProtocol,
+  skip: hasOwnLimiter,
   handler: (req, res) => res.status(429).json({ error: 'Too many requests, please try again later' })
 });
 app.use('/api/', apiLimiter);
@@ -107,7 +112,7 @@ const writeLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => isMcpProtocol(req) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+  skip: (req) => hasOwnLimiter(req) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
   handler: (req, res) => res.status(429).json({ error: 'Too many write requests, please try again later' })
 });
 app.use('/api/', writeLimiter);
@@ -126,6 +131,8 @@ app.use('/api/auth', oauthRoute);
 // servern före /api/mcp så /api/mcp/oauth/* hamnar rätt.
 app.use('/api/mcp/oauth', mcpOAuthRoute);
 app.use('/api/mcp', mcpRoute);
+// Plugga (skolämnen) — dold bakom funktionsflaggan 'study'. Se docs/plugga.md.
+app.use('/api/study', studyRoute);
 app.use('/api/lists', listsRoute);
 // listInvites monteras på /api/ eftersom routes har paths som
 // /lists/:id/share-link (under /lists) och /list-invite/:code (top-level)

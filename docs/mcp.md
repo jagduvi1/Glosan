@@ -62,6 +62,11 @@ Claude ──POST /api/mcp (Bearer glo_…) ────────────
 Prompts (slash commands in clients that support them): `list_from_photo`,
 `practice_hard_words`.
 
+Accounts with the `study` feature flag also get the 16 **Plugga** tools
+(school subjects: units, genomgångar, flashcards, exercises, the paper flow)
+and the prompts `study_from_photos` and `check_my_solution`. For everyone
+else they are not registered at all. See [plugga.md](plugga.md).
+
 Deliberately **not** exposed: sharing with friends, duels, account settings,
 plans, deleting the account, disconnecting AIs. The instructions tell the AI to
 point the user at the web app for those.

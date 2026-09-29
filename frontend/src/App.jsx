@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Analytics from './components/Analytics';
+import { hasFeature } from './utils/features';
 
 const Landing    = lazy(() => import('./pages/Landing'));
 const Login      = lazy(() => import('./pages/Login'));
@@ -31,10 +32,24 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
+const Plugga = lazy(() => import('./pages/Plugga'));
+const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
+const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
+const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
+
+// Sidor bakom en funktionsflagga: för den som saknar flaggan finns sidan
+// inte (NotFound) — samma "dold"-beteende som backend (404).
+function FeatureRoute({ feature, children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="container"><p>Laddar…</p></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!hasFeature(user, feature)) return <Layout><NotFound /></Layout>;
+  return children;
+}
 
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
@@ -109,6 +124,38 @@ function AppRoutes() {
             <ProtectedRoute>
               <Layout><Results /></Layout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/plugga"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><Plugga /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/amne/:subject"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaSubject /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/omrade/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaUnit /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/ova"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaPractice /></Layout>
+            </FeatureRoute>
           }
         />
         <Route
