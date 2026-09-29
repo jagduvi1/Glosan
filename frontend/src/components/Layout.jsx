@@ -137,6 +137,7 @@ export default function Layout({ children }) {
       {showVerifyBanner && (
         <div
           role="status"
+          className="no-print"
           style={{
             background: 'var(--mustard-soft)',
             borderBottom: '2px solid var(--ink)',

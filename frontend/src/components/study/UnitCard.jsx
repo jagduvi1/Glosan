@@ -21,13 +21,9 @@ export default function UnitCard({ unit, selected = false, onToggle, showSubject
     <div className="card" style={{ padding: 16, outline: selected ? '3px solid var(--coral-deep)' : 'none' }}>
       <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
         {onToggle && (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggle}
-            aria-label={`Välj ${unit.title}`}
-            style={{ marginTop: 6, width: 20, height: 20, flex: 'none' }}
-          />
+          <label className="unit-select">
+            <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Välj ${unit.title}`} />
+          </label>
         )}
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="row between" style={{ gap: 8, alignItems: 'flex-start' }}>

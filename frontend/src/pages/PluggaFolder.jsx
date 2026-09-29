@@ -6,6 +6,7 @@ import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
 import UnitCard from '../components/study/UnitCard';
 import { ColorChoice } from '../components/study/FolderPicker';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
 
 // En mapp i Plugga: elevens eget urval av områden (tvärs över ämnen och
@@ -21,6 +22,7 @@ export default function PluggaFolder() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -53,7 +55,7 @@ export default function PluggaFolder() {
   const { folder, units } = data;
   const back = `/plugga/mapp/${folder.id}`;
   const remove = async () => {
-    if (!window.confirm(`Ta bort mappen "${folder.name}"? Områdena finns kvar.`)) return;
+    setConfirmDelete(false);
     try {
       await deleteStudyFolder(apiFetch, folder.id);
       navigate('/plugga');
@@ -87,7 +89,7 @@ export default function PluggaFolder() {
           {!editing && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setName(folder.name); setEditing(true); }}>Byt namn</button>
           )}
-          <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} onClick={remove}>Ta bort mappen</button>
+          <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} onClick={() => setConfirmDelete(true)}>Ta bort mappen</button>
         </div>
         {error && <p className="error">{error}</p>}
       </div>
@@ -121,6 +123,16 @@ export default function PluggaFolder() {
             ))}
           </div>
         </>
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Ta bort mappen?"
+          message="Områdena i den finns kvar — det är bara mappen som försvinner."
+          confirmLabel="Ta bort"
+          destructive
+          onConfirm={remove}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   );

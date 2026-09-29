@@ -333,15 +333,16 @@ router.get('/tests/attempts/:id', async (req, res, next) => {
 // POST /api/study/tests/attempts/:id/submit — Body: { answers: [{ itemId, answer }] }
 router.post('/tests/attempts/:id/submit', async (req, res, next) => {
   try {
-    const { answers } = req.body || {};
+    const { answers, lenient } = req.body || {};
     if (!Array.isArray(answers) || answers.length > 60) return bad(res, 'answers must be an array');
+    if (lenient !== undefined && typeof lenient !== 'boolean') return bad(res, 'lenient must be a boolean');
     for (const a of answers) {
       if (!a || typeof a.itemId !== 'string') return bad(res, 'every answer needs an itemId');
       if (a.answer !== undefined && a.answer !== null && !isAnswerValue(a.answer, 2000)) {
         return bad(res, 'answer must be a string, a choice index or a short list');
       }
     }
-    const result = await submitTest(req.user.id, req.params.id, answers);
+    const result = await submitTest(req.user.id, req.params.id, answers, { lenient: lenient === true });
     if (result.error) return res.status(404).json({ error: 'Provet är redan inlämnat.' });
     if (result.invalid) return res.status(422).json({ invalid: result.invalid });
     res.json(result);

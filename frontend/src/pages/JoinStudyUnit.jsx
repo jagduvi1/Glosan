@@ -30,6 +30,10 @@ export default function JoinStudyUnit() {
       .catch((e) => { setError(e.message); setStatus('error'); });
   }, [code]);
 
+  // Vidarebefordran efter "Du är med!" — städas om sidan lämnas innan dess.
+  const redirectTimer = useRef(null);
+  useEffect(() => () => clearTimeout(redirectTimer.current), []);
+
   const join = useCallback(async () => {
     if (tried.current) return;
     tried.current = true;
@@ -38,7 +42,7 @@ export default function JoinStudyUnit() {
       const r = await acceptStudyInvite(apiFetch, code);
       await refreshUser(); // Plugga-flaggan kan just ha slagits på
       setStatus('joined');
-      setTimeout(() => navigate(`/plugga/omrade/${r.unitId}`), 1200);
+      redirectTimer.current = setTimeout(() => navigate(`/plugga/omrade/${r.unitId}`), 1200);
     } catch (e) {
       setError(e.message);
       setStatus('error');

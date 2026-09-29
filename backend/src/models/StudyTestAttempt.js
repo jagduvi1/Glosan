@@ -68,6 +68,8 @@ const studyTestAttemptSchema = new mongoose.Schema({
     default: undefined
   },
   overallFeedback: { type: String, maxlength: 4000, default: '' },
+  // Inlämnat så här många sekunder efter tidsgränsen (0 = i tid / ingen gräns).
+  lateSec: { type: Number, min: 0, default: 0 },
   xpEarned: { type: Number, min: 0, default: 0 }
 });
 

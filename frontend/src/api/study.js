@@ -5,7 +5,16 @@
 async function readJson(res, fallback) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || data.message || fallback);
+    let message = data.error || data.message || fallback;
+    // Plugga avstängt för kontot (flaggan togs bort): säg det på svenska och
+    // låt AuthContext hämta om användaren, så sidorna försvinner ur menyn.
+    if (res.status === 404 && data.error === 'Route not found') {
+      message = 'Plugga är inte påslaget för ditt konto just nu.';
+      try { window.dispatchEvent(new Event('glosan:feature-off')); } catch { /* ignore */ }
+    }
+    // Valideringsfel från servern är på engelska (för utvecklare) — visa vår text.
+    if (res.status === 400 && !/[åäöÅÄÖ]/.test(message)) message = fallback;
+    const err = new Error(message);
     err.status = res.status;
     err.data = data;
     throw err;
@@ -13,10 +22,11 @@ async function readJson(res, fallback) {
   return data;
 }
 
-const post = (apiFetch, url, body) => apiFetch(url, {
+const post = (apiFetch, url, body, init = {}) => apiFetch(url, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body || {})
+  body: JSON.stringify(body || {}),
+  ...init
 });
 
 // GET /api/study/overview?term=2026-HT → { term, termLabel, currentTerm, terms,
@@ -58,8 +68,9 @@ export async function pingStudySession(apiFetch, sessionId) {
 }
 
 // POST /api/study/sessions/:id/finish → { answered, correct, partial, activeSeconds, xpEarned, streak, … }
-export async function finishStudySession(apiFetch, sessionId) {
-  return readJson(await post(apiFetch, `/api/study/sessions/${sessionId}/finish`), 'Kunde inte avsluta passet');
+// keepalive: true när fliken stängs (pagehide) — anropet hinner iväg ändå.
+export async function finishStudySession(apiFetch, sessionId, { keepalive = false } = {}) {
+  return readJson(await post(apiFetch, `/api/study/sessions/${sessionId}/finish`, {}, keepalive ? { keepalive: true } : {}), 'Kunde inte avsluta passet');
 }
 
 // POST /api/study/items/:id/flag — "Rapportera fel i facit"
@@ -161,15 +172,16 @@ export async function fetchStudyTestSheet(apiFetch, testId) {
   return readJson(await apiFetch(`/api/study/tests/${testId}/sheet`), 'Kunde inte hämta provet');
 }
 
-// POST → { attempt: { id, status, startedAt, sessionId, resumed }, test, questions, needsSelf? }
+// POST → { attempt: { id, status, startedAt, deadline, serverNow, sessionId, resumed }, test, questions, needsSelf? }
 export async function startStudyTest(apiFetch, testId) {
   return readJson(await post(apiFetch, `/api/study/tests/${testId}/start`), 'Kunde inte starta provet');
 }
 
 // POST → { status: 'done', attemptId, … } | { status: 'awaiting_self', needsSelf }.
 // 422 = några svar gick inte att tolka → err.data.invalid = [{ n, itemId, message }].
-export async function submitStudyTest(apiFetch, attemptId, answers) {
-  return readJson(await post(apiFetch, `/api/study/tests/attempts/${attemptId}/submit`, { answers }), 'Kunde inte lämna in provet');
+// lenient (när tiden är slut): oläsbara svar räknas som obesvarade i stället.
+export async function submitStudyTest(apiFetch, attemptId, answers, { lenient = false } = {}) {
+  return readJson(await post(apiFetch, `/api/study/tests/attempts/${attemptId}/submit`, { answers, ...(lenient ? { lenient: true } : {}) }), 'Kunde inte lämna in provet');
 }
 
 // assessments: [{ itemId, level: 'none'|'E'|'C'|'A' }]

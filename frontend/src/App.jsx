@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import Layout from './components/Layout';
@@ -46,6 +46,14 @@ const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
+
+// Ett nytt pass för varje navigering ("Öva igen", tillbaka-knappen): sidan
+// monteras om, så inget ligger kvar från förra passet — och det gamla passet
+// avslutas (XP, streak) när det lämnas.
+function PracticeRoute() {
+  const location = useLocation();
+  return <PluggaPractice key={location.key} />;
+}
 
 // Sidor bakom en funktionsflagga: för den som saknar flaggan finns sidan
 // inte (NotFound) — samma "dold"-beteende som backend (404).
@@ -203,7 +211,7 @@ function AppRoutes() {
           path="/plugga/ova"
           element={
             <FeatureRoute feature="study">
-              <Layout><PluggaPractice /></Layout>
+              <Layout><PracticeRoute /></Layout>
             </FeatureRoute>
           }
         />

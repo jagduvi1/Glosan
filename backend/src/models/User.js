@@ -67,6 +67,10 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  // Förra hemligheten och när den byttes: två refresh:ar samtidigt (två
+  // flikar, parallella anrop) ska inte tolkas som en stulen token.
+  prevRefreshTokenHash: { type: String, default: null },
+  refreshRotatedAt: { type: Date, default: null },
   // Familje-ID för refresh-token. Lagras separat så vi kan slå upp användaren
   // utan att exponera tokenens hemliga del. Vid en presentation av (familyId,
   // secret) där familjet hittas men hashen inte matchar → någon kör replay
@@ -188,6 +192,8 @@ userSchema.methods.toJSON = function () {
   delete obj.authProviders;
   delete obj.password;
   delete obj.refreshTokenHash;
+  delete obj.prevRefreshTokenHash;
+  delete obj.refreshRotatedAt;
   delete obj.refreshTokenFamily;
   return obj;
 };

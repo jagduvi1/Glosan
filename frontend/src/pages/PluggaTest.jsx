@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, memo, useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
@@ -8,6 +8,7 @@ import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
 import { CodeTag } from '../components/study/StudyBits';
 import { PointsLabel, GradeBadge, LimitsText, pointsText, pointsTotal } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
 
 // Övningsprov i appen: översikt → skriv provet (alla frågor på en sida, som
@@ -16,18 +17,35 @@ import '../styles/study.css';
 // lokalt medan man skriver, så en omladdning inte tömmer provet.
 
 const PING_MS = 30 * 1000;
-const draftKey = (attemptId) => `glosan.test.${attemptId}`;
+const DRAFT_PREFIX = 'glosan.test.';
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const draftKey = (attemptId) => `${DRAFT_PREFIX}${attemptId}`;
 const SELF_OPTIONS = [
   { level: 'E', label: 'E — enkelt' },
   { level: 'C', label: 'C — utvecklat' },
   { level: 'A', label: 'A — välutvecklat' }
 ];
 
+// Utkast: { at, answers }. Gamla utkast (övergivna prov) städas bort, så de
+// inte blir kvar på en delad skoldator.
+function pruneDrafts() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(DRAFT_PREFIX)) continue;
+      const at = JSON.parse(localStorage.getItem(key) || '{}')?.at || 0;
+      if (Date.now() - at > DRAFT_MAX_AGE_MS) localStorage.removeItem(key);
+    }
+  } catch { /* ignore */ }
+}
 function loadDraft(attemptId) {
-  try { return JSON.parse(localStorage.getItem(draftKey(attemptId)) || '{}') || {}; } catch { return {}; }
+  try {
+    const d = JSON.parse(localStorage.getItem(draftKey(attemptId)) || '{}') || {};
+    return d.answers && typeof d.answers === 'object' ? d.answers : {};
+  } catch { return {}; }
 }
 function saveDraft(attemptId, answers) {
-  try { localStorage.setItem(draftKey(attemptId), JSON.stringify(answers)); } catch { /* privat läge — svaren finns ändå i sidan */ }
+  try { localStorage.setItem(draftKey(attemptId), JSON.stringify({ at: Date.now(), answers })); } catch { /* privat läge — svaren finns ändå i sidan */ }
 }
 function clearDraft(attemptId) {
   try { localStorage.removeItem(draftKey(attemptId)); } catch { /* ignore */ }
@@ -38,6 +56,39 @@ const isAnswered = (v) => v !== undefined && v !== null && !(typeof v === 'strin
 function clock(ms) {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Klockan är en egen komponent: bara den ritas om varje sekund, inte hela
+ * provet. Den räknar mot serverns deadline med datorns klocka korrigerad
+ * (offset = serverns tid − datorns när provet hämtades), så en fel ställd
+ * klocka inte lämnar in provet i förtid. onTimeUp anropas en gång.
+ */
+function TestClock({ deadline, offset, onTimeUp }) {
+  const left = () => deadline - (Date.now() + offset);
+  const [ms, setMs] = useState(left);
+  const fired = useRef(false);
+  const onTimeUpRef = useRef(onTimeUp);
+  onTimeUpRef.current = onTimeUp;
+  useEffect(() => {
+    const tick = () => {
+      const m = deadline - (Date.now() + offset);
+      setMs(m);
+      if (m <= 0 && !fired.current) {
+        fired.current = true;
+        onTimeUpRef.current();
+      }
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [deadline, offset]);
+  const low = ms < 5 * 60 * 1000;
+  return (
+    <span className="test-clock" role="timer" style={{ color: low ? 'var(--berry-deep)' : 'inherit' }} aria-label="Tid kvar">⏱ {clock(ms)}</span>
+  );
 }
 
 function Overview({ data, onStart, busy }) {
@@ -110,7 +161,7 @@ function QuestionInput({ q, value, onChange, invalid }) {
     );
   }
   if (q.answerType === 'order') {
-    // Orört = obesvarat (ordningen är blandad och aldrig redan rätt).
+    // Ordningen som visas är svaret (den förifylls när provet startar).
     return (
       <>
         <OrderList items={value || q.items} onChange={onChange} />
@@ -170,6 +221,26 @@ function QuestionInput({ q, value, onChange, invalid }) {
     </div>
   );
 }
+
+/** En fråga på provet. memo + stabil onAnswer: ett tangenttryck ritar bara om sin egen fråga. */
+const QuestionCard = memo(function QuestionCard({ q, part, value, invalid, onAnswer }) {
+  return (
+    <>
+      {part && <h2 className="test-part">{part}</h2>}
+      <div id={`q-${q.itemId}`} className="card card-lg" style={invalid ? { outline: '3px solid var(--berry)' } : undefined}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+          <strong>Fråga {q.n}</strong>
+          <CodeTag code={q.code} />
+          <PointsLabel points={q.points} />
+        </div>
+        <StudyMarkdown>{q.prompt}</StudyMarkdown>
+        <div style={{ marginTop: 12 }}>
+          <QuestionInput q={q} value={value} invalid={invalid} onChange={(v) => onAnswer(q.itemId, v)} />
+        </div>
+      </div>
+    </>
+  );
+});
 
 function SelfAssess({ items, levels, setLevels, onDone, busy, error }) {
   const all = items.every((it) => levels[it.itemId]);
@@ -240,7 +311,8 @@ export default function PluggaTest() {
   const [levels, setLevels] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [now, setNow] = useState(() => Date.now());
+  const [timeUp, setTimeUp] = useState(false);
+  const [confirmUnanswered, setConfirmUnanswered] = useState(0);
   const autoSubmitted = useRef(false);
 
   useDocumentTitle(overview ? `${overview.test.title} — Plugga` : 'Övningsprov');
@@ -253,9 +325,14 @@ export default function PluggaTest() {
     setBusy(true);
     setError('');
     try {
+      pruneDrafts();
       const r = await startStudyTest(apiFetch, id);
-      setRun(r);
-      setAnswers(loadDraft(r.attempt.id));
+      // Datorns klocka kan gå fel — räkna med serverns tid.
+      const offset = r.attempt.serverNow ? new Date(r.attempt.serverNow).getTime() - Date.now() : 0;
+      setRun({ ...r, clockOffset: offset });
+      // Ordna-frågor: ordningen som visas är svaret tills eleven ändrar den.
+      const shown = Object.fromEntries(r.questions.filter((q) => q.answerType === 'order').map((q) => [q.itemId, q.items]));
+      setAnswers({ ...shown, ...loadDraft(r.attempt.id) });
       if (r.needsSelf?.length) {
         setNeedsSelf(r.needsSelf);
         setPhase('self');
@@ -285,14 +362,7 @@ export default function PluggaTest() {
     return () => clearInterval(t);
   }, [apiFetch, run, phase]);
 
-  // Klocka för tidsgränsen.
-  const limitMs = run?.test.timeLimitMin ? run.test.timeLimitMin * 60 * 1000 : null;
-  useEffect(() => {
-    if (!limitMs || phase !== 'taking') return undefined;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [limitMs, phase]);
-  const remaining = limitMs ? new Date(run.attempt.startedAt).getTime() + limitMs - now : null;
+  const deadline = run?.attempt.deadline ? new Date(run.attempt.deadline).getTime() : null;
 
   const finishWith = useCallback((r) => {
     clearDraft(r.attemptId);
@@ -300,16 +370,20 @@ export default function PluggaTest() {
     navigate(`/plugga/prov/${id}/resultat/${r.attemptId}`);
   }, [id, navigate, refresh]);
 
-  const submit = useCallback(async ({ force = false } = {}) => {
+  const submit = useCallback(async ({ force = false, lenient = false } = {}) => {
     if (!run || busy) return;
     const unanswered = run.questions.filter((q) => !isAnswered(answers[q.itemId])).length;
-    if (!force && unanswered > 0 && !window.confirm(`${unanswered} ${unanswered === 1 ? 'fråga är' : 'frågor är'} obesvarade och ger 0 poäng. Lämna in ändå?`)) return;
+    if (!force && unanswered > 0) {
+      setConfirmUnanswered(unanswered);
+      return;
+    }
+    setConfirmUnanswered(0);
     setBusy(true);
     setError('');
     setInvalid({});
     try {
       const list = run.questions.map((q) => ({ itemId: q.itemId, answer: isAnswered(answers[q.itemId]) ? answers[q.itemId] : null }));
-      const r = await submitStudyTest(apiFetch, run.attempt.id, list);
+      const r = await submitStudyTest(apiFetch, run.attempt.id, list, { lenient });
       if (r.status === 'awaiting_self') {
         saveDraft(run.attempt.id, answers);
         setNeedsSelf(r.needsSelf);
@@ -322,7 +396,7 @@ export default function PluggaTest() {
       if (e.status === 422 && e.data?.invalid) {
         setInvalid(Object.fromEntries(e.data.invalid.map((x) => [x.itemId, x.message])));
         setError(`Några svar gick inte att läsa (fråga ${e.data.invalid.map((x) => x.n).join(', ')}) — skriv om dem och lämna in igen. De räknas inte som fel.`);
-        document.getElementById(`q-${e.data.invalid[0].itemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById(`q-${e.data.invalid[0].itemId}`)?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
       } else {
         setError(e.message);
       }
@@ -331,13 +405,22 @@ export default function PluggaTest() {
     }
   }, [apiFetch, answers, busy, finishWith, run]);
 
-  // Tiden är slut → lämna in automatiskt (en gång).
-  useEffect(() => {
-    if (phase === 'taking' && remaining !== null && remaining <= 0 && !autoSubmitted.current) {
+  // Tiden är slut → lås svaren och lämna in (en gång). Oläsbara svar räknas
+  // då som obesvarade i stället för att stoppa inlämningen.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const onTimeUp = useCallback(() => {
+    setTimeUp(true);
+    if (!autoSubmitted.current) {
       autoSubmitted.current = true;
-      submit({ force: true });
+      submitRef.current({ force: true, lenient: true });
     }
-  }, [phase, remaining, submit]);
+  }, []);
+
+  const onAnswer = useCallback((itemId, v) => {
+    setAnswers((cur) => ({ ...cur, [itemId]: v }));
+    setInvalid((cur) => (cur[itemId] ? { ...cur, [itemId]: undefined } : cur));
+  }, []);
 
   const assess = async () => {
     setBusy(true);
@@ -366,7 +449,6 @@ export default function PluggaTest() {
   }
 
   const answered = run.questions.filter((q) => isAnswered(answers[q.itemId])).length;
-  const lowTime = remaining !== null && remaining < 5 * 60 * 1000;
 
   return (
     <div className="practice-shell stack" style={{ gap: 16 }}>
@@ -376,44 +458,43 @@ export default function PluggaTest() {
           <span className="t-hand muted" style={{ fontSize: 14 }}>{answered} av {run.questions.length} besvarade</span>
         </div>
         <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-          {remaining !== null && (
-            <span className="test-clock" style={{ color: lowTime ? 'var(--berry-deep)' : 'inherit' }} aria-label="Tid kvar">⏱ {clock(remaining)}</span>
-          )}
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => submit()} disabled={busy}>Lämna in</button>
+          {deadline !== null && <TestClock deadline={deadline} offset={run.clockOffset || 0} onTimeUp={onTimeUp} />}
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => submit()} disabled={busy || timeUp}>Lämna in</button>
         </div>
       </div>
 
       {run.attempt.resumed && <p className="t-hand muted" style={{ margin: 0 }}>Du fortsätter där du var.</p>}
+      {timeUp && <p className="card" role="status" style={{ margin: 0, background: 'var(--mustard-soft)' }}>⏱ Tiden är slut — provet lämnas in med det du hunnit svara.</p>}
 
-      {run.questions.map((q, i) => (
-        <Fragment key={q.itemId}>
-        {q.part && q.part !== run.questions[i - 1]?.part && <h2 className="test-part">{q.part}</h2>}
-        <div id={`q-${q.itemId}`} className="card card-lg" style={invalid[q.itemId] ? { outline: '3px solid var(--berry)' } : undefined}>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
-            <strong>Fråga {q.n}</strong>
-            <CodeTag code={q.code} />
-            <PointsLabel points={q.points} />
-          </div>
-          <StudyMarkdown>{q.prompt}</StudyMarkdown>
-          <div style={{ marginTop: 12 }}>
-            <QuestionInput
+      {/* fieldset disabled: när tiden är slut går inget svar att ändra */}
+      <fieldset disabled={timeUp} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }} className="stack">
+        {run.questions.map((q, i) => (
+          <Fragment key={q.itemId}>
+            <QuestionCard
               q={q}
+              part={q.part && q.part !== run.questions[i - 1]?.part ? q.part : ''}
               value={answers[q.itemId]}
               invalid={invalid[q.itemId]}
-              onChange={(v) => {
-                setAnswers((cur) => ({ ...cur, [q.itemId]: v }));
-                if (invalid[q.itemId]) setInvalid((cur) => ({ ...cur, [q.itemId]: undefined }));
-              }}
+              onAnswer={onAnswer}
             />
-          </div>
-        </div>
-        </Fragment>
-      ))}
+          </Fragment>
+        ))}
+      </fieldset>
 
       {error && <p className="error">{error}</p>}
-      <button type="button" className="btn btn-primary btn-lg btn-block" onClick={() => submit()} disabled={busy}>
+      <button type="button" className="btn btn-primary btn-lg btn-block" onClick={() => submit()} disabled={busy || timeUp}>
         {busy ? 'Lämnar in…' : 'Lämna in provet'}
       </button>
+      {confirmUnanswered > 0 && (
+        <ConfirmDialog
+          title="Lämna in provet?"
+          message={`${confirmUnanswered} ${confirmUnanswered === 1 ? 'fråga är' : 'frågor är'} obesvarade och ger 0 poäng.`}
+          confirmLabel="Lämna in ändå"
+          cancelLabel="Fortsätt skriva"
+          onConfirm={() => submit({ force: true })}
+          onCancel={() => setConfirmUnanswered(0)}
+        />
+      )}
     </div>
   );
 }

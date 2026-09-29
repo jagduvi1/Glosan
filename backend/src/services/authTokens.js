@@ -60,6 +60,8 @@ const issueTokens = async (user, res) => {
   const { family, secret } = generateRefreshTokenParts();
   user.refreshTokenFamily = family;
   user.refreshTokenHash = hashSecret(secret);
+  user.prevRefreshTokenHash = null;
+  user.refreshRotatedAt = null;
   await user.save();
   res.cookie('refreshToken', `${family}.${secret}`, refreshCookieOptions);
   return generateAccessToken(user);
@@ -68,12 +70,19 @@ const issueTokens = async (user, res) => {
 // Rotate (refresh): behåll family-ID, rotera bara secret. Att family består
 // är det som gör replay-detection möjlig — när ett *gammalt* secret kommer
 // in med rätt family är det bevisat att någon spelar upp en stulen token.
-const rotateRefreshSecret = async (user, res) => {
+// Bytet sker i ett steg (compare-and-swap på hashen): av två samtidiga
+// refresh:ar med samma cookie roterar bara en. Returnerar access-token, eller
+// null om någon annan hann rotera först.
+const rotateRefreshSecret = async (user, res, presentedHash = user.refreshTokenHash) => {
   const { secret } = generateRefreshTokenParts();
-  user.refreshTokenHash = hashSecret(secret);
-  await user.save();
-  res.cookie('refreshToken', `${user.refreshTokenFamily}.${secret}`, refreshCookieOptions);
-  return generateAccessToken(user);
+  const rotated = await user.constructor.findOneAndUpdate(
+    { _id: user._id, refreshTokenFamily: user.refreshTokenFamily, refreshTokenHash: presentedHash },
+    { $set: { refreshTokenHash: hashSecret(secret), prevRefreshTokenHash: presentedHash, refreshRotatedAt: new Date() } },
+    { new: true }
+  );
+  if (!rotated) return null;
+  res.cookie('refreshToken', `${rotated.refreshTokenFamily}.${secret}`, refreshCookieOptions);
+  return generateAccessToken(rotated);
 };
 
 module.exports = {

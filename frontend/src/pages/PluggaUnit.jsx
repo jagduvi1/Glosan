@@ -9,6 +9,7 @@ import FolderPicker from '../components/study/FolderPicker';
 import DeletedList from '../components/study/DeletedList';
 import { GradeBadge, pointsText, pointsTotal } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
 
 // Ett område i Plugga: genomgångar, kort och övningar. Läsning av en
@@ -19,24 +20,52 @@ import '../styles/study.css';
 
 const PING_MS = 30 * 1000;
 
-/** Räkna lästid för genomgången medan fliken är öppen och synlig. */
-function useReadingSession(apiFetch, unitId, active) {
+/**
+ * Lästid för genomgångarna: ETT läspass per besök på området (inte ett per
+ * flikbyte), som startar första gången en genomgång visas. Tiden räknas bara
+ * medan genomgången syns, och passet avslutas när man lämnar sidan — även när
+ * fliken stängs (pagehide, keepalive), så lästiden kan ge en pluggdag.
+ */
+function useReadingSession(apiFetch, unitId, reading) {
+  const sessionRef = useRef(null);
+  const startedFor = useRef(null);
+  const readingRef = useRef(reading);
+  readingRef.current = reading;
+
   useEffect(() => {
-    if (!active) return undefined;
-    let sessionId = null;
-    let cancelled = false;
+    if (!reading || startedFor.current === unitId) return;
+    startedFor.current = unitId;
     startStudySession(apiFetch, { unitIds: [unitId], mode: 'reading' })
-      .then((r) => { if (!cancelled) sessionId = r.session.id; else finishStudySession(apiFetch, r.session.id).catch(() => {}); })
-      .catch(() => {});
+      .then((r) => {
+        if (startedFor.current === unitId) sessionRef.current = r.session.id;
+        else finishStudySession(apiFetch, r.session.id).catch(() => {});
+      })
+      .catch(() => { if (startedFor.current === unitId) startedFor.current = null; });
+  }, [apiFetch, unitId, reading]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
-      if (sessionId && document.visibilityState === 'visible') pingStudySession(apiFetch, sessionId).catch(() => {});
+      if (sessionRef.current && readingRef.current && document.visibilityState === 'visible') {
+        pingStudySession(apiFetch, sessionRef.current).catch(() => {});
+      }
     }, PING_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      if (sessionId) finishStudySession(apiFetch, sessionId).catch(() => {});
+    return () => clearInterval(timer);
+  }, [apiFetch]);
+
+  useEffect(() => {
+    const end = (keepalive) => {
+      const sid = sessionRef.current;
+      sessionRef.current = null;
+      if (sid) finishStudySession(apiFetch, sid, { keepalive }).catch(() => {});
     };
-  }, [apiFetch, unitId, active]);
+    const onHide = () => end(true);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      end(false);
+      startedFor.current = null;
+    };
+  }, [apiFetch, unitId]);
 }
 
 function StateBadge({ state }) {
@@ -95,6 +124,7 @@ export default function PluggaUnit() {
   const [sharing, setSharing] = useState(false);
   const [picking, setPicking] = useState(false);
   const [notice, setNotice] = useState('');
+  const [confirming, setConfirming] = useState(null); // { kind: 'remove', item } | { kind: 'leave' }
   const loadedFor = useRef(null);
 
   const load = useCallback(async () => {
@@ -103,7 +133,14 @@ export default function PluggaUnit() {
       setData(d);
       if (loadedFor.current !== id) {
         loadedFor.current = id;
-        setTab(d.pages.length ? 'pages' : 'exercises');
+        // Första fliken som har något: genomgång → övningar → kort → prov.
+        const has = {
+          pages: d.pages.length,
+          exercises: d.items.some((i) => i.kind === 'exercise'),
+          cards: d.items.some((i) => i.kind === 'card'),
+          tests: (d.tests || []).length
+        };
+        setTab(['pages', 'exercises', 'cards', 'tests'].find((t) => has[t]) || 'exercises');
       }
     } catch (e) {
       setError(e.message);
@@ -125,7 +162,7 @@ export default function PluggaUnit() {
   const back = `/plugga/omrade/${unit.id}`;
   // Papperskorgen (bara skaparen): uppgiften tas bort för alla och loggas under "Borttaget".
   const removeItem = async (item) => {
-    if (!window.confirm(`Ta bort ${item.code}? Den försvinner ur området, även för dem du delat det med. Du kan ångra under "Borttaget".`)) return;
+    setConfirming(null);
     setNotice('');
     try {
       await deleteStudyItem(apiFetch, item.id);
@@ -135,7 +172,7 @@ export default function PluggaUnit() {
     }
   };
   const leave = async () => {
-    if (!window.confirm(`Lämna "${unit.title}"? Du kan gå med igen om ${unit.sharedBy} delar det på nytt.`)) return;
+    setConfirming(null);
     try {
       await leaveStudyUnit(apiFetch, unit.id);
       navigate(`/plugga/amne/${unit.subject}`);
@@ -171,13 +208,32 @@ export default function PluggaUnit() {
               👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
             </button>
           ) : (
-            <button type="button" className="btn btn-sm btn-ghost" onClick={leave}>Lämna området</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirming({ kind: 'leave' })}>Lämna området</button>
           )}
         </div>
       </div>
 
       {sharing && <ShareUnitDialog unit={unit} onClose={() => setSharing(false)} onChanged={load} />}
       {picking && <FolderPicker unitIds={[unit.id]} onClose={() => setPicking(false)} />}
+      {confirming?.kind === 'remove' && (
+        <ConfirmDialog
+          title={`Ta bort ${confirming.item.code}?`}
+          message="Den försvinner ur området, även för dem du delat det med. Du kan ångra under ”Borttaget”."
+          confirmLabel="Ta bort"
+          destructive
+          onConfirm={() => removeItem(confirming.item)}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+      {confirming?.kind === 'leave' && (
+        <ConfirmDialog
+          title="Lämna området?"
+          message={`Du kan gå med igen om ${unit.sharedBy} delar det på nytt.`}
+          confirmLabel="Lämna"
+          onConfirm={leave}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
 
       <div className="card">
         <ProgressBar progress={unit.progress} />
@@ -286,7 +342,7 @@ export default function PluggaUnit() {
                       className="trash-btn"
                       title="Ta bort kortet"
                       aria-label={`Ta bort ${c.code}`}
-                      onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeItem(c); }}
+                      onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setConfirming({ kind: 'remove', item: c }); }}
                     >
                       🗑️
                     </button>
@@ -329,7 +385,7 @@ export default function PluggaUnit() {
                   <div className="row" style={{ gap: 4, alignItems: 'center' }}>
                     <PaperButton code={e.code} prompt={e.templated ? e.prompt : null} />
                     {unit.isOwner && (
-                      <button type="button" className="trash-btn" title="Ta bort övningen" aria-label={`Ta bort ${e.code}`} onClick={() => removeItem(e)}>
+                      <button type="button" className="trash-btn" title="Ta bort övningen" aria-label={`Ta bort ${e.code}`} onClick={() => setConfirming({ kind: 'remove', item: e })}>
                         🗑️
                       </button>
                     )}

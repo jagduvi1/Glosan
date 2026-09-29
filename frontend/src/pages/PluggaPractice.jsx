@@ -7,6 +7,7 @@ import StudyMarkdown from '../components/StudyMarkdown';
 import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
 import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
 
 // Pluggpasset: kort (vänd + bedöm dig själv) och övningar (tal, flerval,
@@ -38,8 +39,13 @@ function readScope(params) {
     levels: list('levels'),
     skill: params.get('skill') || undefined,
     count: Number(params.get('count')) || 15,
-    back: params.get('back') || '/plugga'
+    back: safeBack(params.get('back'))
   };
+}
+
+/** Bara en sökväg i appen ("/plugga/…") — aldrig en annan sajt ("https://…", "//…"). */
+function safeBack(value) {
+  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/plugga';
 }
 
 function FlagForm({ itemId }) {
@@ -203,9 +209,10 @@ export default function PluggaPractice() {
 
   // Papperskorgen (bara i egna områden): ta bort en dålig uppgift för gott och
   // gå vidare. Borttaget loggas på områdessidan, där det går att ångra.
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const removeCurrent = async () => {
+    setConfirmRemove(false);
     if (!current?.own || busy) return;
-    if (!window.confirm(`Ta bort ${current.code}? Den försvinner ur området, även för dem du delat det med. Du kan ångra under "Borttaget" på områdessidan.`)) return;
     setBusy(true);
     try {
       await deleteStudyItem(apiFetch, current.id);
@@ -261,11 +268,11 @@ export default function PluggaPractice() {
         </div>
         <div className="row" style={{ gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
           {missed > 0 && (
-            <button type="button" className="btn btn-primary" onClick={() => navigate(practiceUrl(scope, { mode: 'wrong', count: scope.count }))}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate(`${practiceUrl(scope, { mode: 'wrong', count: scope.count })}&n=${Date.now()}`, { replace: true })}>
               Öva på det du missade
             </button>
           )}
-          <button type="button" className="btn" onClick={() => navigate(`${againUrl}&n=${Date.now()}`)}>Öva igen</button>
+          <button type="button" className="btn" onClick={() => navigate(`${againUrl}&n=${Date.now()}`, { replace: true })}>Öva igen</button>
           <Link to={scope.back} className="btn btn-ghost">Tillbaka</Link>
         </div>
         <p style={{ margin: '16px 0 0' }}>
@@ -296,8 +303,9 @@ export default function PluggaPractice() {
           <LevelPill level={current.level} />
           {current.templated && <span className="pill" title="Den här uppgiften får nya tal varje gång">🎲 nya tal</span>}
           <span className="t-hand muted grow" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
-          {current.own && (
-            <button type="button" className="trash-btn" onClick={removeCurrent} disabled={busy} title="Ta bort uppgiften" aria-label={`Ta bort ${current.code}`}>
+          {/* Inte i nivåstegen: där kommer nästa uppgift först med svaret. */}
+          {current.own && !ladder && (
+            <button type="button" className="trash-btn" onClick={() => setConfirmRemove(true)} disabled={busy} title="Ta bort uppgiften" aria-label={`Ta bort ${current.code}`}>
               🗑️
             </button>
           )}
@@ -456,6 +464,16 @@ export default function PluggaPractice() {
             <FlagForm key={current.id} itemId={current.id} />
           </div>
         </div>
+      )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title={`Ta bort ${current.code}?`}
+          message="Den försvinner ur området, även för dem du delat det med. Du kan ångra under ”Borttaget” på områdessidan."
+          confirmLabel="Ta bort"
+          destructive
+          onConfirm={removeCurrent}
+          onCancel={() => setConfirmRemove(false)}
+        />
       )}
     </div>
   );

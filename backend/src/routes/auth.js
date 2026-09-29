@@ -12,10 +12,15 @@ const { revokeMcpConnectionsForUser } = require('../services/mcpOAuth');
 const {
   issueTokens,
   rotateRefreshSecret,
+  generateAccessToken,
   parseRefreshToken,
   hashSecret,
   refreshCookieOptions
 } = require('../services/authTokens');
+
+// Så länge en nyss ersatt refresh-hemlighet godtas (utan ny cookie) — två
+// flikar eller parallella anrop som refreshar samtidigt är ingen stöld.
+const REFRESH_GRACE_MS = 30 * 1000;
 
 const router = express.Router();
 
@@ -309,6 +314,7 @@ router.post('/reset-password', authLimiter, async (req, res) => {
     user.password = password; // pre-save-hook validerar + hashar
     user.refreshTokenHash = null;   // invalidera alla refresh-tokens
     user.refreshTokenFamily = null;
+    user.prevRefreshTokenHash = null;
     user.credentialsChangedAt = new Date();
     // Reset-länken är beviset att hen kontrollerar email-adressen, så
     // markera den som verifierad om den inte redan var det.
@@ -434,18 +440,31 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
       res.clearCookie('refreshToken', refreshCookieOptions);
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
-    // Replay-detection: family matchar men hashen gör inte → stulen historisk
-    // token presenteras. Revokera hela familjen.
-    if (hashSecret(parsed.secret) !== user.refreshTokenHash) {
+    const presented = hashSecret(parsed.secret);
+    // Nyss ersatt (två flikar eller parallella anrop refreshade samtidigt, med
+    // samma cookie): en ny access-token men ingen ny cookie — webbläsaren
+    // behåller den som vinnaren just satte. Bara inom REFRESH_GRACE_MS.
+    const justRotated = () => presented === user.prevRefreshTokenHash
+      && user.refreshRotatedAt && Date.now() - user.refreshRotatedAt.getTime() < REFRESH_GRACE_MS;
+    if (presented !== user.refreshTokenHash) {
+      if (justRotated()) return res.json({ token: generateAccessToken(user) });
+      // Replay-detection: family matchar men hashen gör inte → stulen historisk
+      // token presenteras. Revokera hela familjen.
       user.refreshTokenFamily = null;
       user.refreshTokenHash = null;
+      user.prevRefreshTokenHash = null;
       await user.save();
       res.clearCookie('refreshToken', refreshCookieOptions);
       console.warn('[security] refresh-token replay detected, family revoked', { userId: String(user._id) });
       return res.status(401).json({ error: 'Token compromised — please log in again' });
     }
-    const accessToken = await rotateRefreshSecret(user, res);
-    res.json({ token: accessToken });
+    const accessToken = await rotateRefreshSecret(user, res, presented);
+    if (accessToken) return res.json({ token: accessToken });
+    // Någon annan roterade mellan läsningen och bytet — samma nådfönster.
+    const fresh = await User.findById(user._id);
+    if (fresh && fresh.prevRefreshTokenHash === presented) return res.json({ token: generateAccessToken(fresh) });
+    res.clearCookie('refreshToken', refreshCookieOptions);
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
   } catch (error) {
     console.error('Refresh error:', error.message);
     res.clearCookie('refreshToken', refreshCookieOptions);
@@ -465,6 +484,7 @@ router.post('/logout', refreshLimiter, async (req, res) => {
       if (user) {
         user.refreshTokenFamily = null;
         user.refreshTokenHash = null;
+        user.prevRefreshTokenHash = null;
         await user.save();
       }
     }

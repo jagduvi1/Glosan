@@ -52,7 +52,7 @@ const FEATURE_SECTIONS = {
     '6. Give the student the unit url.',
     '',
     'Content rules:',
-    '- Swedish, at the student\'s grade level (Lgr22), using the book\'s terminology and notation. Formulas in LaTeX between $…$ (block: $$…$$); decimal comma in running text ("3,5").',
+    '- Swedish, at the student\'s grade level (Lgr22), using the book\'s terminology and notation. Formulas in LaTeX between $…$ (block: $$…$$); decimal comma in running text ("3,5"). Multiplication is · or $\\cdot$ — never * (Markdown turns it into italics).',
     '- The book\'s exercises are EXAMPLES: write your own exercises that train the same skills (other numbers, other contexts), and put the book\'s exercise number in source_ref. Never copy the book\'s text.',
     '- Levels: map the book\'s markings to E (easy) / C (medium) / A (hard). When the photos show several levels, create exercises on each in about the same proportions, easiest first within each level.',
     '- Genomgång: what the student should be able to do, a clear explanation, "så gör du" step by step, 2–3 worked examples, common mistakes.',

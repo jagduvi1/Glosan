@@ -11,7 +11,10 @@ export function createApiFetch(getToken, refreshToken, onLogout) {
 
     if (response.status !== 401) return response;
 
-    const newToken = await refreshToken();
+    // Har ett parallellt anrop redan förnyat token? Använd den i stället för
+    // att rotera refresh-cookien en gång till.
+    const current = getToken();
+    const newToken = current && current !== token ? current : await refreshToken();
     if (!newToken) {
       await onLogout();
       return response;

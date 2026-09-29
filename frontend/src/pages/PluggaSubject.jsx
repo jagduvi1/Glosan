@@ -72,10 +72,13 @@ export default function PluggaSubject() {
       if (!groups.has(u.term)) groups.set(u.term, { term: u.term, label: u.termLabel, units: [] });
       groups.get(u.term).units.push(u);
     }
+    // Nyast först: HT kommer efter VT samma år ("2026-HT" > "2026-VT"), vilket
+    // en ren strängjämförelse får om bakfoten.
+    const termOrder = (t) => Number(t.slice(0, 4)) * 2 + (t.endsWith('HT') ? 1 : 0);
     return [...groups.values()].sort((a, b) => {
       if (a.term === shownTerm) return -1;
       if (b.term === shownTerm) return 1;
-      return b.term.localeCompare(a.term);
+      return termOrder(b.term) - termOrder(a.term);
     });
   }, [units, shownTerm]);
 

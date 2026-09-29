@@ -24,6 +24,9 @@ const TEST_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
 // En papperrättning som skickas igen inom så här lång tid är en omsändning.
 const PAPER_DUPLICATE_MS = 10 * 60 * 1000;
 const SELF_LEVELS = ['none', 'E', 'C', 'A'];
+// Nätet och klicket efter "tiden är slut" får ta en stund innan servern
+// räknar inlämningen som sen.
+const DEADLINE_GRACE_MS = 60 * 1000;
 
 const maxOf = (p) => ({ E: p?.E || 0, C: p?.C || 0, A: p?.A || 0 });
 // eslint-disable-next-line no-unused-vars
@@ -100,6 +103,9 @@ function unitBrief(unit) {
     gradeYear: unit.gradeYear ?? null
   };
 }
+
+/** Provets sista inlämningstid (null = ingen tidsgräns). */
+const deadlineOf = (test, attempt) => (test.timeLimitMin ? new Date(new Date(attempt.startedAt).getTime() + test.timeLimitMin * 60 * 1000) : null);
 
 const attemptBrief = (a) => ({
   id: String(a._id),
@@ -237,6 +243,9 @@ async function startTest(userId, testId) {
       id: String(attempt._id),
       status: attempt.status,
       startedAt: attempt.startedAt,
+      // Klockan i appen räknar mot serverns tid, inte datorns.
+      deadline: deadlineOf(test, attempt),
+      serverNow: new Date(),
       sessionId: attempt.session ? String(attempt.session) : null,
       resumed
     },
@@ -284,14 +293,20 @@ async function touchSession(sessionId, extraSet = {}, end = false) {
  * Lämna in provet. answers: [{ itemId, answer }] — tal/text som sträng,
  * flerval som index. Obesvarade frågor ger 0 poäng. Ett svar som inte går att
  * tolka ("3 eller 4") räknas aldrig som fel: då sparas ingenting och eleven
- * får { invalid: [{ n, itemId, message }] } att rätta till.
+ * får { invalid: [{ n, itemId, message }] } att rätta till. `lenient` (när
+ * tiden tagit slut — och alltid efter tidsgränsen) räknar i stället ett
+ * oläsbart svar som obesvarat, så provet alltid går att lämna in.
  */
-async function submitTest(userId, attemptId, answers = []) {
+async function submitTest(userId, attemptId, answers = [], { lenient = false } = {}) {
   const attempt = await loadOwnAttempt(userId, attemptId);
   if (!attempt || attempt.status !== 'in_progress') return { error: 'gone' };
   const ctx = await loadAttemptContext(attempt);
   if (!ctx) return { error: 'gone' };
   const { unit, qs } = ctx;
+  const deadline = deadlineOf(ctx.test, attempt);
+  const lateMs = deadline ? Date.now() - deadline.getTime() : 0;
+  const late = lateMs > DEADLINE_GRACE_MS;
+  const forgiving = lenient || late;
   const given = new Map();
   for (const a of answers) if (a && typeof a.itemId === 'string') given.set(a.itemId, a.answer);
 
@@ -309,6 +324,10 @@ async function submitTest(userId, attemptId, answers = []) {
       rows.push({ ...row, given: '', result: 'wrong', points: G.withTotal({}) });
     } else {
       const g = gradeAnswer(x.item, { answer: raw });
+      if (g.invalid && forgiving) {
+        rows.push({ ...row, given: describeAnswer(x.item, raw).slice(0, 500), result: 'wrong', points: G.withTotal({}) });
+        continue;
+      }
       if (g.invalid) {
         invalid.push({ n: x.n, itemId: String(x.item._id), message: g.message });
         continue;
@@ -319,18 +338,19 @@ async function submitTest(userId, attemptId, answers = []) {
   if (invalid.length) return { invalid };
 
   const now = new Date();
+  const lateSec = late ? Math.round(lateMs / 1000) : 0;
   if (rows.some((r) => r.result === null)) {
     // Lämna in i ett steg: en andra inlämning (dubbelklick, två flikar) hittar inget öppet prov.
     const claimed = await StudyTestAttempt.findOneAndUpdate(
       { _id: attempt._id, status: 'in_progress' },
-      { $set: { answers: rows, submittedAt: now, status: 'awaiting_self' } },
+      { $set: { answers: rows, submittedAt: now, status: 'awaiting_self', lateSec } },
       { new: true }
     );
     if (!claimed) return { error: 'gone' };
     await touchSession(attempt.session);
     return { status: 'awaiting_self', needsSelf: needsSelfView(claimed, qs) };
   }
-  return withoutAnswers(await finalize(attempt, rows, ctx, { from: 'in_progress', submittedAt: now }));
+  return withoutAnswers(await finalize(attempt, rows, ctx, { from: 'in_progress', submittedAt: now, lateSec }));
 }
 
 /**
@@ -384,7 +404,7 @@ function questionSnapshot({ q, item }) {
  * bara ett anrop kan göra det klart, så XP aldrig delas ut två gånger.
  * Returnerar resultatet, eller { error: 'gone' }.
  */
-async function finalize(attempt, rows, { test, unit, qs }, { from = null, submittedAt = null } = {}) {
+async function finalize(attempt, rows, { test, unit, qs }, { from = null, submittedAt = null, lateSec = undefined } = {}) {
   const now = new Date();
   const byItem = new Map(qs.map((x) => [String(x.item._id), x]));
   const answers = rows.map((row) => {
@@ -399,7 +419,8 @@ async function finalize(attempt, rows, { test, unit, qs }, { from = null, submit
     grade: G.estimateGrade(score, max, limits),
     status: 'done',
     finishedAt: now,
-    submittedAt: submittedAt || attempt.submittedAt || now
+    submittedAt: submittedAt || attempt.submittedAt || now,
+    ...(lateSec !== undefined ? { lateSec } : {})
   };
   if (from) {
     const claimed = await StudyTestAttempt.findOneAndUpdate({ _id: attempt._id, status: from }, { $set: fields }, { new: true });
@@ -534,6 +555,7 @@ async function attemptView(userId, attemptId) {
     limits: a.limits || test?.gradeLimits || null,
     overallFeedback: a.overallFeedback || '',
     xpEarned: a.xpEarned || 0,
+    lateSec: a.lateSec || 0,
     answers: a.answers.map((row, i) => ({
       n: i + 1,
       code: row.code,

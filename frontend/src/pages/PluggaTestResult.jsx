@@ -39,6 +39,7 @@ export default function PluggaTestResult() {
         <h1 style={{ fontSize: 32, margin: '6px 0 0' }}>📝 {data.testTitle}</h1>
         <p className="t-hand muted" style={{ margin: '2px 0 0' }}>
           {date} · {data.source === 'paper' ? '📷 gjort på papper, rättat av din AI' : 'gjort i appen'}
+          {data.lateSec > 0 ? ` · inlämnat ${Math.max(1, Math.round(data.lateSec / 60))} min efter tidsgränsen` : ''}
         </p>
       </div>
 

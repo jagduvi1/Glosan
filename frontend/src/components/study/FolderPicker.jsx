@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchStudyFolders, createStudyFolder, updateStudyFolder } from '../../api/study';
 import { useModalFocus } from '../../utils/modalFocus';
@@ -8,32 +8,34 @@ import { useModalFocus } from '../../utils/modalFocus';
 
 export const FOLDER_COLORS = ['coral', 'leaf', 'sky', 'mustard', 'plum', 'berry'];
 
+const COLOR_LABEL = { coral: 'Korall', leaf: 'Grön', sky: 'Blå', mustard: 'Gul', plum: 'Lila', berry: 'Röd' };
+
+/** Färgval som riktiga radioknappar (piltangenter fungerar), med "Ingen" sist. */
 export function ColorChoice({ value, onChange }) {
+  const name = useId();
   return (
-    <div className="row" style={{ gap: 6 }} role="radiogroup" aria-label="Färg">
-      {FOLDER_COLORS.map((c) => (
-        <button
-          key={c}
-          type="button"
-          role="radio"
-          aria-checked={value === c}
-          aria-label={c}
-          onClick={() => onChange(value === c ? null : c)}
+    <div className="row" style={{ gap: 6, alignItems: 'center' }} role="radiogroup" aria-label="Färg">
+      {[...FOLDER_COLORS, null].map((c) => (
+        <label
+          key={c || 'none'}
+          className="color-swatch"
+          title={c ? COLOR_LABEL[c] : 'Ingen färg'}
           style={{
-            width: 28, height: 28, borderRadius: 999, cursor: 'pointer',
             border: value === c ? '3px solid var(--ink)' : '2px solid var(--ink-soft)',
-            background: `var(--${c})`
+            background: c ? `var(--${c})` : 'var(--bg-elev)'
           }}
-        />
+        >
+          <input type="radio" name={name} className="sr-only" checked={value === c} onChange={() => onChange(c)} aria-label={c ? COLOR_LABEL[c] : 'Ingen färg'} />
+          {c ? null : <span aria-hidden="true">–</span>}
+        </label>
       ))}
     </div>
   );
 }
 
+/** Rutan i en mapprad: tom, bock eller streck (några av områdena ligger där). */
 function Tri({ state }) {
-  const ref = useRef(null);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = state === 'some'; }, [state]);
-  return <input ref={ref} type="checkbox" readOnly checked={state === 'all'} tabIndex={-1} style={{ width: 18, height: 18, pointerEvents: 'none' }} />;
+  return <span className={`tri-box is-${state}`} aria-hidden="true">{state === 'all' ? '✓' : state === 'some' ? '–' : ''}</span>;
 }
 
 export default function FolderPicker({ unitIds, onClose, onChanged }) {
@@ -118,7 +120,8 @@ export default function FolderPicker({ unitIds, onClose, onChanged }) {
                   className="row"
                   disabled={busy}
                   onClick={() => toggle(f)}
-                  aria-pressed={stateOf(f) === 'all'}
+                  role="checkbox"
+                  aria-checked={stateOf(f) === 'all' ? 'true' : stateOf(f) === 'some' ? 'mixed' : 'false'}
                   style={{
                     gap: 10, padding: '8px 10px', width: '100%', textAlign: 'left', cursor: 'pointer',
                     border: '1.5px solid var(--ink)', borderRadius: 10,

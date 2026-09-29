@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyActivity } from '../api/study';
 import StatTile from '../components/StatTile';
-import StudyMarkdown from '../components/StudyMarkdown';
+// Markdown + KaTeX (~130 kB) behövs bara när en AI-återkoppling fälls ut.
+const StudyMarkdown = lazy(() => import('../components/StudyMarkdown'));
 import { CodeTag, formatMinutes } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
@@ -21,6 +22,7 @@ const PERIODS = [
 ];
 const KIND_LABEL = { practice: 'Övningar', review: 'Repetition', reading: 'Läsning', paper: 'På papper', test: 'Prov' };
 const RESULT_ICON = { correct: '✓', partial: '≈', wrong: '✗' };
+const RESULT_WORD = { correct: 'rätt', partial: 'delvis rätt', wrong: 'fel' };
 const RESULT_COLOR = { correct: 'var(--leaf-deep)', partial: 'var(--mustard-deep)', wrong: 'var(--berry-deep)' };
 const WEEKDAYS = ['mån', 'tis', 'ons', 'tor', 'fre', 'lör', 'sön'];
 
@@ -138,6 +140,8 @@ function TermHeatmap({ days, today }) {
                   <Link
                     key={di}
                     to={dayLink(d.date)}
+                    tabIndex={-1}
+                    aria-hidden="true"
                     className={`activity-heatmap-cell heat-${heat(d)} ${d.date === today ? 'is-today' : ''}`}
                     title={`${fmt(d.date, { day: 'numeric', month: 'short' })}: ${formatMinutes(d.activeSeconds)}`}
                   />
@@ -184,14 +188,14 @@ function SessionRow({ s, showDate }) {
         {s.items.map((it, i) => (
           <div key={i}>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontWeight: 900, width: 16, color: RESULT_COLOR[it.result] }} aria-label={it.result}>{RESULT_ICON[it.result]}</span>
+              <span role="img" style={{ fontWeight: 900, width: 16, color: RESULT_COLOR[it.result] }} aria-label={RESULT_WORD[it.result]}>{RESULT_ICON[it.result]}</span>
               {it.unitId ? <Link to={`/plugga/omrade/${it.unitId}`} style={{ textDecoration: 'none' }}><CodeTag code={it.code} /></Link> : <CodeTag code={it.code} />}
               {it.source === 'paper' && <span className="t-hand muted" style={{ fontSize: 13 }}>📷 på papper</span>}
               {it.given && it.source !== 'paper' && <span className="t-hand muted" style={{ fontSize: 13 }}>svar: {it.given}</span>}
             </div>
             {it.feedback && (
               <div className="card" style={{ padding: 10, margin: '6px 0 4px 24px', background: 'var(--sky-soft)' }}>
-                <StudyMarkdown>{it.feedback}</StudyMarkdown>
+                <Suspense fallback={<p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{it.feedback}</p>}><StudyMarkdown>{it.feedback}</StudyMarkdown></Suspense>
               </div>
             )}
           </div>
