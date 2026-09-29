@@ -28,6 +28,7 @@ function readScope(params) {
   const list = (k) => (params.get(k) ? params.get(k).split(',').filter(Boolean) : undefined);
   return {
     unitIds: list('units'),
+    folderId: params.get('folder') || undefined,
     subject: params.get('subject') || undefined,
     group: params.get('group') || undefined,
     term: params.get('term') || undefined,
@@ -102,7 +103,7 @@ export default function PluggaPractice() {
     let active = true;
     setPhase('loading');
     startStudySession(apiFetch, {
-      unitIds: scope.unitIds, subject: scope.subject, group: scope.group, term: scope.term,
+      unitIds: scope.unitIds, folderId: scope.folderId, subject: scope.subject, group: scope.group, term: scope.term,
       allTerms: scope.allTerms, mode: scope.mode, levels: scope.levels, count: scope.count
     })
       .then((r) => {

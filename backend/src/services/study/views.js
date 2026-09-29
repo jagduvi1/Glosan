@@ -59,6 +59,10 @@ function unitUrl(unit) {
   return `${issuer()}/plugga/omrade/${unit._id}`;
 }
 
+function folderUrl(folderId) {
+  return `${issuer()}/plugga/mapp/${folderId}`;
+}
+
 function unitSummary(u, userId, progress, ownerName) {
   const isOwner = String(u.user?._id || u.user) === String(userId);
   const subject = getSubject(u.subject);
@@ -137,5 +141,5 @@ async function unitDetail(userId, unitId) {
   };
 }
 
-module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, MASTERED_BOX };
+module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, folderUrl, MASTERED_BOX };
 

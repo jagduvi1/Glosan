@@ -14,8 +14,9 @@ const { termFor, termLabel } = require('../../utils/term');
 const { registerTool } = require('../registry');
 const { objectId, ok, fail, validationMessage } = require('../toolUtil');
 const { loadUnit, loadItem, findItemByCode, itemCode, isId, oid } = require('../../services/study/access');
-const { listUnits, unitUrl } = require('../../services/study/views');
+const { listUnits, unitUrl, folderUrl } = require('../../services/study/views');
 const { recordPaperAttempt } = require('../../services/study/practice');
+const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { deleteStudyUnitsCascade } = require('../../services/studyData');
 const { parseStudyCode } = require('../../utils/studyCodes');
 
@@ -749,6 +750,77 @@ registerTool({
     );
     if (!flag) return fail('not_found', 'No such open report on a unit the user created. list_study_flags shows the open ones.');
     return ok('Report closed', { flag_id: String(flag._id) });
+  }
+});
+
+// ── mappar ───────────────────────────────────────────────────────────────────
+
+async function folderData(folder) {
+  const units = folder.unitIds.length
+    ? await StudyUnit.find({ _id: { $in: folder.unitIds } }, 'code title subject term').lean()
+    : [];
+  const byId = new Map(units.map((u) => [String(u._id), u]));
+  return {
+    folder_id: folder.id,
+    name: folder.name,
+    color: folder.color,
+    units: folder.unitIds.map((id) => byId.get(id)).filter(Boolean)
+      .map((u) => ({ unit_id: String(u._id), code: u.code, title: u.title, subject: u.subject, term: u.term })),
+    url: folderUrl(folder.id)
+  };
+}
+
+registerTool({
+  name: 'list_study_folders',
+  title: 'List Mappar (folders)',
+  description:
+    'The student\'s own folders ("Mappar") in Plugga — groupings of units across subjects and terms, e.g. "Inför provet v. 42" — with the units in each. ' +
+    'The student can practise a whole folder at once in the app.',
+  scope: 'read',
+  feature: FEATURE,
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  inputSchema: {},
+  handler: async (args, ctx) => {
+    const folders = await listFolders(ctx.user.id);
+    return ok(`${folders.length} folder(s)`, await Promise.all(folders.map(folderData)));
+  }
+});
+
+registerTool({
+  name: 'save_study_folder',
+  title: 'Create or change a Mapp (folder)',
+  description:
+    'Creates a folder ("Mapp") of units — e.g. everything for an upcoming test — or changes one: rename, recolour, add or remove units. ' +
+    'Units can be the student\'s own or shared with them. A folder is only a selection: removing a unit from a folder never deletes the unit. ' +
+    'Omit folder_id to create; pass it to change.',
+  scope: 'write',
+  feature: FEATURE,
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  inputSchema: {
+    folder_id: objectId.optional().describe('Omit to create a new folder'),
+    name: z.string().trim().min(1).max(60).optional().describe('Required when creating, e.g. "Inför provet v. 42"'),
+    color: z.enum(COLORS).optional(),
+    add_unit_ids: z.array(objectId).max(200).optional(),
+    remove_unit_ids: z.array(objectId).max(200).optional()
+  },
+  handler: async (args, ctx) => {
+    let r;
+    if (!args.folder_id) {
+      if (!args.name) return fail('invalid_input', 'Pass name to create a folder.');
+      r = await createFolder(ctx.user.id, { name: args.name, color: args.color, unitIds: args.add_unit_ids });
+    } else {
+      r = await updateFolder(ctx.user.id, args.folder_id, {
+        name: args.name, color: args.color, addUnitIds: args.add_unit_ids, removeUnitIds: args.remove_unit_ids
+      });
+    }
+    if (r.error) {
+      if (r.status === 404) return fail('not_found', 'No such folder. list_study_folders shows folder ids.');
+      return fail(r.status === 409 ? 'conflict' : 'invalid_input', r.error);
+    }
+    const ignored = (args.add_unit_ids || []).filter((id) => !r.folder.unitIds.includes(id));
+    const data = await folderData(r.folder);
+    return ok(`${args.folder_id ? 'Updated' : 'Created'} folder "${r.folder.name}" (${r.folder.unitCount} unit(s))`, data,
+      ignored.length ? { warnings: [`Not added (no such unit, or no access): ${ignored.join(', ')}. list_study_units shows valid unit ids.`] } : {});
   }
 });
 

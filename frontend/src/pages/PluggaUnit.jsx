@@ -5,6 +5,7 @@ import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
+import FolderPicker from '../components/study/FolderPicker';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -89,6 +90,7 @@ export default function PluggaUnit() {
   const [error, setError] = useState('');
   const [tab, setTab] = useState(null);
   const [sharing, setSharing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const loadedFor = useRef(null);
 
   const load = useCallback(async () => {
@@ -147,6 +149,7 @@ export default function PluggaUnit() {
           </p>
         )}
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Mapp</button>
           {unit.isOwner ? (
             <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>
               👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
@@ -158,6 +161,7 @@ export default function PluggaUnit() {
       </div>
 
       {sharing && <ShareUnitDialog unit={unit} onClose={() => setSharing(false)} onChanged={load} />}
+      {picking && <FolderPicker unitIds={[unit.id]} onClose={() => setPicking(false)} />}
 
       <div className="card">
         <ProgressBar progress={unit.progress} />

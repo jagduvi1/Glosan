@@ -38,7 +38,7 @@ const FEATURE_SECTIONS = {
   study: [
     'Plugga — school subjects (enabled for this account):',
     '- Besides vocabulary lists, Glosan holds study material for every school subject: matematik, fysik, kemi, biologi, NO, historia, geografi, religionskunskap, samhällskunskap, SO, teknik, svenska, engelska, moderna språk. A unit ("område", code like MA3) holds genomgångar (explanations), flashcards and exercises; every card/exercise has a code like MA3-14.',
-    '- Tools: list_study_units, get_study_unit, get_study_item, get_study_progress, list_study_flags (read) → create_study_unit, add_study_pages, update_study_page, add_flashcards, add_exercises, update_study_item, delete_study_items, update_study_unit, delete_study_unit, record_paper_attempt, resolve_study_flag (write).',
+    '- Tools: list_study_units, get_study_unit, get_study_item, get_study_progress, list_study_flags, list_study_folders (read) → create_study_unit, add_study_pages, update_study_page, add_flashcards, add_exercises, update_study_item, delete_study_items, update_study_unit, delete_study_unit, record_paper_attempt, resolve_study_flag, save_study_folder (write).',
     '',
     'Creating study material from photos of a textbook:',
     '1. ALWAYS ask the student which årskurs (grade 1–9) they are in before creating anything — never guess. If list_study_units shows earlier units, confirm it ("förra gången åk 8 — stämmer det fortfarande?"). Also ask if there is a test coming, and when.',
@@ -63,7 +63,8 @@ const FEATURE_SECTIONS = {
     '- Then call record_paper_attempt with result correct/partial/wrong and your feedback — it counts toward their progress and study time, and they can re-read your feedback in the app.',
     '',
     '- Error reports: students (and friends a unit is shared with) can report "fel i facit" in the app. list_study_flags shows open reports on units the user created: verify, fix with update_study_item, then resolve_study_flag.',
-    '- Units can be shared with friends in the app — also friends without an AI. Only the creator can change the content; everyone practises with their own progress.',
+    '- Units can be shared in the app (Dela: with friends, or a QR code for classmates) — also with people who have no AI. Only the creator can change the content; everyone practises with their own progress. Sharing itself is web-only.',
+    '- Mappar (folders) group units across subjects and terms, e.g. everything for a test; the student can practise a whole folder. When they ask, create or change one with save_study_folder — a folder is only a selection, never a copy.',
     '- Practising happens in the app (flashcards, exercises by level, repetition). delete_study_unit / delete_study_items are permanent: confirm first.'
   ].join('\n')
 };

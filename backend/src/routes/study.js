@@ -14,6 +14,7 @@ const { startSession, answerInSession, pingSession, finishSession, MODES, LEVELS
 const {
   listRecipients, shareWithFriends, removeRecipient, createShareLink, listShareLinks, revokeShareLink
 } = require('../services/study/sharing');
+const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 
 // Plugga — skolämnen. Dold bakom funktionsflaggan 'study' (config/features.js)
 // tills modulen släpps. Innehållet skapas BARA via MCP (användarens egen AI);
@@ -51,6 +52,7 @@ const shareLinkLimiter = rateLimit({
 });
 
 const bad = (res, error) => res.status(400).json({ error });
+const isIdList = (v, max = 200) => v === undefined || (Array.isArray(v) && v.length <= max && v.every((x) => typeof x === 'string'));
 
 /** Området om inloggad användare är skaparen, annars svarar den 404/403 och ger null. */
 async function ownedUnit(req, res) {
@@ -133,7 +135,7 @@ router.get('/units/:id', async (req, res, next) => {
 });
 
 // POST /api/study/sessions — starta ett pass.
-// Body: { unitIds? | subject? | group?, term?, allTerms?, mode, levels?, count? }
+// Body: { unitIds? | folderId? | subject? | group?, term?, allTerms?, mode, levels?, count? }
 router.post('/sessions', practiceLimiter, async (req, res, next) => {
   try {
     const b = req.body || {};
@@ -141,11 +143,13 @@ router.post('/sessions', practiceLimiter, async (req, res, next) => {
     if (b.unitIds !== undefined && (!Array.isArray(b.unitIds) || b.unitIds.some((x) => typeof x !== 'string'))) {
       return bad(res, 'unitIds must be an array of ids');
     }
+    if (b.folderId !== undefined && typeof b.folderId !== 'string') return bad(res, 'folderId must be an id');
     if (b.levels !== undefined && (!Array.isArray(b.levels) || b.levels.some((l) => !LEVELS.includes(l)))) {
       return bad(res, 'levels must be a subset of E, C, A');
     }
     const result = await startSession(req.user.id, {
       unitIds: b.unitIds,
+      folderId: b.folderId,
       subject: typeof b.subject === 'string' ? b.subject : undefined,
       group: typeof b.group === 'string' ? b.group : undefined,
       term: typeof b.term === 'string' ? b.term : undefined,
@@ -217,6 +221,66 @@ router.post('/items/:id/flag', async (req, res, next) => {
       { upsert: true }
     );
     res.status(201).json({ flagged: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Mappar ───────────────────────────────────────────────────────────────────
+// Elevens egna grupperingar av områden (egna + delade), tvärs över ämnen och
+// terminer. Att radera en mapp rör aldrig områdena.
+
+router.get('/folders', async (req, res, next) => {
+  try {
+    res.json({ folders: await listFolders(req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/folders — Body: { name, color?, unitIds? }
+router.post('/folders', async (req, res, next) => {
+  try {
+    const { name, color, unitIds } = req.body || {};
+    if (typeof name !== 'string') return bad(res, 'name is required');
+    if (!isIdList(unitIds)) return bad(res, 'unitIds must be an array of ids');
+    const result = await createFolder(req.user.id, { name, color, unitIds });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/folders/:id', async (req, res, next) => {
+  try {
+    const detail = await folderDetail(req.user.id, req.params.id);
+    if (!detail) return res.status(404).json({ error: 'Mappen hittades inte.' });
+    res.json(detail);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/study/folders/:id — Body: { name?, color?, addUnitIds?, removeUnitIds? }
+router.patch('/folders/:id', async (req, res, next) => {
+  try {
+    const { name, color, addUnitIds, removeUnitIds } = req.body || {};
+    if (name !== undefined && typeof name !== 'string') return bad(res, 'name must be a string');
+    if (color !== undefined && color !== null && typeof color !== 'string') return bad(res, 'color must be a string');
+    if (!isIdList(addUnitIds) || !isIdList(removeUnitIds)) return bad(res, 'addUnitIds/removeUnitIds must be arrays of ids');
+    const result = await updateFolder(req.user.id, req.params.id, { name, color, addUnitIds, removeUnitIds });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/folders/:id', async (req, res, next) => {
+  try {
+    if (!(await deleteFolder(req.user.id, req.params.id))) return res.status(404).json({ error: 'Mappen hittades inte.' });
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }

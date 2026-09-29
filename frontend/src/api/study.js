@@ -104,3 +104,36 @@ export async function fetchStudyInvitePreview(code) {
 export async function acceptStudyInvite(apiFetch, code) {
   return readJson(await post(apiFetch, `/api/study-invite/${encodeURIComponent(code)}/accept`), 'Kunde inte gå med');
 }
+
+// ── Mappar ───────────────────────────────────────────────────────────────────
+
+// GET → { folders: [{ id, name, color, unitIds, unitCount, emojis }] }
+export async function fetchStudyFolders(apiFetch) {
+  const data = await readJson(await apiFetch('/api/study/folders'), 'Kunde inte hämta mapparna');
+  return data.folders;
+}
+
+// GET → { folder, units: [unit summaries med progress] }
+export async function fetchStudyFolder(apiFetch, folderId) {
+  return readJson(await apiFetch(`/api/study/folders/${folderId}`), 'Kunde inte hämta mappen');
+}
+
+export async function createStudyFolder(apiFetch, { name, color, unitIds }) {
+  const data = await readJson(await post(apiFetch, '/api/study/folders', { name, color, unitIds }), 'Kunde inte skapa mappen');
+  return data.folder;
+}
+
+// Body: { name?, color?, addUnitIds?, removeUnitIds? } → folder
+export async function updateStudyFolder(apiFetch, folderId, changes) {
+  const res = await apiFetch(`/api/study/folders/${folderId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes)
+  });
+  const data = await readJson(res, 'Kunde inte ändra mappen');
+  return data.folder;
+}
+
+export async function deleteStudyFolder(apiFetch, folderId) {
+  return readJson(await apiFetch(`/api/study/folders/${folderId}`, { method: 'DELETE' }), 'Kunde inte ta bort mappen');
+}

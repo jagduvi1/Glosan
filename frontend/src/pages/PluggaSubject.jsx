@@ -2,51 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyUnits, fetchStudyOverview } from '../api/study';
-import { PracticePicker, ProgressBar, practiceUrl, daysUntil } from '../components/study/StudyBits';
+import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
+import UnitCard from '../components/study/UnitCard';
+import FolderPicker from '../components/study/FolderPicker';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
 // Ett ämne i Plugga: alla områden, grupperade per termin (vald termin först).
 // Välj ett eller flera områden och öva på dem — eller på allt i terminen.
-
-function UnitCard({ unit, selected, onToggle }) {
-  const days = daysUntil(unit.examDate);
-  return (
-    <div className="card" style={{ padding: 16, outline: selected ? '3px solid var(--coral-deep)' : 'none' }}>
-      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggle}
-          aria-label={`Välj ${unit.title}`}
-          style={{ marginTop: 6, width: 20, height: 20, flex: 'none' }}
-        />
-        <div className="grow" style={{ minWidth: 0 }}>
-          <Link to={`/plugga/omrade/${unit.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-              <span className="study-code">{unit.code}</span>
-              <h3 style={{ margin: 0, fontSize: 20 }}>{unit.title}</h3>
-            </div>
-          </Link>
-          <p className="t-hand muted" style={{ margin: '4px 0 8px', fontSize: 14 }}>
-            {[unit.gradeYear ? `åk ${unit.gradeYear}` : null, unit.source?.book, unit.source?.chapter].filter(Boolean).join(' · ')}
-            {unit.sharedBy ? ` · delad av ${unit.sharedBy}` : ''}
-          </p>
-          <p className="t-hand" style={{ margin: '0 0 8px', fontSize: 14 }}>
-            {unit.progress.cards} kort · {unit.progress.exercises} övningar
-            {unit.progress.exercises > 0 && ` (${['E', 'C', 'A'].map((l) => `${unit.progress.levels[l]} ${l}`).join(', ')})`}
-            {days !== null && days >= 0 && (
-              <strong style={{ marginLeft: 8, color: days <= 3 ? 'var(--berry-deep)' : 'inherit' }}>
-                · Prov {days === 0 ? 'idag!' : days === 1 ? 'imorgon' : `om ${days} dagar`}
-              </strong>
-            )}
-          </p>
-          <ProgressBar progress={unit.progress} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function PluggaSubject() {
   const { subject } = useParams();
@@ -57,6 +20,7 @@ export default function PluggaSubject() {
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState([]);
+  const [picking, setPicking] = useState(false);
   const term = params.get('term');
 
   useEffect(() => {
@@ -123,7 +87,12 @@ export default function PluggaSubject() {
         <>
           {(inShownTerm.length > 0 || selected.length > 0) && (
             <div className="card" style={{ background: 'var(--mustard-soft)' }}>
-              <h2 style={{ margin: '0 0 10px', fontSize: 21 }}>Öva på {practiceTarget}</h2>
+              <div className="row between" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 21 }}>Öva på {practiceTarget}</h2>
+                {selected.length > 0 && (
+                  <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Lägg i mapp</button>
+                )}
+              </div>
               <PracticePicker onStart={start} />
             </div>
           )}
@@ -141,6 +110,7 @@ export default function PluggaSubject() {
           ))}
         </>
       )}
+      {picking && <FolderPicker unitIds={selected} onClose={() => setPicking(false)} />}
     </div>
   );
 }

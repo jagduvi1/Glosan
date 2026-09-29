@@ -7,6 +7,7 @@ const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
 const StudySession = require('../../models/StudySession');
+const StudyFolder = require('../../models/StudyFolder');
 const { SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm } = require('../../utils/term');
 const { gradeAnswer } = require('./grading');
@@ -25,15 +26,23 @@ const XP_PERFECT_BONUS = 20; // helt rätt pass med minst 5 svar
 const STREAK_MIN_ACTIVE_SEC = 120;
 
 /**
- * Områdena ett pass omfattar. scope: { unitIds } ELLER { subject | group,
- * term, allTerms } — "allt i Matte HT26", "allt NO", "all matte alla
- * terminer". Tomt omfång = allt man kan läsa (t.ex. "Repetera allt").
+ * Områdena ett pass omfattar. scope: { unitIds } ELLER { folderId } (en
+ * mapp) ELLER { subject | group, term, allTerms } — "allt i Matte HT26",
+ * "allt NO", "all matte alla terminer". Tomt omfång = allt man kan läsa
+ * (t.ex. "Repetera allt").
  */
 async function resolveScopeUnits(userId, scope = {}) {
   const filter = { ...readableFilter(userId), archivedAt: null };
   const ids = Array.isArray(scope.unitIds) ? scope.unitIds.filter(isId).map(oid) : [];
   if (ids.length) {
     filter._id = { $in: ids.slice(0, 50) };
+  } else if (scope.folderId !== undefined) {
+    // Direkt mot StudyFolder (inte services/study/folders.js) — undviker en
+    // require-cirkel practice → folders → views → practice.
+    const folder = isId(scope.folderId)
+      ? await StudyFolder.findOne({ _id: oid(scope.folderId), user: oid(userId) }, 'units').lean()
+      : null;
+    filter._id = { $in: folder ? folder.units.slice(0, 200) : [] };
   } else {
     if (SUBJECT_KEYS.includes(scope.subject)) filter.subject = scope.subject;
     else if (scope.group === 'no' || scope.group === 'so') filter.subject = { $in: subjectsInGroup(scope.group) };

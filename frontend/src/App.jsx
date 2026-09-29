@@ -37,6 +37,7 @@ const Plugga = lazy(() => import('./pages/Plugga'));
 const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
 const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
 const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
+const PluggaFolder = lazy(() => import('./pages/PluggaFolder'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -151,6 +152,14 @@ function AppRoutes() {
           element={
             <FeatureRoute feature="study">
               <Layout><PluggaUnit /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/mapp/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaFolder /></Layout>
             </FeatureRoute>
           }
         />

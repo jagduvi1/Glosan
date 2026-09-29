@@ -97,6 +97,7 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
 export function practiceUrl(scope, { mode, levels, count }) {
   const q = new URLSearchParams();
   if (scope.unitIds?.length) q.set('units', scope.unitIds.join(','));
+  if (scope.folderId) q.set('folder', scope.folderId);
   if (scope.subject) q.set('subject', scope.subject);
   if (scope.group) q.set('group', scope.group);
   if (scope.term) q.set('term', scope.term);
