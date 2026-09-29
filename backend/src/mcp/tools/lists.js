@@ -131,6 +131,9 @@ registerTool({
     const userId = ctx.user.id;
     const catError = await checkCategory(userId, args.category_id);
     if (catError) return catError;
+    if (await GlosList.countDocuments({ user: userId }) >= GlosList.MAX_LISTS_PER_USER) {
+      return fail('conflict', `The user already has ${GlosList.MAX_LISTS_PER_USER} lists — add to an existing one (add_words) or ask them to delete old lists.`);
+    }
 
     const { fresh, duplicates } = splitDuplicates(args.words || [], []);
     let list;

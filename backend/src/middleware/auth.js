@@ -3,7 +3,8 @@ const jwt = require('jsonwebtoken');
 const decodeToken = (token) => {
   const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   const roles = decoded.roles || ['user'];
-  return { id: decoded.id, roles };
+  // iat (sekunder): /api/mcp/oauth/approve nekar en token utfärdad före ett lösenordsbyte.
+  return { id: decoded.id, roles, iat: decoded.iat };
 };
 
 const requireAuth = (req, res, next) => {

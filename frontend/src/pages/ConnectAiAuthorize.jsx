@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import GoogleLoginButton from '../components/GoogleLoginButton';
-import { approveMcpConnection } from '../api/mcp';
+import { approveMcpConnection, fetchMcpClientInfo } from '../api/mcp';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import { hasFeature } from '../utils/features';
 
 // Samtyckessidan för MCP-connectorn (OAuth 2.1). Backendens
 // GET /api/mcp/oauth/authorize validerar förfrågan och skickar hit browsern med
@@ -16,15 +17,21 @@ import { useDocumentTitle } from '../utils/useDocumentTitle';
 // Utloggad: inloggningen visas DIREKT här (i stället för att studsa via
 // /login) så OAuth-parametrarna ligger kvar i URL:en. Google-varvet är en full
 // sidladdning, så där stashas hela sökvägen och /login/callback tar oss hit.
+//
+// Vem som ansluter hämtas från servern (GET /api/mcp/oauth/client), aldrig ur
+// URL:en: vem som helst kan registrera en app som heter "Claude", så sidan
+// visar också vart man skickas och varnar tydligt när värden är okänd.
 
 const LEVELS = {
   read: {
     title: 'Bara läsa',
-    desc: 'Den kan se dina listor, glosor och resultat — men aldrig ändra något.'
+    desc: 'Den kan se dina listor, glosor och resultat — men aldrig ändra något.',
+    studyDesc: 'Den kan se dina listor, glosor, pluggområden och resultat — men aldrig ändra något.'
   },
   write: {
     title: 'Läsa och skapa',
-    desc: 'Den kan också skapa listor (t.ex. från ett foto), lägga till, rätta och radera glosor.'
+    desc: 'Den kan också skapa listor (t.ex. från ett foto), lägga till, rätta och radera glosor.',
+    studyDesc: 'Den kan också skapa listor och pluggområden (t.ex. från foton av boken), lägga till, rätta och radera — och rätta dina papperslösningar.'
   }
 };
 const GRANTABLE = ['read', 'write'];
@@ -42,7 +49,8 @@ export default function ConnectAiAuthorize() {
   const scope = params.get('scope') || '';
   const state = params.get('state') || '';
   const resource = params.get('resource') || '';
-  const clientName = params.get('client_name') || '';
+  // { client_name, redirect_host, trust } från servern; null = okänd klient.
+  const [client, setClient] = useState(undefined);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -55,6 +63,8 @@ export default function ConnectAiAuthorize() {
   // erbjuder; annars snittet med det vi kan ge, med read som golv.
   const requested = scope.split(/\s+/).filter((s) => s && s !== 'offline_access');
   let offered = requested.length === 0 ? GRANTABLE : GRANTABLE.filter((s) => requested.includes(s));
+  // write innebär read (som på servern).
+  if (offered.includes('write') && !offered.includes('read')) offered = ['read', ...offered];
   if (offered.length === 0) offered = ['read'];
   // Nivåerna är prefix av erbjudandet ("Bara läsa" … "Läsa och skapa"), så
   // användaren kan bara smalna av, aldrig vidga. Förval: hela erbjudandet.
@@ -64,8 +74,14 @@ export default function ConnectAiAuthorize() {
 
   const requestValid = clientId && redirectUri && codeChallenge && codeChallengeMethod === 'S256';
 
-  let redirectHost = '';
-  try { redirectHost = new URL(redirectUri).host; } catch { /* visas inte */ }
+  useEffect(() => {
+    if (!requestValid) return undefined;
+    let active = true;
+    fetchMcpClientInfo(clientId, redirectUri)
+      .then((info) => { if (active) setClient(info); })
+      .catch(() => { if (active) setClient(null); });
+    return () => { active = false; };
+  }, [requestValid, clientId, redirectUri]);
 
   const decide = async (approved) => {
     setSubmitting(true);
@@ -112,7 +128,7 @@ export default function ConnectAiAuthorize() {
     </div>
   );
 
-  if (!requestValid) {
+  if (!requestValid || client === null) {
     return shell(
       <p className="error">
         Länken är ogiltig eller ofullständig. Starta anslutningen igen från din AI-assistent.
@@ -120,11 +136,23 @@ export default function ConnectAiAuthorize() {
     );
   }
 
-  if (loading) return shell(<p className="t-hand muted">Laddar…</p>);
+  if (loading || client === undefined) return shell(<p className="t-hand muted">Laddar…</p>);
+
+  const redirectHost = client.redirect_host;
+  // En okänd app kan heta vad som helst — då visas värden i stället för namnet.
+  const who = client.trust === 'unknown' ? `En app på ${redirectHost}` : (client.client_name || 'En AI-assistent');
+  const unknownWarning = client.trust === 'unknown' && (
+    <div className="card" role="alert" style={{ background: 'var(--berry-soft)', borderColor: 'var(--berry-deep)', marginBottom: 16, padding: 14 }}>
+      <strong>Okänd app.</strong> Glosan känner inte igen <strong>{redirectHost}</strong>
+      {client.client_name ? <> (den kallar sig "{client.client_name}")</> : null}. Godkänn bara om du själv
+      just startade kopplingen i en app du litar på — annars: tryck Avbryt.
+    </div>
+  );
 
   if (!user) {
     return shell(
       <>
+        {unknownWarning}
         <h1 style={{ fontSize: 30, margin: '8px 0 4px' }}>Logga in för att koppla din AI</h1>
         <p className="t-hand muted" style={{ fontSize: 17, margin: '0 0 22px' }}>
           Logga in på ditt Glosan-konto för att godkänna anslutningen.
@@ -148,13 +176,14 @@ export default function ConnectAiAuthorize() {
     );
   }
 
-  const who = clientName || 'En AI-assistent';
+  const study = hasFeature(user, 'study');
   return shell(
     <>
       <div className="row" style={{ gap: 12, alignItems: 'center', margin: '8px 0 12px' }}>
         <GloAvatar size={56} mood="wink" tilt={-6} />
         <h1 style={{ fontSize: 28, margin: 0 }}>Koppla din AI till Glosan</h1>
       </div>
+      {unknownWarning}
       <p style={{ fontSize: 17, marginTop: 0 }}>
         <strong>{who}</strong> vill komma åt ditt Glosan-konto (<strong>{user.username}</strong>). Välj hur mycket den får göra:
       </p>
@@ -186,7 +215,7 @@ export default function ConnectAiAuthorize() {
               />
               <span>
                 <strong>{LEVELS[top].title}</strong>
-                <span className="t-hand muted" style={{ display: 'block', fontSize: 15 }}>{LEVELS[top].desc}</span>
+                <span className="t-hand muted" style={{ display: 'block', fontSize: 15 }}>{study ? LEVELS[top].studyDesc : LEVELS[top].desc}</span>
               </span>
             </label>
           );
@@ -194,14 +223,13 @@ export default function ConnectAiAuthorize() {
       </div>
 
       <p className="t-hand muted" style={{ fontSize: 15 }}>
-        Du kan koppla bort AI:n när som helst under Profil. Den når dina listor, glosor och resultat — aldrig ditt
-        lösenord eller din e-post.
+        Du kan koppla bort AI:n när som helst under Profil. Den når dina listor, glosor{study ? ', pluggområden' : ''} och
+        resultat — aldrig ditt lösenord eller din e-post.
       </p>
-      {redirectHost && (
-        <p className="t-hand muted" style={{ fontSize: 14 }}>
-          När du godkänt skickas du tillbaka till <strong>{redirectHost}</strong>.
-        </p>
-      )}
+      <p className="t-hand muted" style={{ fontSize: 14 }}>
+        När du godkänt skickas du tillbaka till <strong>{redirectHost}</strong>
+        {client.trust === 'local' ? ' (en app på den här datorn)' : ''}.
+      </p>
       {error && <p className="error">{error}</p>}
       <div className="row" style={{ gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
         <button className="btn" type="button" onClick={() => decide(false)} disabled={submitting}>

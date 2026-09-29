@@ -71,3 +71,5 @@ glosListSchema.pre('save', function (next) {
 });
 
 module.exports = mongoose.model('GlosList', glosListSchema);
+// Tak per konto — mer än nog för en hel skolgång, och stoppar en AI i loop.
+module.exports.MAX_LISTS_PER_USER = 1000;

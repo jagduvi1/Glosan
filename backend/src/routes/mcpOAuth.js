@@ -4,10 +4,12 @@ const rateLimit = require('express-rate-limit');
 const McpToken = require('../models/McpToken');
 const OAuthClient = require('../models/OAuthClient');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
+const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
 const {
   issuer, resourceUrl, verifyPkce, grantedScopes, redirectUriRegistered,
-  rotateCredentials, tokenResponse
+  rotateCredentials, tokenResponse, redirectTrust,
+  REFRESH_GRACE_MS, REFRESH_HISTORY, IDLE_EXPIRY_MS, CODE_CHALLENGE_RE, MAX_STATE_LENGTH
 } = require('../services/mcpOAuth');
 
 // OAuth 2.1-auktoriseringsservern för MCP-connectorn. Porterad från Cellarion
@@ -15,6 +17,7 @@ const {
 // Monterad på /api/mcp/oauth:
 //   POST /register   RFC 7591 Dynamic Client Registration (publik, rate-limitad)
 //   GET  /authorize  validera, skicka sedan browsern till samtyckessidan
+//   GET  /client     klientens namn och redirect-värd för samtyckessidan
 //   POST /approve    den inloggade användarens samtycke → engångskod
 //   POST /token      kod → token + rotation av refresh-token
 //   POST /revoke     RFC 7009-återkallning
@@ -70,8 +73,11 @@ function oauthError(res, status, error, description) {
   return res.status(status).json({ error, error_description: description });
 }
 // Fel EFTER att redirect_uri validerats går tillbaka till klienten som
-// query-parametrar på redirecten (RFC 6749 §4.1.2.1), med state bevarat.
+// query-parametrar på redirecten (RFC 6749 §4.1.2.1), med state bevarat —
+// men bara till en värd vi känner igen. Vem som helst kan registrera en
+// klient, så annars vore /authorize en öppen redirect till valfri sajt.
 function redirectError(res, redirectUri, error, description, state) {
+  if (redirectTrust(redirectUri) === 'unknown') return oauthError(res, 400, error, description);
   const u = new URL(redirectUri);
   u.searchParams.set('error', error);
   if (description) u.searchParams.set('error_description', description);
@@ -157,11 +163,15 @@ router.get('/authorize', oauthLimiter, async (req, res) => {
       return oauthError(res, 400, 'invalid_request', 'redirect_uri does not match a registered URI');
     }
 
-    // Härifrån är redirect_uri betrodd, så protokollfel går tillbaka dit.
+    // Härifrån är redirect_uri registrerad, så protokollfel går tillbaka dit
+    // (om värden är känd — se redirectError).
+    if (state !== undefined && (typeof state !== 'string' || state.length > MAX_STATE_LENGTH)) {
+      return oauthError(res, 400, 'invalid_request', `state must be a string of at most ${MAX_STATE_LENGTH} characters`);
+    }
     const st = typeof state === 'string' ? state : undefined;
     if (response_type !== 'code') return redirectError(res, redirect_uri, 'unsupported_response_type', 'only response_type=code is supported', st);
-    if (typeof code_challenge !== 'string' || !code_challenge || code_challenge_method !== 'S256') {
-      return redirectError(res, redirect_uri, 'invalid_request', 'PKCE code_challenge with method S256 is required', st);
+    if (typeof code_challenge !== 'string' || !CODE_CHALLENGE_RE.test(code_challenge) || code_challenge_method !== 'S256') {
+      return redirectError(res, redirect_uri, 'invalid_request', 'PKCE code_challenge (43 base64url characters) with method S256 is required', st);
     }
     if (resource && resource !== resourceUrl()) {
       return redirectError(res, redirect_uri, 'invalid_target', 'resource must be the MCP endpoint URL', st);
@@ -177,11 +187,35 @@ router.get('/authorize', oauthLimiter, async (req, res) => {
     consent.searchParams.set('scope', typeof scope === 'string' ? scope : '');
     if (st) consent.searchParams.set('state', st);
     if (typeof resource === 'string' && resource) consent.searchParams.set('resource', resource);
-    if (client.clientName) consent.searchParams.set('client_name', client.clientName);
+    // Klientens namn skickas INTE med: sidan hämtar det från GET /client, så
+    // en länk inte kan påstå att den kommer från "Claude".
     return res.redirect(302, consent.toString());
   } catch (err) {
     console.error('MCP OAuth authorize error:', err.message);
     return oauthError(res, 500, 'server_error', 'authorization failed');
+  }
+});
+
+// ── GET /client — vem vill ansluta? (för samtyckessidan) ─────────────────────
+// Namnet valde klienten själv vid registreringen, så det räcker inte som
+// identitet: sidan visar också redirect-värden och varnar när den är okänd.
+router.get('/client', oauthLimiter, async (req, res) => {
+  try {
+    const { client_id, redirect_uri } = req.query;
+    if (typeof client_id !== 'string' || typeof redirect_uri !== 'string') {
+      return oauthError(res, 400, 'invalid_request', 'client_id and redirect_uri are required');
+    }
+    const client = await OAuthClient.findOne({ clientId: client_id });
+    if (!client || !redirectUriRegistered(client, redirect_uri)) return oauthError(res, 404, 'invalid_client', 'unknown client');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+      client_name: client.clientName || null,
+      redirect_host: new URL(redirect_uri).host,
+      trust: redirectTrust(redirect_uri)
+    });
+  } catch (err) {
+    console.error('MCP OAuth client info error:', err.message);
+    return oauthError(res, 500, 'server_error', 'client lookup failed');
   }
 });
 
@@ -201,6 +235,9 @@ router.post('/approve', oauthLimiter, requireAuth, async (req, res) => {
     if (typeof redirect_uri !== 'string' || !redirectUriRegistered(client, redirect_uri)) {
       return res.status(400).json({ error: 'redirect_uri does not match a registered URI' });
     }
+    if (state !== undefined && state !== null && (typeof state !== 'string' || state.length > MAX_STATE_LENGTH)) {
+      return res.status(400).json({ error: 'invalid state' });
+    }
     const st = typeof state === 'string' && state ? state : null;
 
     // Nekat → tillbaka till klienten med ett fel (ingen kod).
@@ -211,11 +248,18 @@ router.post('/approve', oauthLimiter, requireAuth, async (req, res) => {
       return res.json({ redirect: u.toString() });
     }
 
-    if (typeof code_challenge !== 'string' || !code_challenge || code_challenge_method !== 'S256') {
+    if (typeof code_challenge !== 'string' || !CODE_CHALLENGE_RE.test(code_challenge) || code_challenge_method !== 'S256') {
       return res.status(400).json({ error: 'PKCE S256 challenge required' });
     }
     if (resource && resource !== resourceUrl()) {
       return res.status(400).json({ error: 'invalid resource' });
+    }
+    // En inloggning från före en lösenordsåterställning får inte koppla en AI
+    // (en stulen JWT lever upp till 15 min efter bytet).
+    const me = await User.findById(req.user.id, 'credentialsChangedAt').lean();
+    if (!me) return res.status(401).json({ error: 'Logga in igen.' });
+    if (me.credentialsChangedAt && !(req.user.iat >= Math.floor(me.credentialsChangedAt.getTime() / 1000))) {
+      return res.status(401).json({ error: 'Logga in igen.' });
     }
 
     // Användarens VAL: samtyckessidan får smalna av (t.ex. "bara läsa"), men
@@ -301,6 +345,11 @@ router.post('/token', oauthLimiter, async (req, res) => {
       if (redirect_uri && redirect_uri !== codeDoc.redirectUri) return oauthError(res, 400, 'invalid_grant', 'redirect_uri mismatch');
       if (!verifyPkce(code_verifier, codeDoc.codeChallenge)) return oauthError(res, 400, 'invalid_grant', 'PKCE verification failed');
       if (resource && resource !== (codeDoc.resource || resourceUrl())) return oauthError(res, 400, 'invalid_target', 'resource mismatch');
+      // Lösenordet återställt efter att koden skapades (eller kontot borta) → ogiltig.
+      const owner = await User.findById(codeDoc.user, 'credentialsChangedAt').lean();
+      if (!owner || (owner.credentialsChangedAt && codeDoc.createdAt < owner.credentialsChangedAt)) {
+        return oauthError(res, 400, 'invalid_grant', 'authorization code is invalid, expired, or already used');
+      }
 
       const active = await McpToken.countDocuments({ user: codeDoc.user, revokedAt: null });
       if (active >= MAX_CONNECTIONS_PER_USER) {
@@ -328,39 +377,56 @@ router.post('/token', oauthLimiter, async (req, res) => {
         return oauthError(res, 400, 'invalid_request', 'refresh_token is required');
       }
       const presented = McpToken.hashToken(refresh_token);
-      const token = await McpToken.findOne({ refreshTokenHash: presented, revokedAt: null });
+      const now = new Date();
+      const token = await McpToken.findOne({ refreshTokenHash: presented, revokedAt: null, oauthClientId: client.clientId });
 
-      if (!token) {
-        // ÅTERANVÄNDNINGSDETEKTION (OAuth 2.1 BCP §4.14.2): matchar den en
-        // anslutnings FÖRRA refresh-token spelas en förbrukad token upp igen
-        // = den har läckt. Vi kan inte skilja tjuv från offer, så hela
-        // anslutningen dör och båda måste godkänna på nytt.
-        const reused = await McpToken.findOne({
-          prevRefreshTokenHash: presented, revokedAt: null, oauthClientId: client.clientId
-        });
-        if (reused) {
-          reused.revokedAt = new Date();
-          await reused.save();
+      if (token) {
+        // En anslutning som inte använts på 90 dagar har somnat.
+        const lastActive = Math.max(...[token.lastUsedAt, token.rotatedAt, token.createdAt].filter(Boolean).map((d) => d.getTime()));
+        if (now.getTime() - lastActive > IDLE_EXPIRY_MS) {
+          await McpToken.updateOne({ _id: token._id, revokedAt: null }, { $set: { revokedAt: now } });
+          return oauthError(res, 400, 'invalid_grant', 'the connection was unused for too long — connect the AI again');
+        }
+        // Rotera BÅDA (OAuth 2.1 §4.3.1) i ett steg: hashen i filtret gör att
+        // bara en av två samtidiga refresh:ar vinner. Den förbrukade hashen
+        // läggs i historiken (de senaste REFRESH_HISTORY).
+        const cred = rotateCredentials();
+        const rotated = await McpToken.findOneAndUpdate(
+          { _id: token._id, refreshTokenHash: presented, revokedAt: null },
+          {
+            $set: { ...cred.fields, rotatedAt: now },
+            $push: { prevRefreshTokenHashes: { $each: [presented], $slice: -REFRESH_HISTORY } }
+          },
+          { new: true }
+        );
+        if (rotated) {
+          res.setHeader('Cache-Control', 'no-store');
+          return res.json(tokenResponse(cred.raw.access, cred.raw.refresh, rotated.scopes));
+        }
+        // Förlorade racet mot en samtidig refresh — nekas nedan som en omsändning.
+      }
+
+      // ÅTERANVÄNDNINGSDETEKTION (OAuth 2.1 BCP §4.14.2): en förbrukad
+      // refresh-token från den här anslutningen = den har läckt. Vi kan inte
+      // skilja tjuv från offer, så hela anslutningen dör och användaren
+      // godkänner på nytt. Undantag: den ALLRA senaste, strax efter rotationen
+      // — det är en klient som skickade två refresh samtidigt eller tappade
+      // svaret, och då nekas bara anropet.
+      const reused = await McpToken.findOne({
+        oauthClientId: client.clientId,
+        revokedAt: null,
+        $or: [{ prevRefreshTokenHashes: presented }, { prevRefreshTokenHash: presented }]
+      });
+      if (reused) {
+        const history = reused.prevRefreshTokenHashes || [];
+        const justRotated = history[history.length - 1] === presented
+          && reused.rotatedAt && now.getTime() - reused.rotatedAt.getTime() < REFRESH_GRACE_MS;
+        if (!justRotated) {
+          await McpToken.updateOne({ _id: reused._id, revokedAt: null }, { $set: { revokedAt: now } });
           console.warn('[mcp] refresh-token reuse detected — connection revoked', { tokenId: String(reused._id) });
         }
-        return oauthError(res, 400, 'invalid_grant', 'refresh token is invalid or revoked');
       }
-      if (token.oauthClientId !== client.clientId) {
-        return oauthError(res, 400, 'invalid_grant', 'refresh token is invalid or revoked');
-      }
-
-      // Rotera BÅDA (OAuth 2.1 §4.3.1) och kom ihåg den förbrukade hashen.
-      // Två samtidiga refresh:ar: den gamla hashen i filtret gör att bara en
-      // vinner; förloraren får invalid_grant utan att trigga reuse-detektionen.
-      const cred = rotateCredentials();
-      const rotated = await McpToken.findOneAndUpdate(
-        { _id: token._id, refreshTokenHash: token.refreshTokenHash, revokedAt: null },
-        { $set: { ...cred.fields, prevRefreshTokenHash: token.refreshTokenHash } },
-        { new: true }
-      );
-      if (!rotated) return oauthError(res, 400, 'invalid_grant', 'refresh token is invalid or revoked');
-      res.setHeader('Cache-Control', 'no-store');
-      return res.json(tokenResponse(cred.raw.access, cred.raw.refresh, rotated.scopes));
+      return oauthError(res, 400, 'invalid_grant', 'refresh token is invalid or revoked');
     }
 
     return oauthError(res, 400, 'unsupported_grant_type', 'only authorization_code and refresh_token are supported');

@@ -57,6 +57,11 @@ const guard = [mcpIpLimiter, mcpChallenge, requireMcpAuth, mcpUserLimiter];
 // POST /api/mcp — stateless Streamable HTTP MCP-endpoint.
 router.post('/', ...guard, async (req, res, next) => {
   try {
+    // JSON-RPC-batchar togs bort ur MCP (2025-06-18) — och ett anrop med
+    // hundra verktygsanrop skulle gå förbi limitrarna, som räknar HTTP-anrop.
+    if (Array.isArray(req.body)) {
+      return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests are not supported — send one JSON-RPC message per request.' } });
+    }
     await handleMcpRequest(req, res, { user: req.user, scopes: req.mcpScopes, features: req.mcpFeatures || [] });
   } catch (err) {
     next(err);

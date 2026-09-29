@@ -309,6 +309,7 @@ router.post('/reset-password', authLimiter, async (req, res) => {
     user.password = password; // pre-save-hook validerar + hashar
     user.refreshTokenHash = null;   // invalidera alla refresh-tokens
     user.refreshTokenFamily = null;
+    user.credentialsChangedAt = new Date();
     // Reset-länken är beviset att hen kontrollerar email-adressen, så
     // markera den som verifierad om den inte redan var det.
     if (!user.emailVerified) {
@@ -317,7 +318,8 @@ router.post('/reset-password', authLimiter, async (req, res) => {
     }
     await user.save();
     // Anslutna AI:er (MCP) är tredjepartsbehörigheter — "säkra mitt konto"
-    // ska avsluta dem också, precis som inloggningssessionerna ovan.
+    // ska avsluta dem också (och ej växlade auth-koder), precis som
+    // inloggningssessionerna ovan.
     await revokeMcpConnectionsForUser(user._id);
     // Skicka bekräftelse efter ändring (best-effort). Om angripare kapat
     // konto via stulen reset-token får riktiga ägaren ändå mail om att

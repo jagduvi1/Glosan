@@ -33,3 +33,14 @@ export async function approveMcpConnection(apiFetch, body) {
   if (!res.ok || !data.redirect) throw new Error(data.error || 'Kunde inte slutföra anslutningen. Försök igen.');
   return data.redirect;
 }
+
+// GET /api/mcp/oauth/client — vem vill ansluta? Namnet valde klienten själv
+// vid registreringen, så svaret har också redirect-värden och `trust`:
+// 'known' (en AI-tjänst Glosan känner igen), 'local' (en app på datorn) eller
+// 'unknown'. Publik (samtyckessidan visas före inloggningen). null = okänd klient.
+export async function fetchMcpClientInfo(clientId, redirectUri) {
+  const q = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri });
+  const res = await fetch(`/api/mcp/oauth/client?${q}`);
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}

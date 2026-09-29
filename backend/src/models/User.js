@@ -72,6 +72,9 @@ const userSchema = new mongoose.Schema({
   // secret) där familjet hittas men hashen inte matchar → någon kör replay
   // av en stulen historisk token; hela familjen revokeras (force re-login).
   refreshTokenFamily: { type: String, default: null, index: true, sparse: true },
+  // När lösenordet senast återställdes. Inloggningar (JWT) och AI-auth-koder
+  // från före dess godtas inte för att koppla en AI (routes/mcpOAuth.js).
+  credentialsChangedAt: { type: Date, default: null },
   // 6-char shareable identity code for the friends feature. Lazy-generated on
   // first /api/me/friend-code request. Unique across all users. INGEN default
   // — sparse-index på MongoDB inkluderar `null`-värden i indexet vilket gör

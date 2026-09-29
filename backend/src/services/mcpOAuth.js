@@ -6,6 +6,7 @@
 // resource-metadata) + RFC 7591 (DCR) + RFC 7636 (PKCE) + RFC 8707 (resource).
 const crypto = require('crypto');
 const McpToken = require('../models/McpToken');
+const OAuthAuthCode = require('../models/OAuthAuthCode');
 
 // Access-tokens är kortlivade; klienten förnyar tyst. Refresh-token roteras vid
 // varje användning och raden lever tills den återkallas, så anslutningen
@@ -17,6 +18,40 @@ const ACCESS_TOKEN_TTL_SEC = 60 * 60; // 1 timme
 // kompatibilitet (claude.ai lägger till det) men lagras aldrig.
 const GRANTABLE_SCOPES = McpToken.TOKEN_SCOPES; // ['read', 'write']
 const SUPPORTED_SCOPES = [...GRANTABLE_SCOPES, 'offline_access'];
+
+// En refresh-token som spelas upp igen strax efter rotationen är oftast en
+// klient som skickade två refresh samtidigt eller tappade svaret — inte en
+// stöld. Inom fönstret nekas den utan att anslutningen dör.
+const REFRESH_GRACE_MS = 2 * 60 * 1000;
+// Så många förbrukade refresh-tokens bakåt känns igen som återanvändning.
+const REFRESH_HISTORY = 10;
+// En anslutning som inte använts på 90 dagar somnar — godkänn på nytt.
+const IDLE_EXPIRY_MS = 90 * 24 * 60 * 60 * 1000;
+// S256-challenge = base64url(SHA-256) = exakt 43 tecken.
+const CODE_CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/;
+const MAX_STATE_LENGTH = 512;
+
+// AI-tjänster vi känner igen på redirect-värden. Vem som helst kan registrera
+// en klient (DCR är öppet), så samtyckessidan varnar för en okänd app, och
+// protokollfel redirectas aldrig till en okänd värd (ingen öppen redirect).
+// Fler: MCP_KNOWN_REDIRECT_HOSTS (kommaseparerad).
+const KNOWN_REDIRECT_HOSTS = ['claude.ai', 'claude.com', 'chatgpt.com', 'chat.openai.com'];
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]', '::1'];
+
+function knownRedirectHosts() {
+  const extra = (process.env.MCP_KNOWN_REDIRECT_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  return [...KNOWN_REDIRECT_HOSTS, ...extra];
+}
+
+/** 'known' (en AI-tjänst vi känner igen), 'local' (en app på datorn) eller 'unknown'. */
+function redirectTrust(uri) {
+  let u;
+  try { u = new URL(uri); } catch { return 'unknown'; }
+  const host = u.hostname.toLowerCase();
+  if (LOOPBACK_HOSTS.includes(host)) return 'local';
+  if (u.protocol !== 'https:') return 'unknown';
+  return knownRedirectHosts().some((h) => host === h || host.endsWith(`.${h}`)) ? 'known' : 'unknown';
+}
 
 /**
  * Originet som AS + RS serveras från (prod: https://glosan.app). FRONTEND_URL
@@ -102,6 +137,8 @@ function grantedScopes(scopeStr) {
     return [...GRANTABLE_SCOPES];
   }
   const granted = GRANTABLE_SCOPES.filter((s) => requested.includes(s));
+  // write utan read vore en anslutning som kan ändra men inte se — write innebär read.
+  if (granted.includes('write') && !granted.includes('read')) granted.unshift('read');
   return granted.length ? granted : ['read'];
 }
 
@@ -141,16 +178,18 @@ function tokenResponse(rawAccess, rawRefresh, scopes) {
 }
 
 /**
- * Återkalla alla AI-anslutningar en användare har. Anropas vid lösenords-
- * återställning: en phishad anslutning är en tredjepartsbehörighet, och
- * "säkra mitt konto"-reflexen måste avsluta den — samma gräns som redan gäller
- * för inloggningssessionerna. Returnerar antalet återkallade.
+ * Återkalla alla AI-anslutningar en användare har, och de auth-koder som ännu
+ * inte växlats. Anropas vid lösenordsåterställning: en phishad anslutning är
+ * en tredjepartsbehörighet, och "säkra mitt konto"-reflexen måste avsluta den —
+ * samma gräns som redan gäller för inloggningssessionerna. Returnerar antalet
+ * återkallade anslutningar.
  */
 async function revokeMcpConnectionsForUser(userId) {
   const res = await McpToken.updateMany(
     { user: userId, revokedAt: null },
     { $set: { revokedAt: new Date() } }
   );
+  await OAuthAuthCode.deleteMany({ user: userId });
   return res.modifiedCount || 0;
 }
 
@@ -158,6 +197,12 @@ module.exports = {
   ACCESS_TOKEN_TTL_SEC,
   GRANTABLE_SCOPES,
   SUPPORTED_SCOPES,
+  REFRESH_GRACE_MS,
+  REFRESH_HISTORY,
+  IDLE_EXPIRY_MS,
+  CODE_CHALLENGE_RE,
+  MAX_STATE_LENGTH,
+  redirectTrust,
   issuer,
   resourceUrl,
   authServerMetadata,
