@@ -30,6 +30,7 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
+const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
@@ -64,6 +65,9 @@ function AppRoutes() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
         <Route path="/j/:code" element={<JoinList />} />
+        {/* OAuth-samtycket för MCP-connectorn — hanterar utloggat läge själv
+            så att OAuth-parametrarna ligger kvar i URL:en. */}
+        <Route path="/connect-ai/authorize" element={<ConnectAiAuthorize />} />
 
         <Route path="/" element={user ? <Navigate to="/lists" replace /> : <Landing />} />
 
