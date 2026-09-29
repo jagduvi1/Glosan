@@ -65,7 +65,8 @@ Glosan/
 │       ├── middleware/auth.js
 │       ├── models/{User,GlosList,Glos}.js
 │       ├── routes/{health,auth,oauth,lists,glosor,ai}.js
-│       ├── services/{anthropic,authTokens,oauthStateStore,email,mcpOAuth}.js
+│       ├── config/{plans,features,subjects}.js
+│       ├── services/{anthropic,authTokens,oauthStateStore,email,mcpOAuth,studyData}.js
 │       └── mcp/{server,registry,toolUtil,instructions,prompts}.js + mcp/tools/*.js
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, vite.config.js, index.html
@@ -88,6 +89,7 @@ Glosan/
 | `User` | Auth & profile, roles: `user` / `admin`. Refresh-token hash stored. |
 | `GlosList` | A named vocabulary list owned by one user. `{ user, title, description, sourceLang, targetLang }` |
 | `Glos` | One word pair in a list. `{ list, source, target, notes, exampleSentence, stats: { correct, wrong, lastReviewedAt } }` |
+| `Study*` | Plugga (school subjects, behind the `study` flag): `StudyUnit` (område), `StudyPage` (genomgång), `StudyItem` (card/exercise), per-user `StudyItemState`/`StudyAttempt`/`StudySession`, `StudyFolder`. See [docs/plugga.md](docs/plugga.md). |
 
 ---
 
@@ -102,6 +104,7 @@ Copy `.env.example` → `.env` and set:
 | `ACCESS_TOKEN_EXPIRES_IN` | No | `15m` |
 | `PORT` | No | `5000` |
 | `FRONTEND_URL` | No | `http://localhost` (first entry is also the MCP OAuth issuer) |
+| `FEATURES_FOR_ALL` | No | — (comma-separated feature flags on for everyone, e.g. `study`) |
 | `ANTHROPIC_API_KEY` | No (required for AI routes) | — |
 | `GOOGLE_CLIENT_ID` | No (required for Google login) | — |
 | `GOOGLE_CLIENT_SECRET` | No (required for Google login) | — |
@@ -146,6 +149,8 @@ cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.
 - **Image import:** `POST /api/ai/parse-image` takes a base64 image and returns the *same* shape as `/parse-list`, so [ImportModal](frontend/src/components/ImportModal.jsx) reuses the whole review-and-save step. The client downscales to 1600px JPEG first ([utils/image.js](frontend/src/utils/image.js)) — a phone photo is 2–12 MB raw, ~300 kB scaled. The image is never stored. Body limits are raised **only** for that one route (app.js + nginx.conf); the rest of the API stays at 64 kB.
 - **MCP server:** `POST /api/mcp` lets claude.ai & co. read and edit a user's lists (photo → `create_list` is the headline flow — Claude reads the image, Glosan never sees it). Ported from Cellarion but stateless-only. Connectors authorize through Glosan's own OAuth 2.1 server ([routes/mcpOAuth.js](backend/src/routes/mcpOAuth.js), consent page `/connect-ai/authorize`) and get `glo_` tokens that **only** [middleware/mcpAuth.js](backend/src/middleware/mcpAuth.js) accepts. Tools are declared with `registerTool` in [backend/src/mcp/tools/](backend/src/mcp/tools); scope filtering is structural (a read-only connection never gets write tools registered). The MCP routes must stay mounted **before** the routers on `/api` in app.js — `glosor.js` runs `requireAuth` on the whole prefix. Full guide: [docs/mcp.md](docs/mcp.md).
+- **Feature flags:** hidden modules are gated per account (`User.features`, switched on the admin page) or for everyone (`FEATURES_FOR_ALL`); catalogue in [config/features.js](backend/src/config/features.js). Backend routes use `requireFeature(key)` (404 when off), the frontend `hasFeature(user, key)`, and MCP tools/prompts/instructions declare `feature: '<key>'` so they're only registered for flagged users.
+- **Plugga (school subjects):** behind the `study` flag. Content is created **only via MCP** by the user's own AI, and **Glosan never calls an AI API in Plugga** — don't import `services/anthropic.js` there. Progress is per user (`StudyItemState`), never on the item, because units can be shared. Use `services/studyData.js` for deleting units/accounts and the export. Design + phases: [docs/plugga.md](docs/plugga.md).
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
 - **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
 
