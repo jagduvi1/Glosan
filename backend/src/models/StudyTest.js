@@ -44,6 +44,9 @@ const studyTestSchema = new mongoose.Schema({
     B: { type: limitSchema, default: () => ({}) },
     A: { type: limitSchema, default: () => ({}) }
   },
+  // Maxpoängen som gränserna sattes för. Tas frågor bort skalas gränserna ner
+  // i samma proportion (testGrading.scaleLimits) — annars blir A omöjligt.
+  baseMax: { type: new mongoose.Schema({ E: Number, C: Number, A: Number }, { _id: false }), default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

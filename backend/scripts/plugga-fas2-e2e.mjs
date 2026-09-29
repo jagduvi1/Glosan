@@ -214,6 +214,19 @@ async function main() {
     assert.equal(paper.isError, false, JSON.stringify(paper));
     assert.deepEqual(paper.data.score, { E: 2, C: 3, A: 1, total: 6 }, 'points are capped at each question\'s value');
     assert.equal(paper.data.estimated_grade, 'A');
+    const resent = await call(claude, 'record_paper_test', {
+      code: 'MA1-5',
+      minutes: 25,
+      results: [
+        { code: 'MA1-5', points: { E: 1 }, feedback: 'Rätt!' },
+        { code: 'MA1-6', points: { C: 1 } },
+        { code: 'MA1-7', points: { E: 5, C: 1 }, feedback: 'Rätt ord.' },
+        { code: 'MA1-8', points: { C: 1, A: 1 }, feedback: 'Välutvecklat resonemang!' }
+      ],
+      overall_feedback: 'Mycket bra! Du behärskar procent. Öva på förändringsfaktor inför provet.'
+    });
+    assert.equal(resent.data.duplicate, true, 'the same paper result sent again is not counted twice');
+    assert.equal(resent.data.xp_earned, 0);
     ok(`on paper: printable sheet without answers; the AI finds the test by a question code and records 6/6 → estimated ${paper.data.estimated_grade}`);
 
     // ── nivåstegen ──────────────────────────────────────────────────────────
@@ -339,7 +352,7 @@ async function main() {
     const multiItem = byPrompt(/primtal\?/);
     assert.deepEqual((await say(multiItem, [3, 1])).body.result, 'correct');
     const orderItem = byPrompt(/storleksordning/);
-    assert.notDeepEqual(orderItem.items, ['0,05', '0,5', '5'], 'shuffled, never already right');
+    assert.deepEqual([...orderItem.items].sort(), ['0,05', '0,5', '5'].sort(), 'the items to order arrive shuffled (fully random)');
     assert.equal((await say(orderItem, ['0,05', '0,5', '5'])).body.result, 'correct');
     const factorItem = byPrompt(/faktorisera/);
     assert.equal((await say(factorItem, '3·2·5·3')).body.result, 'correct');
@@ -358,7 +371,7 @@ async function main() {
     await api(`/api/study/sessions/${bySkill.body.session.id}/finish`, A.token, { method: 'POST' });
 
     const tplTest = await call(claude, 'create_practice_test', { unit_id: drillId, title: 'x', questions: [exs[5]] });
-    assert.match(tplTest.error?.message || '', /Templates are for practice/);
+    assert.match(tplTest.error?.message || '', /templates are for practice/);
     const parts = await call(claude, 'create_practice_test', {
       unit_id: drillId,
       title: 'Diagnos — Tal',

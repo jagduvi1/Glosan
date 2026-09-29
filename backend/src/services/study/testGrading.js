@@ -118,6 +118,31 @@ function gradeLimitsFrom(input, max) {
 }
 
 /**
+ * Gränserna för provets NUVARANDE maxpoäng. De sattes för `baseMax`; har
+ * frågor tagits bort sedan skalas varje gräns ner i samma proportion (annars
+ * kunde ett A bli omöjligt). Utan baseMax begränsas de bara till max.
+ */
+function scaleLimits(limits, baseMax, max) {
+  const m = withTotal(max);
+  const b = baseMax ? withTotal(baseMax) : null;
+  const scale = (value, now, then) => {
+    const v = Math.max(0, Number(value) || 0);
+    const scaled = b && then > 0 && then !== now ? Math.ceil((v * now) / then) : v;
+    return Math.min(now, scaled);
+  };
+  const out = {};
+  for (const g of GRADES) {
+    const l = limits?.[g] || {};
+    out[g] = {
+      total: scale(l.total, m.total, b?.total),
+      cOrA: scale(l.cOrA, m.C + m.A, b ? b.C + b.A : 0),
+      a: scale(l.a, m.A, b?.A)
+    };
+  }
+  return out;
+}
+
+/**
  * Uppskattat betyg. Ett prov utan A-frågor kan inte visa A-kunskaper (högst
  * C), ett prov med bara E-frågor högst E.
  */
@@ -135,5 +160,5 @@ function estimateGrade(score, max, limits) {
 
 module.exports = {
   LEVELS, GRADES, sumPoints, withTotal, defaultPoints, pointsForResult, pointsForSelfLevel, resultFromPoints,
-  clampPoints, defaultGradeLimits, gradeLimitsFrom, estimateGrade
+  clampPoints, defaultGradeLimits, gradeLimitsFrom, scaleLimits, estimateGrade
 };

@@ -26,7 +26,23 @@ const answerSchema = new mongoose.Schema({
   selfLevel: { type: String, enum: ['none', 'E', 'C', 'A', null], default: null },
   points: { type: pointsSchema, default: () => ({}) },
   max: { type: pointsSchema, default: () => ({}) },
-  feedback: { type: String, maxlength: 4000, default: '' }
+  feedback: { type: String, maxlength: 4000, default: '' },
+  // Frågan som den såg ut vid inlämningen (sparas när provet blir klart), så
+  // resultatet går att läsa även om uppgiften ändras eller tas bort.
+  prompt: { type: String, maxlength: 4000, default: undefined },
+  answerType: { type: String, maxlength: 12, default: undefined },
+  level: { type: String, maxlength: 1, default: undefined },
+  skill: { type: String, maxlength: 80, default: undefined },
+  part: { type: String, maxlength: 60, default: undefined },
+  expected: { type: String, maxlength: 3000, default: undefined },
+  solution: { type: String, maxlength: 8000, default: undefined },
+  modelAnswer: { type: String, maxlength: 4000, default: undefined }
+}, { _id: false });
+
+const limitSchema = new mongoose.Schema({
+  total: { type: Number, min: 0, default: 0 },
+  cOrA: { type: Number, min: 0, default: 0 },
+  a: { type: Number, min: 0, default: 0 }
 }, { _id: false });
 
 const studyTestAttemptSchema = new mongoose.Schema({
@@ -46,6 +62,11 @@ const studyTestAttemptSchema = new mongoose.Schema({
   score: { type: pointsSchema, default: () => ({}) },
   max: { type: pointsSchema, default: () => ({}) },
   grade: { type: String, enum: ['A', 'B', 'C', 'D', 'E', 'F', null], default: null },
+  // Betygsgränserna som gällde när försöket räknades ihop.
+  limits: {
+    type: new mongoose.Schema({ E: limitSchema, D: limitSchema, C: limitSchema, B: limitSchema, A: limitSchema }, { _id: false }),
+    default: undefined
+  },
   overallFeedback: { type: String, maxlength: 4000, default: '' },
   xpEarned: { type: Number, min: 0, default: 0 }
 });

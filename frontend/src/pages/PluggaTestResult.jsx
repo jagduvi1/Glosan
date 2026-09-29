@@ -50,7 +50,9 @@ export default function PluggaTestResult() {
             <div style={{ fontFamily: 'var(--font-headline)', fontSize: 30, lineHeight: 1.1 }}>
               {data.score.total} av {data.max.total} poäng
             </div>
-            {data.xpEarned > 0 && <span className="pill" style={{ background: 'var(--mustard-soft)', marginTop: 6 }}>+{data.xpEarned} XP</span>}
+            {data.xpEarned > 0
+              ? <span className="pill" style={{ background: 'var(--mustard-soft)', marginTop: 6 }}>+{data.xpEarned} XP</span>
+              : <div className="t-hand muted" style={{ marginTop: 6, fontSize: 14 }}>Inga XP den här gången — samma prov ger XP en gång per dygn.</div>}
           </div>
         </div>
         <div style={{ marginTop: 16 }}>

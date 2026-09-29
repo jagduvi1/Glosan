@@ -71,6 +71,8 @@ function isoWeek(ymd) {
 }
 
 const PERIODS = ['day', 'week', 'month', 'term'];
+const MIN_YMD = '2000-01-01';
+const MAX_YMD = '2099-12-31';
 
 /**
  * Perioden som innehåller `anchor`: { period, start, end (exkl.), prev, next,
@@ -79,7 +81,9 @@ const PERIODS = ['day', 'week', 'month', 'term'];
  */
 function periodRange(period, anchor) {
   const p = PERIODS.includes(period) ? period : 'week';
-  const a = parseYmd(anchor) ? anchor : localYmd();
+  // Datum utanför 2000–2099 (år 9999 …) blir idag — annars blir kalender-
+  // räkningen fel (sexsiffriga år) och frågan meningslös.
+  const a = parseYmd(anchor) && anchor >= MIN_YMD && anchor <= MAX_YMD ? anchor : localYmd();
   let start;
   let end;
   let prev;

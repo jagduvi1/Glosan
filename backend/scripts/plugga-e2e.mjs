@@ -94,10 +94,16 @@ async function main() {
       feedback: 'Snyggt! Du tog bort 3 i båda led och delade med 2. Kontrollera gärna genom att sätta in x = 4.'
     });
     assert.equal(paper.data.xp_earned, 10);
+    const resent = await call(claude, 'record_paper_attempt', {
+      code: 'MA1-4', result: 'correct', given: 'x = 4', minutes: 5,
+      feedback: 'Snyggt! Du tog bort 3 i båda led och delade med 2. Kontrollera gärna genom att sätta in x = 4.'
+    });
+    assert.equal(resent.data.duplicate, true);
+    assert.equal(resent.data.xp_earned, 0);
     const again = await call(claude, 'get_study_item', { code: 'MA1-4' });
     assert.equal(again.data.my_history.length, 1);
     assert.equal(again.data.my_history[0].source, 'paper');
-    ok('paper flow: record_paper_attempt (+10 XP), history with the AI feedback');
+    ok('paper flow: record_paper_attempt (+10 XP), history with the AI feedback; the same call again is not counted twice');
 
     const units = await api('/api/study/units?subject=matematik&allTerms=1', A.token);
     assert.equal(units.body.units.length, 1);
@@ -136,12 +142,17 @@ async function main() {
     assert.equal(results['MA1-7'].body.expected, '$x = 5$');
     assert.match(results['MA1-8'].body.note, /stavas/);
     assert.match(results['MA1-7'].body.solution, /x = 5/);
-    ok('practice: "fyra" not counted (422); cards, 2,5 · 1/2 · typo "koeficient" right, wrong choice shows answer + solution');
+    assert.equal((await answer('MA1-4', { answer: '4' })).status, 409, 'the same item cannot be answered twice in a session');
+    const other = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [unitId], mode: 'cards' } });
+    const foreign = await api(`/api/study/sessions/${other.body.session.id}/answer`, A.token, { method: 'POST', body: { itemId: code('MA1-4').id, answer: '4' } });
+    assert.equal(foreign.status, 404, 'an item the session did not serve is refused');
+    ok('practice: "fyra" not counted (422); cards, 2,5 · 1/2 · typo "koeficient" right, wrong choice shows answer + solution; no second answer, no unserved item');
 
     const fin = await api(`/api/study/sessions/${sid}/finish`, A.token, { method: 'POST' });
     assert.equal(fin.body.answered, 9);
     assert.equal(fin.body.correct, 6);
     assert.equal(fin.body.xpEarned, 6 * 10 + 2 * 5);
+    assert.equal((await api(`/api/study/sessions/${sid}/finish`, A.token, { method: 'POST' })).status, 404, 'a session finishes (and pays XP) once');
     assert.ok(fin.body.streak.current >= 1);
     const me = await api('/api/auth/me', A.token);
     assert.equal(me.body.user.subjectXp.matematik, 10 + 70);

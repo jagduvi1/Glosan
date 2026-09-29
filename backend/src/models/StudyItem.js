@@ -37,6 +37,8 @@ const answerSchema = new mongoose.Schema({
   correctIndices: { type: [Number], default: undefined },
   factors: { type: [Number], default: undefined },
   accepted: { type: [{ type: String, trim: true, maxlength: 200 }], default: undefined },
+  // Textsvar: inget stavfel godtas (etanol/metanol, Karl XI/XII).
+  exact: { type: Boolean, default: undefined },
   // Modellsvar — krävs för `self`, valfritt för övriga (visas efter svar).
   modelAnswer: { type: String, maxlength: 4000, default: '' }
 }, { _id: false });
@@ -108,7 +110,7 @@ studyItemSchema.pre('validate', function (next) {
   }
   if (a.type === 'order') {
     const items = Array.isArray(a.choices) ? a.choices.map((c) => String(c).trim().toLowerCase()) : [];
-    if (items.length < 2 || items.length > 8) this.invalidate('answer.choices', 'an order question needs 2–8 items');
+    if (items.length < 3 || items.length > 8) this.invalidate('answer.choices', 'an order question needs 3–8 items');
     else if (new Set(items).size !== items.length) this.invalidate('answer.choices', 'the items to order must all be different');
   }
   if (a.type === 'factors') {

@@ -73,7 +73,8 @@ const answerInput = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('text'),
-    accepted: z.array(z.string().trim().min(1).max(200)).min(1).max(10).describe('Accepted answers, e.g. ["fotosyntes", "fotosyntesen"]')
+    accepted: z.array(z.string().trim().min(1).max(200)).min(1).max(10).describe('Accepted answers, e.g. ["fotosyntes", "fotosyntesen"]'),
+    exact: z.boolean().optional().describe('true when a one-letter slip is a different answer (etanol/metanol, Karl XI/XII) — turns off the small typo allowance for long words')
   }),
   z.object({
     type: z.literal('self'),
@@ -86,7 +87,7 @@ const answerInput = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('order'),
-    items: z.array(z.string().trim().min(1).max(300)).min(2).max(8).describe('The items in the CORRECT order (smallest first, earliest first …) — the app shuffles them for the student')
+    items: z.array(z.string().trim().min(1).max(300)).min(3).max(8).describe('3–8 items in the CORRECT order (smallest first, earliest first …) — the app shuffles them for the student')
   }),
   z.object({
     type: z.literal('factors'),
@@ -187,7 +188,7 @@ function answerOut(a) {
   switch (a.type) {
     case 'number': return { type: 'number', ...(a.expr ? { expr: a.expr } : { value: a.value }), tolerance: a.tolerance || 0, unit: a.unit || '' };
     case 'choice': return { type: 'choice', choices: a.choices, correct_index: a.correctIndex };
-    case 'text': return { type: 'text', accepted: a.accepted };
+    case 'text': return { type: 'text', accepted: a.accepted, ...(a.exact ? { exact: true } : {}) };
     case 'self': return { type: 'self', model_answer: a.modelAnswer };
     case 'multi': return { type: 'multi', choices: a.choices, correct_indices: a.correctIndices };
     case 'order': return { type: 'order', items: a.choices };
@@ -200,7 +201,7 @@ function answerIn(a) {
   switch (a.type) {
     case 'number': return { type: 'number', value: a.value, ...(a.expr ? { expr: a.expr } : {}), tolerance: a.tolerance || 0, unit: a.unit || '' };
     case 'choice': return { type: 'choice', choices: a.choices, correctIndex: a.correct_index };
-    case 'text': return { type: 'text', accepted: a.accepted };
+    case 'text': return { type: 'text', accepted: a.accepted, ...(a.exact ? { exact: true } : {}) };
     case 'self': return { type: 'self', modelAnswer: a.model_answer };
     case 'multi': return { type: 'multi', choices: a.choices, correctIndices: a.correct_indices };
     case 'order': return { type: 'order', choices: a.items };
@@ -1022,6 +1023,20 @@ registerTool({
     const out = await recordPaperAttempt(ctx.user.id, item, unit, {
       result: args.result, feedback: args.feedback, given: args.given || '', minutes: args.minutes ?? null
     });
+    if (out.error === 'test_item') {
+      return fail('invalid_input', `${itemCode(unit, item)} is a question on a practice test — check the whole test and record it with record_paper_test.`);
+    }
+    if (out.duplicate) {
+      return ok(`Already recorded ${args.result} on ${itemCode(unit, item)} a moment ago — not counted twice`, {
+        code: itemCode(unit, item),
+        result: args.result,
+        duplicate: true,
+        recorded_at: out.recordedAt,
+        xp_earned: 0,
+        next_review: out.state?.dueAt ?? null,
+        url: unitUrl(unit)
+      });
+    }
     return ok(`Recorded ${args.result} on ${itemCode(unit, item)} (+${out.xpEarned} XP)`, {
       code: itemCode(unit, item),
       result: args.result,
@@ -1098,7 +1113,7 @@ registerTool({
     title: z.string().trim().min(1).max(120).describe('e.g. "Övningsprov — Ekvationer"'),
     description: z.string().trim().max(1000).optional().describe('What it covers, allowed aids (miniräknare, formelblad), a tip'),
     time_limit_min: z.number().int().min(5).max(180).optional(),
-    questions: z.array(exerciseInput.extend({
+    questions: z.array(exerciseInput.omit({ template: true }).extend({
       points: pointsInput.optional().describe('Points per level — default 1 point on the question\'s level'),
       part: z.string().trim().max(60).optional().describe('The test part it belongs to, e.g. "Del A — utan miniräknare". Questions of one part go together, in order.')
     })).min(1).max(40),
@@ -1120,8 +1135,11 @@ registerTool({
           'Check it with get_practice_test. Only if the student wants a second one, pass allow_duplicate: true.');
       }
     }
-    if (args.questions.some((q) => q.template)) {
-      return fail('invalid_input', 'Templates are for practice (add_exercises): a test needs fixed numbers, so the printed sheet, the app and your checking all match.');
+    // Mallar hör till övningar (add_exercises): ett prov har fasta tal, så
+    // utskriften, appen och rättningen stämmer överens.
+    const placeholder = args.questions.findIndex((q) => [q.prompt, q.solution, ...(q.hints || [])].some((t) => String(t || '').includes('{{')));
+    if (placeholder >= 0) {
+      return fail('invalid_input', `Question ${placeholder + 1} has a {{…}} placeholder — templates are for practice (add_exercises); a test needs fixed numbers.`);
     }
     const prepared = prepareExercises(args.questions, 'Question');
     if (prepared.error) return prepared.error;
@@ -1143,7 +1161,8 @@ registerTool({
         description: args.description || '',
         timeLimitMin: args.time_limit_min ?? null,
         questions: r.inserted.map((item, i) => ({ item: item._id, points: points[i], part: args.questions[i].part || '' })),
-        gradeLimits: G.gradeLimitsFrom(args.grade_limits, max)
+        gradeLimits: G.gradeLimitsFrom(args.grade_limits, max),
+        baseMax: { E: max.E, C: max.C, A: max.A }
       });
     } catch (err) {
       await StudyItem.deleteMany({ _id: { $in: r.inserted.map((i) => i._id) } });
@@ -1188,7 +1207,7 @@ registerTool({
       time_limit_min: test.timeLimitMin ?? null,
       unit: unitMeta(unit),
       max_points: G.sumPoints(qs.map((x) => x.q.points)),
-      grade_limits: test.gradeLimits,
+      grade_limits: G.scaleLimits(test.gradeLimits, test.baseMax, G.sumPoints(qs.map((x) => x.q.points))),
       questions: qs.map((x) => ({ n: x.n, ...(x.q.part ? { part: x.q.part } : {}), points: { E: x.q.points.E, C: x.q.points.C, A: x.q.points.A }, ...itemFull(x.item, unit) })),
       my_attempts: tries.map((a) => ({ at: a.finishedAt, source: a.source, score: a.score, max: a.max, estimated_grade: a.grade })),
       url: testUrl(test._id)
@@ -1243,7 +1262,11 @@ registerTool({
     const out = await recordPaperTest(ctx.user.id, test, unit, {
       results, overallFeedback: args.overall_feedback, minutes: args.minutes ?? null
     });
-    return ok(`Recorded "${test.title}": ${out.score.total}/${out.max.total} points, estimated grade ${out.grade} (+${out.xpEarned} XP)`, {
+    const summary = out.duplicate
+      ? `Already recorded "${test.title}" a moment ago — not counted twice: ${out.score.total}/${out.max.total} points, estimated grade ${out.grade}`
+      : `Recorded "${test.title}": ${out.score.total}/${out.max.total} points, estimated grade ${out.grade} (+${out.xpEarned} XP)`;
+    return ok(summary, {
+      ...(out.duplicate ? { duplicate: true } : {}),
       score: out.score,
       max: out.max,
       estimated_grade: out.grade,

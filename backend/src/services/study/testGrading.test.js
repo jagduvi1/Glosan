@@ -87,3 +87,28 @@ describe('estimated grade', () => {
     expect(G.gradeLimitsFrom({ E: { total: 99 } }, m).E.total).toBe(23);
   });
 });
+
+describe('scaleLimits (audit)', () => {
+  const base = { E: 10, C: 8, A: 6 };
+  const limits = G.gradeLimitsFrom({ E: { total: 8 }, C: { total: 14, c_or_a: 4 }, A: { total: 19, a: 3 } }, base);
+
+  test('unchanged when no question was removed', () => {
+    expect(G.scaleLimits(limits, base, base)).toEqual(limits);
+  });
+
+  test('scaled down with the max when questions are removed, so A stays reachable', () => {
+    const now = { E: 10, C: 8, A: 3 }; // hälften av A-frågorna borttagna
+    const l = G.scaleLimits(limits, base, now);
+    expect(l.A.a).toBe(2); // 3 · 3/6 = 1,5 → 2
+    expect(l.A.total).toBeLessThanOrEqual(21);
+    expect(G.estimateGrade(now, now, l)).toBe('A');
+    // utan skalning var A-gränsen 19 av 21 med 3 A-poäng — nåbar, men E-gränsen följer också med
+    expect(l.E.total).toBe(Math.ceil(8 * 21 / 24));
+  });
+
+  test('without baseMax the limits are only capped at the max', () => {
+    const l = G.scaleLimits(limits, undefined, { E: 5, C: 2, A: 1 });
+    expect(l.A).toEqual({ total: 8, cOrA: 0, a: 1 });
+    expect(l.E.total).toBe(8);
+  });
+});

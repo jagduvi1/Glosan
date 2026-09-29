@@ -75,6 +75,13 @@ describe('gradeNumber', () => {
     expect(gradeNumber('1/3', { value: 0.3333, tolerance: 0.001 }).result).toBe('correct');
   });
 
+  test('the tolerance edge holds for large numbers too (audit)', () => {
+    // 123456,75 − 123456,7 = 0,05000000000291 i flyttal.
+    expect(gradeNumber('123456,75', { value: 123456.7, tolerance: 0.05 }).result).toBe('correct');
+    expect(gradeNumber('123456,76', { value: 123456.7, tolerance: 0.05 }).result).toBe('wrong');
+    expect(gradeNumber('1000000,1', { value: 1000000 }).result).toBe('wrong');
+  });
+
   test('units: a missing unit is forgiven with a reminder, a wrong unit is wrong', () => {
     const spec = { value: 12, unit: 'cm' };
     expect(gradeNumber('12 cm', spec)).toMatchObject({ result: 'correct', expected: '12 cm' });
@@ -96,6 +103,13 @@ describe('gradeChoice', () => {
     expect(gradeChoice('0', spec)).toEqual({ result: 'wrong', expected: '4' });
     expect(gradeChoice(7, spec).invalid).toBe(true);
     expect(gradeChoice('x', spec).invalid).toBe(true);
+  });
+
+  test('a blank answer is not the first choice (audit)', () => {
+    expect(gradeChoice('', spec).invalid).toBe(true);
+    expect(gradeChoice('  ', spec).invalid).toBe(true);
+    expect(gradeChoice(undefined, spec).invalid).toBe(true);
+    expect(gradeChoice(null, spec).invalid).toBe(true);
   });
 });
 
@@ -119,6 +133,18 @@ describe('gradeText', () => {
 
   test('Swedish letters are compared correctly', () => {
     expect(gradeText('ÖSTERSJÖN', { accepted: ['Östersjön'] }).result).toBe('correct');
+  });
+
+  test('no typo slack below 8 letters, for Roman numerals or when exact (audit)', () => {
+    expect(gradeText('metanol', { accepted: ['etanol'] }).result).toBe('wrong');
+    expect(gradeText('propen', { accepted: ['propan'] }).result).toBe('wrong');
+    expect(gradeText('Karl XI', { accepted: ['Karl XII'] }).result).toBe('wrong');
+    expect(gradeText('Gustav II Adolf', { accepted: ['Gustav III Adolf'] }).result).toBe('wrong');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('correct');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'], exact: true }).result).toBe('wrong');
+    // Två stavfel först från 12 tecken.
+    expect(gradeText('fotosyntesne', { accepted: ['fotosyntesen'] }).result).toBe('correct');
+    expect(gradeText('fotosyntzz', { accepted: ['fotosyntes'] }).result).toBe('wrong');
   });
 
   test('empty answer is invalid', () => {

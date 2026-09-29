@@ -73,8 +73,11 @@ function gradeNumber(input, spec) {
   }
   const want = normalizeUnit(spec.unit);
   const expected = `${formatNumber(spec.value)}${spec.unit ? ` ${spec.unit}` : ''}`;
-  const tol = spec.tolerance > 0 ? spec.tolerance : Math.max(1e-9, Math.abs(spec.value) * 1e-9);
-  const numberOk = Math.abs(parsed.value - spec.value) <= tol + 1e-12;
+  // Flyttalsmarginalen växer med talets storlek: 123456,75 − 123456,7 blir
+  // 0,05000000000291 i datorn och ska ändå rymmas i toleransen 0,05.
+  const eps = 1e-9 * Math.max(1, Math.abs(spec.value));
+  const tol = spec.tolerance > 0 ? spec.tolerance : 0;
+  const numberOk = Math.abs(parsed.value - spec.value) <= tol + eps;
   if (numberOk && want && parsed.unit && parsed.unit !== want) {
     return { result: 'wrong', expected, note: `Kolla enheten — svaret ska anges i ${spec.unit}.` };
   }
@@ -87,7 +90,9 @@ function gradeNumber(input, spec) {
 // ── flerval ──────────────────────────────────────────────────────────────────
 
 function gradeChoice(input, spec) {
-  const idx = typeof input === 'number' ? input : Number(String(input ?? '').trim());
+  // Tomt svar är inget val — Number('') är 0 och fick annars räknas som första alternativet.
+  const raw = typeof input === 'string' ? input.trim() : input;
+  const idx = typeof raw === 'number' ? raw : typeof raw === 'string' && raw !== '' ? Number(raw) : NaN;
   const n = Array.isArray(spec.choices) ? spec.choices.length : 0;
   if (!Number.isInteger(idx) || idx < 0 || idx >= n) {
     return { invalid: true, message: 'Välj ett av alternativen.' };
@@ -121,10 +126,18 @@ function levenshtein(a, b) {
   return prev[b.length];
 }
 
+// Ett stavfel godtas från 8 tecken, två från 12 — kortare ord blir för lätt
+// ett annat ord (etanol/metanol, propan/propen).
+const TYPO_MIN_1 = 8;
+const TYPO_MIN_2 = 12;
+// Romerska siffror ("Karl XII", "Gustav III"): en bokstav fel är en annan kung.
+const ROMAN_RE = /(^|[^A-Za-zÅÄÖåäö])[IVXLCDM]{1,7}(?![A-Za-zÅÄÖåäö])/;
+
 /**
  * Textsvar: exakt (normaliserat) mot någon godkänd variant = rätt. Ett litet
  * stavfel i ett längre ord godtas också — men eleven får se rätt stavning.
- * Svar med siffror (årtal, datum) måste stämma exakt.
+ * Svar med siffror (årtal, datum) eller romerska siffror måste stämma exakt,
+ * liksom allt i en uppgift med `exact`.
  */
 function gradeText(input, spec) {
   const given = normalizeText(input);
@@ -132,9 +145,10 @@ function gradeText(input, spec) {
   const accepted = (spec.accepted || []).map((a) => ({ raw: a, norm: normalizeText(a) })).filter((a) => a.norm);
   const expected = accepted[0]?.raw || '';
   if (accepted.some((a) => a.norm === given)) return { result: 'correct', expected };
+  if (spec.exact) return { result: 'wrong', expected };
   for (const a of accepted) {
-    if (/\d/.test(a.norm) || a.norm.length < 5) continue;
-    const allowed = a.norm.length >= 10 ? 2 : 1;
+    if (/\d/.test(a.norm) || ROMAN_RE.test(a.raw) || a.norm.length < TYPO_MIN_1) continue;
+    const allowed = a.norm.length >= TYPO_MIN_2 ? 2 : 1;
     if (levenshtein(given, a.norm) <= allowed) {
       return { result: 'correct', expected, note: `Det stavas "${a.raw}".` };
     }

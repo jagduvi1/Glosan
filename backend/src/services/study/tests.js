@@ -11,16 +11,26 @@ const { getSubject } = require('../../config/subjects');
 const { termLabel } = require('../../utils/term');
 const { gradeAnswer, formatNumber, formatFactors, describeAnswer } = require('./grading');
 const { loadUnit, isId, oid, itemCode } = require('./access');
-const { recordAttempt, shuffledDifferent, XP_CORRECT, XP_PARTIAL } = require('./practice');
+const { recordAttempt, shuffled, seedFrom, XP_CORRECT, XP_PARTIAL } = require('./practice');
+const { mulberry32 } = require('./templates');
 const { awardStudyActivity } = require('../gamification');
 const G = require('./testGrading');
 
 const XP_TEST_BONUS = 20;
 // Ett påbörjat prov i appen går att fortsätta (t.ex. efter omladdning) i 6 h.
 const RESUME_WINDOW_MS = 6 * 60 * 60 * 1000;
+// Samma prov ger XP en gång per dygn — facit syns ju efter första försöket.
+const TEST_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
+// En papperrättning som skickas igen inom så här lång tid är en omsändning.
+const PAPER_DUPLICATE_MS = 10 * 60 * 1000;
 const SELF_LEVELS = ['none', 'E', 'C', 'A'];
 
 const maxOf = (p) => ({ E: p?.E || 0, C: p?.C || 0, A: p?.A || 0 });
+// eslint-disable-next-line no-unused-vars
+const withoutAnswers = ({ answers, ...rest }) => rest;
+
+/** Betygsgränserna för provets nuvarande maxpoäng (skalade om frågor tagits bort). */
+const limitsFor = (test, max) => G.scaleLimits(test.gradeLimits, test.baseMax, max);
 
 async function loadTest(userId, testId) {
   if (!isId(testId)) return null;
@@ -43,9 +53,14 @@ async function testItems(test) {
 
 const testMax = (qs) => G.sumPoints(qs.map((x) => maxOf(x.q.points)));
 
-/** En fråga som eleven ser den — utan facit, ledtrådar eller modellsvar. */
-function publicQuestion({ n, q, item }, unit) {
+/**
+ * En fråga som eleven ser den — utan facit, ledtrådar eller modellsvar.
+ * `shuffleKey` (försökets id) ger samma blandning av en ordna-fråga varje
+ * gång provet öppnas igen; utan den blandas den på nytt (utskrift).
+ */
+function publicQuestion({ n, q, item }, unit, shuffleKey = null) {
   const type = item.answer?.type;
+  const rand = shuffleKey ? mulberry32(seedFrom(`${shuffleKey}:${item._id}`)) : Math.random;
   return {
     n,
     itemId: String(item._id),
@@ -53,7 +68,7 @@ function publicQuestion({ n, q, item }, unit) {
     prompt: item.prompt,
     answerType: type,
     ...(type === 'choice' || type === 'multi' ? { choices: item.answer.choices } : {}),
-    ...(type === 'order' ? { items: shuffledDifferent(item.answer.choices) } : {}),
+    ...(type === 'order' ? { items: shuffled(item.answer.choices, rand) } : {}),
     ...(type === 'number' && item.answer.unit ? { unitLabel: item.answer.unit } : {}),
     level: item.level || null,
     points: maxOf(q.points),
@@ -147,7 +162,7 @@ async function testOverview(userId, testId) {
       timeLimitMin: test.timeLimitMin ?? null,
       questionCount: qs.length,
       max: testMax(qs),
-      limits: test.gradeLimits,
+      limits: limitsFor(test, testMax(qs)),
       unit: unitBrief(unit)
     },
     attempts: attempts.map(attemptBrief),
@@ -168,7 +183,7 @@ async function testSheet(userId, testId) {
       description: test.description || '',
       timeLimitMin: test.timeLimitMin ?? null,
       max: testMax(qs),
-      limits: test.gradeLimits,
+      limits: limitsFor(test, testMax(qs)),
       unit: unitBrief(unit)
     },
     questions: qs.map((x) => publicQuestion(x, unit))
@@ -233,7 +248,7 @@ async function startTest(userId, testId) {
       max: testMax(qs),
       unit: unitBrief(unit)
     },
-    questions: qs.map((x) => publicQuestion(x, unit)),
+    questions: qs.map((x) => publicQuestion(x, unit, String(attempt._id))),
     ...(attempt.status === 'awaiting_self' ? { needsSelf: needsSelfView(attempt, qs) } : {})
   };
 }
@@ -243,10 +258,11 @@ async function loadOwnAttempt(userId, attemptId) {
   return StudyTestAttempt.findOne({ _id: oid(attemptId), user: oid(userId) });
 }
 
+/** Provet, området (om eleven fortfarande får läsa det) och frågorna. */
 async function loadAttemptContext(attempt) {
-  const [test, unit] = await Promise.all([StudyTest.findById(attempt.test), StudyUnit.findById(attempt.unit)]);
-  if (!test || !unit) return null;
-  return { test, unit, qs: await testItems(test) };
+  const [test, access] = await Promise.all([StudyTest.findById(attempt.test), loadUnit(attempt.user, attempt.unit, 'read')]);
+  if (!test || access.error) return null;
+  return { test, unit: access.unit, qs: await testItems(test) };
 }
 
 /** Lägg till aktiv tid på provets pass (tak per aktivitet, som alla pass). */
@@ -302,15 +318,19 @@ async function submitTest(userId, attemptId, answers = []) {
   }
   if (invalid.length) return { invalid };
 
-  attempt.answers = rows;
-  attempt.submittedAt = new Date();
+  const now = new Date();
   if (rows.some((r) => r.result === null)) {
-    attempt.status = 'awaiting_self';
-    await attempt.save();
+    // Lämna in i ett steg: en andra inlämning (dubbelklick, två flikar) hittar inget öppet prov.
+    const claimed = await StudyTestAttempt.findOneAndUpdate(
+      { _id: attempt._id, status: 'in_progress' },
+      { $set: { answers: rows, submittedAt: now, status: 'awaiting_self' } },
+      { new: true }
+    );
+    if (!claimed) return { error: 'gone' };
     await touchSession(attempt.session);
-    return { status: 'awaiting_self', needsSelf: needsSelfView(attempt, qs) };
+    return { status: 'awaiting_self', needsSelf: needsSelfView(claimed, qs) };
   }
-  return finalize(attempt, ctx);
+  return withoutAnswers(await finalize(attempt, rows, ctx, { from: 'in_progress', submittedAt: now }));
 }
 
 /**
@@ -338,53 +358,94 @@ async function assessTest(userId, attemptId, assessments = []) {
     row.result = G.resultFromPoints(pts, maxOf(row.max));
   }
   if (missing.length) return { missing };
-  return finalize(attempt, ctx);
+  const rows = attempt.answers.map((r) => (typeof r.toObject === 'function' ? r.toObject() : r));
+  return withoutAnswers(await finalize(attempt, rows, ctx, { from: 'awaiting_self' }));
+}
+
+/** Frågan som den ser ut nu — sparas i försöket när det blir klart. */
+function questionSnapshot({ q, item }) {
+  const cut = (s, n) => String(s || '').slice(0, n);
+  return {
+    prompt: cut(item.prompt, 4000),
+    answerType: item.answer?.type || '',
+    level: item.level || '',
+    skill: cut(item.skill, 80),
+    part: cut(q.part, 60),
+    expected: cut(expectedAnswer(item), 3000),
+    solution: cut(item.solution, 8000),
+    modelAnswer: cut(item.answer?.modelAnswer, 4000)
+  };
 }
 
 /**
  * Räkna ihop provet: poäng, uppskattat betyg, historik per fråga (för "Min
- * plugg"), passets tid, XP (10 per rätt, 5 per delvis, +20 för ett helt prov)
- * och streak.
+ * plugg"), passets tid, XP (10 per rätt, 5 per delvis, +20 för ett helt prov —
+ * en gång per prov och dygn) och streak. `from` = statusen försöket måste ha:
+ * bara ett anrop kan göra det klart, så XP aldrig delas ut två gånger.
+ * Returnerar resultatet, eller { error: 'gone' }.
  */
-async function finalize(attempt, { test, unit, qs }) {
+async function finalize(attempt, rows, { test, unit, qs }, { from = null, submittedAt = null } = {}) {
   const now = new Date();
-  const score = G.sumPoints(attempt.answers.map((a) => a.points));
-  const max = G.sumPoints(attempt.answers.map((a) => a.max));
-  attempt.score = score;
-  attempt.max = max;
-  attempt.grade = G.estimateGrade(score, max, test.gradeLimits);
-  attempt.status = 'done';
-  attempt.finishedAt = now;
-  if (!attempt.submittedAt) attempt.submittedAt = now;
+  const byItem = new Map(qs.map((x) => [String(x.item._id), x]));
+  const answers = rows.map((row) => {
+    const x = byItem.get(String(row.item));
+    return x ? { ...row, ...questionSnapshot(x) } : row;
+  });
+  const score = G.sumPoints(answers.map((a) => a.points));
+  const max = G.sumPoints(answers.map((a) => a.max));
+  const limits = limitsFor(test, max);
+  const fields = {
+    answers, score, max, limits,
+    grade: G.estimateGrade(score, max, limits),
+    status: 'done',
+    finishedAt: now,
+    submittedAt: submittedAt || attempt.submittedAt || now
+  };
+  if (from) {
+    const claimed = await StudyTestAttempt.findOneAndUpdate({ _id: attempt._id, status: from }, { $set: fields }, { new: true });
+    if (!claimed) return { error: 'gone' };
+  } else {
+    attempt.set(fields);
+    await attempt.save();
+  }
 
-  const itemById = new Map(qs.map((x) => [String(x.item._id), x.item]));
   let correct = 0;
   let partial = 0;
-  for (const a of attempt.answers) {
-    const item = itemById.get(String(a.item));
-    if (!item) continue;
+  for (const a of answers) {
+    const x = byItem.get(String(a.item));
+    if (!x) continue;
     if (a.result === 'correct') correct += 1;
     if (a.result === 'partial') partial += 1;
     await recordAttempt({
-      userId: attempt.user, item, unit, sessionId: attempt.session, source: attempt.source, mode: 'test',
+      userId: attempt.user, item: x.item, unit, sessionId: attempt.session, source: attempt.source, mode: 'test',
       result: a.result, given: a.given, feedback: a.feedback
     });
   }
-  await touchSession(attempt.session, { answered: attempt.answers.length, correct }, true);
+  await touchSession(attempt.session, { answered: answers.length, correct }, true);
+  const xpToday = await StudyTestAttempt.exists({
+    _id: { $ne: attempt._id },
+    user: attempt.user,
+    test: attempt.test,
+    status: 'done',
+    xpEarned: { $gt: 0 },
+    finishedAt: { $gte: new Date(now.getTime() - TEST_XP_WINDOW_MS) }
+  });
   const award = await awardStudyActivity(attempt.user, {
-    xp: correct * XP_CORRECT + partial * XP_PARTIAL + XP_TEST_BONUS,
+    xp: xpToday ? 0 : correct * XP_CORRECT + partial * XP_PARTIAL + XP_TEST_BONUS,
     subject: attempt.subject
   });
-  attempt.xpEarned = award?.xpEarned || 0;
-  await attempt.save();
+  const xpEarned = award?.xpEarned || 0;
+  await StudyTestAttempt.updateOne({ _id: attempt._id }, { $set: { xpEarned } });
   return {
     status: 'done',
     attemptId: String(attempt._id),
     score,
     max,
-    grade: attempt.grade,
-    xpEarned: attempt.xpEarned,
-    streak: award?.streak || null
+    grade: fields.grade,
+    xpEarned,
+    xpLimited: Boolean(xpToday),
+    streak: award?.streak || null,
+    answers
   };
 }
 
@@ -397,11 +458,7 @@ async function recordPaperTest(userId, test, unit, { results = [], overallFeedba
   const qs = await testItems(test);
   const byItem = new Map(results.map((r) => [String(r.itemId), r]));
   const now = new Date();
-  const activeSeconds = Number.isFinite(minutes) && minutes > 0 ? Math.round(Math.min(minutes, 180) * 60) : 0;
-  const session = await StudySession.create({
-    user: userId, kind: 'test', units: [unit._id], subjects: [unit.subject],
-    startedAt: now, lastActiveAt: now, endedAt: now, activeSeconds
-  });
+  const missing = qs.filter((x) => !byItem.has(String(x.item._id))).map((x) => itemCode(unit, x.item));
   const answers = qs.map((x) => {
     const r = byItem.get(String(x.item._id));
     const max = maxOf(x.q.points);
@@ -416,17 +473,35 @@ async function recordPaperTest(userId, test, unit, { results = [], overallFeedba
       feedback: String(r?.feedback || '').slice(0, 4000)
     };
   });
+  const overall = String(overallFeedback || '').slice(0, 4000);
+
+  // Samma rättning igen inom 10 minuter (AI:n försöker om efter ett nätfel)
+  // räknas inte två gånger — då kommer det sparade resultatet tillbaka.
+  const signature = (rows, text) => JSON.stringify([text, rows.map((a) => [String(a.item), a.points?.E, a.points?.C, a.points?.A, a.feedback || ''])]);
+  const recent = await StudyTestAttempt.find({
+    user: oid(userId), test: test._id, source: 'paper', status: 'done',
+    finishedAt: { $gte: new Date(now.getTime() - PAPER_DUPLICATE_MS) }
+  }).lean();
+  const same = recent.find((a) => signature(a.answers, a.overallFeedback) === signature(answers, overall));
+  if (same) {
+    return {
+      status: 'done', duplicate: true, attemptId: String(same._id), score: same.score, max: same.max, grade: same.grade,
+      xpEarned: 0, streak: null, bySkill: skillReport(same.answers), missing
+    };
+  }
+
+  const activeSeconds = Number.isFinite(minutes) && minutes > 0 ? Math.round(Math.min(minutes, 180) * 60) : 0;
+  const session = await StudySession.create({
+    user: userId, kind: 'test', units: [unit._id], subjects: [unit.subject],
+    startedAt: now, lastActiveAt: now, endedAt: now, activeSeconds
+  });
   const attempt = new StudyTestAttempt({
     user: userId, test: test._id, unit: unit._id, session: session._id, source: 'paper', status: 'in_progress',
     subject: unit.subject, unitTitle: unit.title, testTitle: test.title,
-    startedAt: now, submittedAt: now, answers, overallFeedback: String(overallFeedback || '').slice(0, 4000)
+    startedAt: now, submittedAt: now, answers, overallFeedback: overall
   });
-  const out = await finalize(attempt, { test, unit, qs });
-  return {
-    ...out,
-    bySkill: skillReport(answers, new Map(qs.map((x) => [String(x.item._id), x.item]))),
-    missing: qs.filter((x) => !byItem.has(String(x.item._id))).map((x) => itemCode(unit, x.item))
-  };
+  const { answers: saved, ...out } = await finalize(attempt, answers, { test, unit, qs });
+  return { ...out, bySkill: skillReport(saved), missing };
 }
 
 /** Resultatsidan för ett avslutat försök (bara ägaren). Facit visas först när provet är klart. */
@@ -435,12 +510,9 @@ async function attemptView(userId, attemptId) {
   const a = await StudyTestAttempt.findOne({ _id: oid(attemptId), user: oid(userId) }).lean();
   if (!a) return null;
   if (a.status !== 'done') return { id: String(a._id), status: a.status, testId: String(a.test) };
-  const [test, items] = await Promise.all([
-    StudyTest.findById(a.test, 'gradeLimits questions').lean(),
-    StudyItem.find({ _id: { $in: a.answers.map((x) => x.item) } }).lean()
-  ]);
-  const byId = new Map(items.map((i) => [String(i._id), i]));
-  const partOf = new Map((test?.questions || []).map((q) => [String(q.item), q.part || '']));
+  // Frågorna läses ur försökets ögonblicksbild från inlämningen — inte ur
+  // uppgifterna, som kan ha ändrats, tagits bort eller slutat delas sedan.
+  const test = await StudyTest.findById(a.test, 'gradeLimits').lean();
   const s = getSubject(a.subject);
   return {
     id: String(a._id),
@@ -459,42 +531,39 @@ async function attemptView(userId, attemptId) {
     score: a.score,
     max: a.max,
     grade: a.grade,
-    limits: test?.gradeLimits || null,
+    limits: a.limits || test?.gradeLimits || null,
     overallFeedback: a.overallFeedback || '',
     xpEarned: a.xpEarned || 0,
-    answers: a.answers.map((row, i) => {
-      const item = byId.get(String(row.item));
-      return {
-        n: i + 1,
-        code: row.code,
-        prompt: item?.prompt || '',
-        answerType: item?.answer?.type || null,
-        level: item?.level || null,
-        given: row.given,
-        result: row.result,
-        selfLevel: row.selfLevel,
-        points: row.points,
-        max: row.max,
-        expected: item ? expectedAnswer(item) : '',
-        solution: item?.solution || '',
-        modelAnswer: item?.answer?.modelAnswer || '',
-        feedback: row.feedback || '',
-        part: partOf.get(String(row.item)) || '',
-        skill: item?.skill || ''
-      };
-    }),
-    bySkill: skillReport(a.answers, byId)
+    answers: a.answers.map((row, i) => ({
+      n: i + 1,
+      code: row.code,
+      prompt: row.prompt || '',
+      answerType: row.answerType || null,
+      level: row.level || null,
+      given: row.given,
+      result: row.result,
+      selfLevel: row.selfLevel,
+      points: row.points,
+      max: row.max,
+      expected: row.expected || '',
+      solution: row.solution || '',
+      modelAnswer: row.modelAnswer || '',
+      feedback: row.feedback || '',
+      part: row.part || '',
+      skill: row.skill || ''
+    })),
+    bySkill: skillReport(a.answers)
   };
 }
 
 /**
- * Resultat per färdighet (uppgifternas `skill`): poäng av max och koderna —
- * så eleven ser VAD som behöver övas, och kan öva på just det.
+ * Resultat per färdighet (frågornas `skill` i försöket): poäng av max och
+ * koderna — så eleven ser VAD som behöver övas, och kan öva på just det.
  */
-function skillReport(answers, itemById) {
+function skillReport(answers) {
   const by = new Map();
   for (const row of answers) {
-    const skill = itemById.get(String(row.item))?.skill;
+    const skill = row.skill;
     if (!skill) continue;
     if (!by.has(skill)) by.set(skill, { skill, earned: 0, max: 0, codes: [] });
     const r = by.get(skill);

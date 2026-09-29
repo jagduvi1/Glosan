@@ -23,6 +23,11 @@ const studySessionSchema = new mongoose.Schema({
   activeSeconds: { type: Number, min: 0, default: 0 },
   answered: { type: Number, min: 0, default: 0 },
   correct: { type: Number, min: 0, default: 0 },
+  // Uppgifterna passet delade ut och de som besvarats: ett svar räknas bara
+  // på en utdelad uppgift, och bara en gång (annars gick XP att farma).
+  // Nivåstegen delar ut via ladder.served.
+  served: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }], default: undefined },
+  answeredItems: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }], default: undefined },
   // Nivåstegen (services/study/ladder.js): aktuell nivå, rätt/fel i rad,
   // högsta nivå hittills, hur många svar passet har, uppgifterna per nivå i
   // turordning och vilka som redan visats. Saknas för vanliga pass.

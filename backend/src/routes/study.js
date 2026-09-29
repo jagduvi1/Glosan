@@ -210,6 +210,8 @@ router.post('/sessions/:id/answer', async (req, res, next) => {
     // Provfrågor rättas bara i ett prov — annars kunde ett övningspass visa provets facit.
     if (access.error || access.item.usage === 'test') return res.status(404).json({ error: 'Uppgiften hittades inte.' });
     const result = await answerInSession(req.user.id, req.params.id, access.item, access.unit, { answer, self, seed });
+    if (result.error === 'already_answered') return res.status(409).json({ error: 'Du har redan svarat på den här uppgiften i passet.' });
+    if (result.error === 'not_in_session') return res.status(404).json({ error: 'Uppgiften hör inte till det här passet.' });
     if (result.error) return res.status(404).json({ error: 'Passet är avslutat — starta ett nytt.' });
     if (result.invalid) return res.status(422).json({ invalid: true, message: result.message });
     res.json(result);

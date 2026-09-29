@@ -60,6 +60,13 @@ describe('periods for "Min plugg"', () => {
     expect(periodRange('term', '2027-03-01')).toMatchObject({ start: '2027-01-01', end: '2027-07-01', prev: '2026-07-01' });
   });
 
+  test('dates far in the future or past fall back to today (audit)', () => {
+    const today = localYmd();
+    expect(periodRange('term', '9999-12-31').anchor).toBe(today);
+    expect(periodRange('day', '0100-01-01').anchor).toBe(today);
+    expect(() => periodRange('month', '9999-12-15')).not.toThrow();
+  });
+
   test('garbage falls back to this week', () => {
     const r = periodRange('year', 'x');
     expect(r.period).toBe('week');

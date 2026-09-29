@@ -26,6 +26,8 @@ const XP_PARTIAL = 5;
 const XP_PERFECT_BONUS = 20; // helt rätt pass med minst 5 svar
 // En pluggdag räknas (streak) om man svarat på något eller läst minst 2 minuter.
 const STREAK_MIN_ACTIVE_SEC = 120;
+// En papperrättning som skickas igen inom så här lång tid är en omsändning.
+const PAPER_DUPLICATE_MS = 10 * 60 * 1000;
 
 /**
  * Områdena ett pass omfattar. scope: { unitIds } ELLER { folderId } (en
@@ -53,15 +55,28 @@ async function resolveScopeUnits(userId, scope = {}) {
   return StudyUnit.find(filter).lean();
 }
 
-/** Blanda en lista så att den inte står i sin ursprungliga ordning (om det går). */
-function shuffledDifferent(list) {
+/**
+ * Blanda en lista (Fisher–Yates). Helt slumpad — även rätt ordning kan komma
+ * upp, annars avslöjar blandningen något om svaret. `rand` kan vara seedad
+ * (samma blandning varje gång ett provförsök öppnas).
+ */
+function shuffled(list, rand = Math.random) {
   const a = [...(list || [])];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
-  if (a.length > 1 && a.every((x, i) => x === list[i])) a.push(a.shift());
   return a;
+}
+
+/** Ett frö (32 bitar, FNV-1a) ur en text, t.ex. försökets och frågans id. */
+function seedFrom(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
 }
 
 /**
@@ -97,8 +112,8 @@ function publicItem(item, unit, userId = null) {
   } else {
     out.answerType = item.answer?.type;
     if (item.answer?.type === 'choice' || item.answer?.type === 'multi') out.choices = item.answer.choices;
-    // Ordna: alternativen blandade — aldrig redan i rätt ordning.
-    if (item.answer?.type === 'order') out.items = shuffledDifferent(item.answer.choices);
+    // Ordna: alternativen blandade (helt slumpat — ibland redan i rätt ordning).
+    if (item.answer?.type === 'order') out.items = shuffled(item.answer.choices);
     if (item.answer?.type === 'number' && item.answer.unit) out.unitLabel = item.answer.unit;
     // Öppna frågor bedömer eleven själv mot modellsvaret — det måste finnas i
     // klienten (dolt tills eleven väljer "Visa modellsvar"), precis som
@@ -134,7 +149,8 @@ async function startLadder(userId, units, count) {
     kind: 'practice',
     units: [unit._id],
     subjects: [unit.subject],
-    ladder: { level: first.level, reached: first.level, count, pools, served: [firstItem._id] }
+    ladder: { level: first.level, reached: first.level, count, pools, served: [firstItem._id] },
+    answeredItems: []
   });
   return {
     session: { id: String(session._id), kind: session.kind },
@@ -183,7 +199,9 @@ async function startSession(userId, params = {}) {
     user: userId,
     kind: mode === 'due' || mode === 'wrong' ? 'review' : 'practice',
     units: [...new Set(picked.map((i) => String(i.unit)))].map(oid),
-    subjects: [...new Set(picked.map((i) => unitById.get(String(i.unit)).subject))]
+    subjects: [...new Set(picked.map((i) => unitById.get(String(i.unit)).subject))],
+    served: picked.map((i) => i._id),
+    answeredItems: []
   });
   return {
     session: { id: String(session._id), kind: session.kind },
@@ -242,10 +260,18 @@ async function touchSession(session, extra = {}) {
   );
 }
 
-/** Svar i ett pass. Returnerar rättning + facit, eller { invalid, message } / { error }. */
+const hasId = (list, id) => (list || []).some((x) => String(x) === String(id));
+
+/**
+ * Svar i ett pass. Returnerar rättning + facit, eller { invalid, message } /
+ * { error: 'session_gone' | 'not_in_session' | 'already_answered' }.
+ */
 async function answerInSession(userId, sessionId, item, unit, payload) {
   const session = await loadOpenSession(userId, sessionId);
   if (!session) return { error: 'session_gone' };
+  // Bara uppgifter som passet har delat ut, och bara en gång var.
+  if (!hasId(session.ladder ? session.ladder.served : session.served, item._id)) return { error: 'not_in_session' };
+  if (hasId(session.answeredItems, item._id)) return { error: 'already_answered' };
   // Mallövning: rätta mot talen i just den instans eleven såg (fröet).
   let gradedItem = item;
   let solution = item.solution || '';
@@ -263,6 +289,14 @@ async function answerInSession(userId, sessionId, item, unit, payload) {
   }
   const graded = gradeAnswer(gradedItem, payload);
   if (graded.invalid) return graded;
+  // Anspråk på svaret i ett steg: två samtidiga svar (dubbeltryck, två
+  // flikar) på samma uppgift räknas en gång, och inget räknas efter "Avsluta".
+  const claimed = await StudySession.findOneAndUpdate(
+    { _id: session._id, endedAt: null, answeredItems: { $ne: item._id } },
+    { $push: { answeredItems: item._id } },
+    { new: true, projection: { answeredItems: 1 } }
+  ).lean();
+  if (!claimed) return { error: 'already_answered' };
   const given = payload.answer !== undefined ? describeAnswer(item, payload.answer) : payload.self;
   const state = await recordAttempt({
     userId, item, unit, sessionId: session._id, source: 'app',
@@ -280,40 +314,60 @@ async function answerInSession(userId, sessionId, item, unit, payload) {
     solution,
     modelAnswer: item.answer?.modelAnswer || '',
     state: state ? { box: state.box, dueAt: state.dueAt } : null,
-    ...(session.ladder ? { ladder: await climbLadder(session, item, graded.result) } : {})
+    ...(session.ladder ? { ladder: await climbLadder(session, graded.result, claimed.answeredItems.length) } : {})
   };
 }
 
-/** Nivåstegen efter ett svar: ny nivå och nästa uppgift (null = passet är klart). */
-async function climbLadder(session, item, result) {
+/**
+ * Nästa uppgift i nivåstegen som eleven fortfarande får läsa (ett område kan
+ * ha slutat delas mitt i passet). Returnerar { pick, item, unit } eller null.
+ */
+async function nextLadderItem(userId, pools, served, level) {
+  const skipped = [...served];
+  for (let tries = 0; tries < 10; tries++) {
+    const pick = pickNext(pools, skipped, level);
+    if (!pick) return null;
+    const item = await StudyItem.findOne({ _id: oid(pick.itemId), usage: 'practice' }).lean();
+    const unit = item ? await StudyUnit.findOne({ _id: item.unit, ...readableFilter(userId), archivedAt: null }).lean() : null;
+    if (item && unit) return { pick, item, unit };
+    skipped.push(oid(pick.itemId));
+  }
+  return null;
+}
+
+/**
+ * Nivåstegen efter ett svar: ny nivå och nästa uppgift (null = passet är
+ * klart). `moved` och `reached` räknas bara på det eleven klarat (3 rätt i
+ * rad / 2 fel i rad) — tar en nivå slut på uppgifter byts nivån tyst.
+ */
+async function climbLadder(session, result, answered) {
   const lad = session.ladder;
   const levels = LEVELS.filter((l) => (lad.pools?.[l] || []).length);
   const step = ladderStep({ level: lad.level, up: lad.up, down: lad.down, reached: lad.reached }, result, levels);
-  const served = [...(lad.served || []), item._id];
-  const answered = (session.answered || 0) + 1;
-  const pick = answered < lad.count ? pickNext(lad.pools, served, step.level) : null;
-  // Tar nivån slut hamnar man på närmaste nivå som har kvar.
-  const level = pick ? pick.level : step.level;
-  const reached = LEVEL_ORDER.indexOf(level) > LEVEL_ORDER.indexOf(step.reached) ? level : step.reached;
+  const found = answered < lad.count ? await nextLadderItem(session.user, lad.pools, lad.served || [], step.level) : null;
+  const level = found ? found.pick.level : step.level;
   const order = (l) => LEVEL_ORDER.indexOf(l);
-  const moved = order(level) > order(lad.level) ? 'up' : order(level) < order(lad.level) ? 'down' : null;
-  let next = null;
-  if (pick) {
-    const nextItem = await StudyItem.findById(pick.itemId).lean();
-    const nextUnit = nextItem ? await StudyUnit.findById(nextItem.unit).lean() : null;
-    if (nextItem && nextUnit) next = publicItem(nextItem, nextUnit, session.user);
-    served.push(oid(pick.itemId));
-  }
+  // Ett förtjänat steg visas bara om nivån faktiskt gick åt det hållet.
+  const moved = step.moved === 'up' && order(level) > order(lad.level) ? 'up'
+    : step.moved === 'down' && order(level) < order(lad.level) ? 'down' : null;
+  const changed = level !== lad.level;
   await StudySession.updateOne({ _id: session._id }, {
     $set: {
       'ladder.level': level,
-      'ladder.up': moved ? 0 : step.up,
-      'ladder.down': moved ? 0 : step.down,
-      'ladder.reached': reached,
-      'ladder.served': served
-    }
+      'ladder.up': changed ? 0 : step.up,
+      'ladder.down': changed ? 0 : step.down,
+      'ladder.reached': step.reached
+    },
+    ...(found ? { $push: { 'ladder.served': found.item._id } } : {})
   });
-  return { level, reached, moved, answered, count: lad.count, next };
+  return {
+    level,
+    reached: step.reached,
+    moved,
+    answered,
+    count: lad.count,
+    next: found ? publicItem(found.item, found.unit, session.user) : null
+  };
 }
 
 async function pingSession(userId, sessionId) {
@@ -328,14 +382,25 @@ async function pingSession(userId, sessionId) {
  * helt rätt pass) och en streak-tick om man verkligen pluggat.
  */
 async function finishSession(userId, sessionId) {
-  const session = await loadOpenSession(userId, sessionId);
+  if (!isId(sessionId)) return { error: 'session_gone' };
+  const now = new Date();
+  // Avsluta i ett steg: bara ett anrop får stänga passet och dela ut XP, även
+  // om "Avsluta" och sidbytet (unmount) skickar varsitt samtidigt.
+  const session = await StudySession.findOneAndUpdate(
+    { _id: oid(sessionId), user: oid(userId), endedAt: null },
+    { $set: { endedAt: now } },
+    { new: false, projection: { lastActiveAt: 1, startedAt: 1 } }
+  ).lean();
   if (!session) return { error: 'session_gone' };
-  await touchSession(session);
-  await StudySession.updateOne({ _id: session._id }, { $set: { endedAt: new Date() } });
-  const fresh = await StudySession.findById(session._id).lean();
+  const fresh = await StudySession.findOneAndUpdate(
+    { _id: session._id },
+    { $inc: { activeSeconds: StudySession.activeIncrement(session.lastActiveAt, now) }, $set: { lastActiveAt: now } },
+    { new: true }
+  ).lean();
 
   const rows = await StudyAttempt.aggregate([
-    { $match: { session: session._id } },
+    // user + createdAt ger indexet { user, createdAt } — session saknar eget index.
+    { $match: { user: oid(userId), createdAt: { $gte: session.startedAt }, session: session._id } },
     { $group: { _id: { subject: '$subject', result: '$result' }, n: { $sum: 1 } } }
   ]);
   const bySubject = {};
@@ -384,7 +449,23 @@ async function finishSession(userId, sessionId) {
  * XP och räknas som pluggdag. AI:ns återkoppling sparas för eleven.
  */
 async function recordPaperAttempt(userId, item, unit, { result, feedback, given = '', minutes = null }) {
+  // Provfrågor rättas som ett helt prov (record_paper_test).
+  if (item.usage === 'test') return { error: 'test_item' };
   const now = new Date();
+  // Samma rättning igen inom 10 minuter (AI:n försöker om efter ett nätfel)
+  // räknas inte två gånger. En ny rättning (annan återkoppling) räknas.
+  const same = await StudyAttempt.findOne({
+    user: oid(userId),
+    item: item._id,
+    source: 'paper',
+    result,
+    feedback: String(feedback ?? '').slice(0, 4000),
+    createdAt: { $gte: new Date(now.getTime() - PAPER_DUPLICATE_MS) }
+  }, 'createdAt').lean();
+  if (same) {
+    const state = await StudyItemState.findOne({ user: userId, item: item._id }).lean();
+    return { duplicate: true, recordedAt: same.createdAt, state, xpEarned: 0, streak: null };
+  }
   const activeSeconds = Number.isFinite(minutes) && minutes > 0 ? Math.round(Math.min(minutes, 60) * 60) : 0;
   const session = await StudySession.create({
     user: userId,
@@ -407,6 +488,6 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
 }
 
 module.exports = {
-  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, shuffledDifferent, startSession, recordAttempt, answerInSession,
+  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, shuffled, seedFrom, startSession, recordAttempt, answerInSession,
   pingSession, finishSession, recordPaperAttempt
 };
