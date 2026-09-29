@@ -84,3 +84,25 @@ describe('templates', () => {
     }
   });
 });
+
+describe('hardening (audit)', () => {
+  test('an unclosed {{ is refused at once — no catastrophic backtracking', () => {
+    const t0 = Date.now();
+    const r = validateTemplate({ template: { vars: [{ name: 'a', int: [1, 9] }] }, answerExpr: 'a', texts: [`Beräkna {{a}} sedan {{${' '.repeat(5000)}`] });
+    expect(r.error).toMatch(/not closed/);
+    expect(Date.now() - t0).toBeLessThan(200);
+    expect(() => render('{{a}} och {{b', { a: 1 })).toThrow(/not closed/);
+  });
+
+  test('a prompt that never shows the numbers is refused', () => {
+    const r = validateTemplate({ template: { vars: [{ name: 'a', int: [1, 9] }, { name: 'b', int: [1, 9] }] }, answerExpr: 'a * b', texts: ['Beräkna 3 · 4'] });
+    expect(r.error).toMatch(/prompt never changes/);
+  });
+
+  test('a step budget stops runaway templates', () => {
+    const vars = [{ name: 'n', int: [1, 9] }];
+    for (let i = 0; i < 12; i++) vars.push({ name: `v${i}`, calc: `${i ? `v${i - 1}` : 'n'} + ${'n * '.repeat(40)}1` });
+    const r = validateTemplate({ template: { vars, where: ['v11 < 0'] }, answerExpr: 'n', texts: ['{{n}}'] });
+    expect(r.error).toMatch(/too complex|never met/);
+  });
+});

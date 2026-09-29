@@ -33,6 +33,7 @@ const FEATURE = 'study';
 const MAX_UNITS_PER_USER = 1000;
 const MAX_PAGES_PER_UNIT = 30;
 const MAX_ITEMS_PER_UNIT = 500;
+const MAX_TEMPLATES_PER_CALL = 20;
 
 const MSG_UNIT_NOT_FOUND = 'No such unit, or no access to it. Use list_study_units for valid unit ids and codes.';
 const MSG_ITEM_NOT_FOUND = 'No such card/exercise. Codes look like "MA3-14"; get_study_unit lists every code in a unit.';
@@ -224,6 +225,10 @@ function figureError(label, ...texts) {
  * precis det eleven ska räkna fram, och exact: true tystar den helt.
  */
 function prepareExercises(list, label) {
+  // Mallar kontrolleras med 30 instanser var — begränsa hur många per anrop.
+  if (list.filter((ex) => ex.template).length > MAX_TEMPLATES_PER_CALL) {
+    return { error: fail('invalid_input', `At most ${MAX_TEMPLATES_PER_CALL} template exercises per call — send the rest in another call.`) };
+  }
   const docs = [];
   const needTolerance = [];
   const samples = [];
