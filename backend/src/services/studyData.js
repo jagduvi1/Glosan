@@ -13,6 +13,7 @@ const StudyFlag = require('../models/StudyFlag');
 const StudyShareLink = require('../models/StudyShareLink');
 const StudyTest = require('../models/StudyTest');
 const StudyTestAttempt = require('../models/StudyTestAttempt');
+const StudyItemDeletion = require('../models/StudyItemDeletion');
 
 /**
  * Radera områden med genomgångar, kort/övningar och ALLAS progress på dem
@@ -30,6 +31,7 @@ async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   await StudyFlag.deleteMany({ unit: inUnits }, opts);
   await StudyShareLink.deleteMany({ unit: inUnits }, opts);
   await StudyTest.deleteMany({ unit: inUnits }, opts);
+  await StudyItemDeletion.deleteMany({ unit: inUnits }, opts);
   await StudyFolder.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudySession.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
   await StudyUnit.deleteMany({ _id: inUnits }, opts);
@@ -43,6 +45,7 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   await StudyAttempt.deleteMany({ user: userId }, opts);
   await StudySession.deleteMany({ user: userId }, opts);
   await StudyTestAttempt.deleteMany({ user: userId }, opts);
+  await StudyItemDeletion.deleteMany({ owner: userId }, opts);
   await StudyFolder.deleteMany({ user: userId }, opts);
   await StudyFlag.deleteMany({ reporter: userId }, opts);
   await StudyShareLink.deleteMany({ creator: userId }, opts);
@@ -55,10 +58,11 @@ async function deleteStudyDataForUser(userId, opts = {}) {
 async function exportStudyData(userId) {
   const units = await StudyUnit.find({ user: userId }).lean();
   const unitIds = units.map((u) => u._id);
-  const [pages, items, tests, sharedWithMe, folders, sessions, attempts, testAttempts, itemStates, flags, links] = await Promise.all([
+  const [pages, items, tests, deletions, sharedWithMe, folders, sessions, attempts, testAttempts, itemStates, flags, links] = await Promise.all([
     unitIds.length ? StudyPage.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyItem.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyTest.find({ unit: { $in: unitIds } }).lean() : [],
+    unitIds.length ? StudyItemDeletion.find({ unit: { $in: unitIds } }).lean() : [],
     StudyUnit.find({ sharedWith: userId }, 'title subject term user').populate('user', 'username').lean(),
     StudyFolder.find({ user: userId }).lean(),
     StudySession.find({ user: userId }).lean(),
@@ -74,7 +78,8 @@ async function exportStudyData(userId) {
       sharedWith: undefined,
       pages: pages.filter((p) => String(p.unit) === String(u._id)),
       items: items.filter((i) => String(i.unit) === String(u._id)),
-      tests: tests.filter((t) => String(t.unit) === String(u._id))
+      tests: tests.filter((t) => String(t.unit) === String(u._id)),
+      deletedItems: deletions.filter((d) => String(d.unit) === String(u._id))
     })),
     sharedWithMe: sharedWithMe.map((u) => ({
       title: u.title, subject: u.subject, term: u.term, ownerUsername: u.user?.username

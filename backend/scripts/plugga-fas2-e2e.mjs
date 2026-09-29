@@ -272,6 +272,35 @@ async function main() {
     assert.ok(overview.body.streak.current >= 1);
     ok(`Min plugg: today ${Math.round(act.body.totals.activeSeconds / 60)} min, the paper test with its grade; week per subject; term per day; the AI reads the week`);
 
+    // ── ta bort, historik och ångra ─────────────────────────────────────────
+    await call(claude, 'add_flashcards', { unit_id: unitId, cards: [{ front: 'Vad är 50 %?', back: 'Hälften', level: 'E' }] });
+    const listed = (await api('/api/study/units?subject=matematik&allTerms=1', A.token)).body.units.find((u) => u.id === unitId);
+    assert.deepEqual(listed.progress.levels, { E: 2, C: 1, A: 0 }, 'the level breakdown counts exercises only, not cards');
+    const cardId = (await call(claude, 'get_study_item', { code: 'MA1-1' })).data.item_id;
+    const sOwn = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [unitId], mode: 'cards' } });
+    assert.ok(sOwn.body.items.every((i) => i.own === true));
+    const sShared = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [unitId], mode: 'cards' } });
+    assert.ok(sShared.body.items.every((i) => i.own === false), 'a recipient never gets the bin');
+    assert.equal((await api(`/api/study/items/${cardId}`, B.token, { method: 'DELETE' })).status, 403);
+    const binned = await api(`/api/study/items/${cardId}`, A.token, { method: 'DELETE' });
+    assert.deepEqual(binned.body, { deleted: 'MA1-1' });
+    await call(claude, 'delete_study_items', { unit_id: unitId, codes: ['MA1-3'] });
+    const log = await api(`/api/study/units/${unitId}/deletions`, A.token);
+    assert.deepEqual(log.body.deletions.map((d) => [d.code, d.via]), [['MA1-3', 'ai'], ['MA1-1', 'app']]);
+    assert.equal(log.body.deletions[1].back, 'En hundradel');
+    const afterBin = await api(`/api/study/units/${unitId}`, A.token);
+    assert.equal(afterBin.body.deletedCount, 2);
+    assert.ok(!afterBin.body.items.some((i) => ['MA1-1', 'MA1-3'].includes(i.code)));
+    const aiView = await call(claude, 'get_study_unit', { unit_id: unitId, include_pages: false });
+    assert.deepEqual(aiView.data.recently_deleted.map((d) => d.code), ['MA1-3', 'MA1-1']);
+    assert.equal((await api(`/api/study/units/${unitId}/deletions`, B.token)).status, 403);
+    const undo = await api(`/api/study/units/${unitId}/deletions/${log.body.deletions[1].id}/restore`, A.token, { method: 'POST' });
+    assert.equal(undo.body.restored, 'MA1-1');
+    const back = await api(`/api/study/units/${unitId}`, A.token);
+    assert.equal(back.body.items.find((i) => i.code === 'MA1-1').id, cardId, 'restored with its old code and id');
+    assert.equal((await api(`/api/study/units/${unitId}/deletions/${log.body.deletions[1].id}/restore`, A.token, { method: 'POST' })).status, 409);
+    ok('bin: recipients can\'t delete; app and AI deletions are logged with who/where; undo brings MA1-1 back with its code and id');
+
     // ── städning ────────────────────────────────────────────────────────────
     const delTest = await call(claude, 'delete_practice_test', { test_id: testId });
     assert.equal(delTest.isError, false);

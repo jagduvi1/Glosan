@@ -52,8 +52,11 @@ async function resolveScopeUnits(userId, scope = {}) {
   return StudyUnit.find(filter).lean();
 }
 
-/** Ett kort/en övning som den skickas till spelaren — UTAN facit. */
-function publicItem(item, unit) {
+/**
+ * Ett kort/en övning som den skickas till spelaren — UTAN facit. Med
+ * `userId` får uppgiften `own` (användaren skapade området och får ta bort den).
+ */
+function publicItem(item, unit, userId = null) {
   const out = {
     id: String(item._id),
     code: itemCode(unit, item),
@@ -65,7 +68,8 @@ function publicItem(item, unit) {
     level: item.level || null,
     skill: item.skill || '',
     sourceRef: item.sourceRef || '',
-    hints: item.hints || []
+    hints: item.hints || [],
+    ...(userId ? { own: String(unit.user?._id || unit.user) === String(userId) } : {})
   };
   if (item.kind === 'card') {
     out.back = item.back; // ett kort vänds i klienten — baksidan är inget facit
@@ -111,7 +115,7 @@ async function startLadder(userId, units, count) {
   });
   return {
     session: { id: String(session._id), kind: session.kind },
-    items: [publicItem(firstItem, unit)],
+    items: [publicItem(firstItem, unit, userId)],
     total: items.length,
     ladder: { level: first.level, reached: first.level, count, levels: LEVELS.filter((l) => pools[l].length) }
   };
@@ -157,7 +161,7 @@ async function startSession(userId, params = {}) {
   });
   return {
     session: { id: String(session._id), kind: session.kind },
-    items: picked.map((i) => publicItem(i, unitById.get(String(i.unit)))),
+    items: picked.map((i) => publicItem(i, unitById.get(String(i.unit)), userId)),
     total: items.length
   };
 }
@@ -257,7 +261,7 @@ async function climbLadder(session, item, result) {
   if (pick) {
     const nextItem = await StudyItem.findById(pick.itemId).lean();
     const nextUnit = nextItem ? await StudyUnit.findById(nextItem.unit).lean() : null;
-    if (nextItem && nextUnit) next = publicItem(nextItem, nextUnit);
+    if (nextItem && nextUnit) next = publicItem(nextItem, nextUnit, session.user);
     served.push(oid(pick.itemId));
   }
   await StudySession.updateOne({ _id: session._id }, {

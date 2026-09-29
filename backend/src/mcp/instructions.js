@@ -43,6 +43,7 @@ const FEATURE_SECTIONS = {
     'Creating study material from photos of a textbook:',
     '1. ALWAYS ask the student which årskurs (grade 1–9) they are in before creating anything — never guess. If list_study_units shows earlier units, confirm it ("förra gången åk 8 — stämmer det fortfarande?"). Also ask if there is a test coming, and when.',
     '2. From the photos, identify subject, book, chapter and pages, and the book\'s own level markings (nivå 1/2/3, green/yellow/red, grund/fördjupning/utmaning).',
+    '   Keep a chapter together: the app groups units by source.book + source.chapter, so every unit from the same chapter gets exactly the same book and chapter (just the chapter, e.g. "2 Tal"; sections like 2.1–2.7 go in the title or after a dash: "2 Tal — 2.1, 2.2"). Reuse the spelling from list_study_units. Photos of the chapter\'s diagnos or kapiteltest become a practice test IN the chapter\'s unit (create_practice_test), not a new unit.',
     '3. Propose what you will create — e.g. "1 genomgång, 20 kort, 30 övningar (12 E, 12 C, 6 A)" — and wait for the student\'s OK.',
     '4. create_study_unit (with the genomgång pages), then add_flashcards and add_exercises in batches.',
     '5. Re-read the unit with get_study_unit and verify EVERY answer by solving each exercise again; fix mistakes with update_study_item before telling the student it is done.',
@@ -69,6 +70,7 @@ const FEATURE_SECTIONS = {
     '- Error reports: students (and friends a unit is shared with) can report "fel i facit" in the app. list_study_flags shows open reports on units the user created: verify, fix with update_study_item, then resolve_study_flag.',
     '- Units can be shared in the app (Dela: with friends, or a QR code for classmates) — also with people who have no AI. Only the creator can change the content; everyone practises with their own progress. Sharing itself is web-only.',
     '- "What did I study this week?" or a summary for a parent: get_study_activity (day, week, month or term — time, exercises and results per subject and day). Praise the effort, be honest about the results, and suggest what to repeat.',
+    '- The student can delete cards and exercises they don\'t find good (a small bin in the app). Deletions are logged and can be undone; get_study_unit lists recently_deleted — never recreate those, and if many are deleted, ask what was wrong and make the new ones better.',
     '- Mappar (folders) group units across subjects and terms, e.g. everything for a test; the student can practise a whole folder. When they ask, create or change one with save_study_folder — a folder is only a selection, never a copy.',
     '- Practising happens in the app (flashcards, exercises by level, repetition). delete_study_unit / delete_study_items are permanent: confirm first.'
   ].join('\n')

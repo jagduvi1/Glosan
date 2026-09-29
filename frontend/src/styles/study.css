@@ -139,3 +139,14 @@
 @media (max-width: 480px) {
   .level-meter { grid-template-columns: 1fr; gap: 8px; }
 }
+
+/* Kapitel på ämnessidan: områden från samma bok och kapitel hålls ihop. */
+.chapter-group { border: 2px dashed var(--ink-soft); border-radius: 20px; padding: 14px; background: var(--paper-edge); }
+@media (max-width: 480px) {
+  .chapter-group { padding: 10px; border-radius: 16px; }
+}
+
+/* Papperskorgen: liten och diskret, bara för den som skapade området. */
+.trash-btn { border: 2px solid transparent; background: transparent; border-radius: 10px; padding: 2px 6px; font-size: 16px; line-height: 1; cursor: pointer; opacity: 0.7; }
+.trash-btn:hover, .trash-btn:focus-visible { opacity: 1; border-color: var(--berry); background: var(--berry-soft); }
+.trash-btn:disabled { opacity: 0.3; cursor: default; }

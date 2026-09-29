@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit } from '../api/study';
+import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
 import FolderPicker from '../components/study/FolderPicker';
+import DeletedList from '../components/study/DeletedList';
 import { GradeBadge, pointsText, pointsTotal } from '../components/study/TestBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
@@ -92,6 +93,7 @@ export default function PluggaUnit() {
   const [tab, setTab] = useState(null);
   const [sharing, setSharing] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [notice, setNotice] = useState('');
   const loadedFor = useRef(null);
 
   const load = useCallback(async () => {
@@ -120,6 +122,17 @@ export default function PluggaUnit() {
   const exercises = items.filter((i) => i.kind === 'exercise');
   const days = daysUntil(unit.examDate);
   const back = `/plugga/omrade/${unit.id}`;
+  // Papperskorgen (bara skaparen): uppgiften tas bort för alla och loggas under "Borttaget".
+  const removeItem = async (item) => {
+    if (!window.confirm(`Ta bort ${item.code}? Den försvinner ur området, även för dem du delat det med. Du kan ångra under "Borttaget".`)) return;
+    setNotice('');
+    try {
+      await deleteStudyItem(apiFetch, item.id);
+      await load();
+    } catch (e) {
+      setNotice(e.message);
+    }
+  };
   const leave = async () => {
     if (!window.confirm(`Lämna "${unit.title}"? Du kan gå med igen om ${unit.sharedBy} delar det på nytt.`)) return;
     try {
@@ -254,16 +267,29 @@ export default function PluggaUnit() {
         </div>
       )}
 
+      {notice && <p className="error" style={{ margin: 0 }}>{notice}</p>}
+
       {tab === 'cards' && (
         <div className="card">
           {cards.length === 0 && <p className="t-hand muted" style={{ margin: 0 }}>Inga kort i det här området.</p>}
           {cards.map((c) => (
             <details key={c.id} className="unit-item">
               <summary style={{ cursor: 'pointer', listStyle: 'none' }}>
-                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <CodeTag code={c.code} />
                   <LevelPill level={c.level} />
-                  <StateBadge state={c.state} />
+                  <span className="grow"><StateBadge state={c.state} /></span>
+                  {unit.isOwner && (
+                    <button
+                      type="button"
+                      className="trash-btn"
+                      title="Ta bort kortet"
+                      aria-label={`Ta bort ${c.code}`}
+                      onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeItem(c); }}
+                    >
+                      🗑️
+                    </button>
+                  )}
                 </div>
                 <div style={{ marginTop: 6 }}><StudyMarkdown>{c.prompt}</StudyMarkdown></div>
               </summary>
@@ -298,7 +324,14 @@ export default function PluggaUnit() {
                     <StateBadge state={e.state} />
                     {e.sourceRef && <span className="t-hand muted" style={{ fontSize: 13 }}>som {e.sourceRef}</span>}
                   </div>
-                  <PaperButton code={e.code} />
+                  <div className="row" style={{ gap: 4, alignItems: 'center' }}>
+                    <PaperButton code={e.code} />
+                    {unit.isOwner && (
+                      <button type="button" className="trash-btn" title="Ta bort övningen" aria-label={`Ta bort ${e.code}`} onClick={() => removeItem(e)}>
+                        🗑️
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ marginTop: 8 }}><StudyMarkdown>{e.prompt}</StudyMarkdown></div>
                 <PaperFeedback paper={e.lastPaper} />
@@ -306,6 +339,10 @@ export default function PluggaUnit() {
             ))}
           </div>
         </div>
+      )}
+
+      {unit.isOwner && data.deletedCount > 0 && (tab === 'cards' || tab === 'exercises') && (
+        <DeletedList unitId={unit.id} count={data.deletedCount} onRestored={load} />
       )}
     </div>
   );

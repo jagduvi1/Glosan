@@ -181,3 +181,21 @@ export async function assessStudyTest(apiFetch, attemptId, assessments) {
 export async function fetchStudyTestAttempt(apiFetch, attemptId) {
   return readJson(await apiFetch(`/api/study/tests/attempts/${attemptId}`), 'Kunde inte hämta resultatet');
 }
+
+// ── Ta bort uppgifter ────────────────────────────────────────────────────────
+
+// DELETE → { deleted: 'MA2-7' } (bara skaparen; loggas under "Borttaget")
+export async function deleteStudyItem(apiFetch, itemId) {
+  return readJson(await apiFetch(`/api/study/items/${itemId}`, { method: 'DELETE' }), 'Kunde inte ta bort uppgiften');
+}
+
+// GET → { deletions: [{ id, code, kind, prompt, back?, level, via, byMe, deletedAt, restoredAt, canRestore }] }
+export async function fetchUnitDeletions(apiFetch, unitId) {
+  const data = await readJson(await apiFetch(`/api/study/units/${unitId}/deletions`), 'Kunde inte hämta borttagna');
+  return data.deletions;
+}
+
+// POST → { restored: 'MA2-7', deletions }
+export async function restoreUnitDeletion(apiFetch, unitId, deletionId) {
+  return readJson(await post(apiFetch, `/api/study/units/${unitId}/deletions/${deletionId}/restore`), 'Kunde inte ångra');
+}

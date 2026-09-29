@@ -5,6 +5,7 @@ const StudyPage = require('../../models/StudyPage');
 const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
+const StudyItemDeletion = require('../../models/StudyItemDeletion');
 const User = require('../../models/User');
 const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm, termLabel } = require('../../utils/term');
@@ -45,7 +46,9 @@ async function unitProgress(userId, unitIds) {
     p.total += r.n;
     if (r._id.kind === 'card') p.cards += r.n;
     else p.exercises += r.n;
-    if (r._id.level && p.levels[r._id.level] !== undefined) p.levels[r._id.level] += r.n;
+    // Nivåfördelningen gäller övningarna ("80 övningar (49 E, …)") — kort med
+    // nivå räknades tidigare med, så summan blev större än antalet övningar.
+    if (r._id.kind === 'exercise' && r._id.level && p.levels[r._id.level] !== undefined) p.levels[r._id.level] += r.n;
   }
   for (const r of stateRows) {
     const p = out.get(String(r._id));
@@ -119,7 +122,7 @@ async function unitDetail(userId, unitId) {
     User.findById(unit.user, 'username').lean()
   ]);
   const itemIds = items.map((i) => i._id);
-  const [states, papers, progress, tests] = await Promise.all([
+  const [states, papers, progress, tests, deletedCount] = await Promise.all([
     StudyItemState.find({ user: userId, item: { $in: itemIds } }).lean(),
     StudyAttempt.aggregate([
       { $match: { user: oid(userId), unit: unit._id, source: 'paper' } },
@@ -127,7 +130,8 @@ async function unitDetail(userId, unitId) {
       { $group: { _id: '$item', result: { $first: '$result' }, feedback: { $first: '$feedback' }, at: { $first: '$createdAt' } } }
     ]),
     unitProgress(userId, [unit._id]),
-    testsForUnit(userId, unit)
+    testsForUnit(userId, unit),
+    access.isOwner ? StudyItemDeletion.countDocuments({ unit: unit._id, restoredAt: null }) : 0
   ]);
   const stateBy = new Map(states.map((s) => [String(s.item), s]));
   const paperBy = new Map(papers.map((p) => [String(p._id), p]));
@@ -144,6 +148,7 @@ async function unitDetail(userId, unitId) {
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
     tests,
     levelProgress,
+    deletedCount,
     items: items.map((i) => {
       const s = stateBy.get(String(i._id));
       const paper = paperBy.get(String(i._id));

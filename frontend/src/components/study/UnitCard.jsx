@@ -3,15 +3,18 @@ import { ProgressBar, daysUntil } from './StudyBits';
 
 // Ett område som kort i en lista (ämnessidan, en mapp). Med `onToggle` får
 // kortet en kryssruta för att välja det; `showSubject` visar ämne och termin
-// (när listan blandar ämnen, som i en mapp); `action` hamnar uppe till höger.
-export default function UnitCard({ unit, selected = false, onToggle, showSubject = false, action = null }) {
+// (när listan blandar ämnen, som i en mapp); `hideSource` döljer bok och
+// kapitel (när kortet redan ligger i sitt kapitel); `action` hamnar uppe till höger.
+export default function UnitCard({ unit, selected = false, onToggle, showSubject = false, hideSource = false, action = null }) {
   const days = daysUntil(unit.examDate);
+  // I ett kapitel: bara det som skiljer områdena åt (avsnitten efter tankstrecket).
+  const sections = (unit.source?.chapter || '').split(/\s+[—–-]\s+/).slice(1).join(' — ');
   const meta = [
     showSubject ? `${unit.emoji} ${unit.subjectLabel}` : null,
     showSubject ? unit.termLabel : null,
     unit.gradeYear ? `åk ${unit.gradeYear}` : null,
-    unit.source?.book,
-    unit.source?.chapter
+    hideSource ? null : unit.source?.book,
+    hideSource ? sections || null : unit.source?.chapter
   ].filter(Boolean).join(' · ');
 
   return (

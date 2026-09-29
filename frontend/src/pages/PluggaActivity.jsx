@@ -308,7 +308,7 @@ export default function PluggaActivity() {
               </div>
               {t.paper > 0 && (
                 <p className="t-hand muted" style={{ margin: '12px 0 0', fontSize: 14 }}>
-                  📷 {t.paper} {t.paper === 1 ? 'lösning' : 'lösningar'} på papper rättade av AI:n
+                  📷 {t.paper} svar på papper rättade av din AI
                 </p>
               )}
             </div>

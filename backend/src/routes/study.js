@@ -17,6 +17,7 @@ const {
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
+const { deleteItems, listDeletions, restoreDeletion } = require('../services/study/itemDeletion');
 const { PERIODS, parseYmd } = require('../utils/localTime');
 const User = require('../models/User');
 
@@ -64,7 +65,7 @@ const isIdList = (v, max = 200) => v === undefined || (Array.isArray(v) && v.len
 async function ownedUnit(req, res) {
   const access = await loadUnit(req.user.id, req.params.id, 'owner');
   if (access.error === 'forbidden') {
-    res.status(403).json({ error: 'Bara den som skapade området kan dela det.' });
+    res.status(403).json({ error: 'Bara den som skapade området kan göra det.' });
     return null;
   }
   if (access.error) {
@@ -244,6 +245,47 @@ router.post('/items/:id/flag', async (req, res, next) => {
       { upsert: true }
     );
     res.status(201).json({ flagged: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Ta bort uppgifter ────────────────────────────────────────────────────────
+// Skaparen kan ta bort kort och övningar hen inte tycker är bra (papperskorgen
+// i appen). Allt som tas bort loggas under "Borttaget" och kan ångras.
+
+// DELETE /api/study/items/:id
+router.delete('/items/:id', async (req, res, next) => {
+  try {
+    const access = await loadItem(req.user.id, req.params.id, 'owner');
+    if (access.error === 'forbidden') return res.status(403).json({ error: 'Bara den som skapade området kan ta bort uppgifter. Rapportera felet i stället.' });
+    if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
+    const [code] = await deleteItems(access.unit, [access.item], { userId: req.user.id, via: 'app' });
+    res.json({ deleted: code });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/units/:id/deletions — "Borttaget" (bara skaparen)
+router.get('/units/:id/deletions', async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    res.json({ deletions: await listDeletions(unit, req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/units/:id/deletions/:deletionId/restore — ångra
+router.post('/units/:id/deletions/:deletionId/restore', async (req, res, next) => {
+  try {
+    const unit = await ownedUnit(req, res);
+    if (!unit) return;
+    const result = await restoreDeletion(unit, req.params.deletionId);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json({ restored: result.code, deletions: await listDeletions(unit, req.user.id) });
   } catch (err) {
     next(err);
   }

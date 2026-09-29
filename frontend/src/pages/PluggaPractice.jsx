@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem } from '../api/study';
+import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -192,6 +192,34 @@ export default function PluggaPractice() {
     }
   };
 
+  // Papperskorgen (bara i egna områden): ta bort en dålig uppgift för gott och
+  // gå vidare. Borttaget loggas på områdessidan, där det går att ångra.
+  const removeCurrent = async () => {
+    if (!current?.own || busy) return;
+    if (!window.confirm(`Ta bort ${current.code}? Den försvinner ur området, även för dem du delat det med. Du kan ångra under "Borttaget" på områdessidan.`)) return;
+    setBusy(true);
+    try {
+      await deleteStudyItem(apiFetch, current.id);
+      const rest = items.filter((_, i) => i !== index);
+      resetForNext();
+      setItems(rest);
+      if (index < rest.length) {
+        setPhase('question');
+      } else if (answeredCount.current > 0) {
+        setBusy(false);
+        await finish();
+        return;
+      } else {
+        setMessage(`${current.code} är borttagen. Det finns inget mer i passet.`);
+        setPhase('empty');
+      }
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (phase === 'loading') return <p className="t-hand muted">Glo plockar fram uppgifter…</p>;
 
   if (phase === 'empty') {
@@ -254,10 +282,15 @@ export default function PluggaPractice() {
       {ladder && <LadderSteps levels={ladder.levels} level={ladder.level} reached={ladder.reached} />}
 
       <div className="card card-lg">
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           <CodeTag code={current.code} />
           <LevelPill level={current.level} />
-          <span className="t-hand muted" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
+          <span className="t-hand muted grow" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
+          {current.own && (
+            <button type="button" className="trash-btn" onClick={removeCurrent} disabled={busy} title="Ta bort uppgiften" aria-label={`Ta bort ${current.code}`}>
+              🗑️
+            </button>
+          )}
         </div>
         <StudyMarkdown>{current.prompt}</StudyMarkdown>
 

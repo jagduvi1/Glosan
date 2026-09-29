@@ -59,7 +59,7 @@ export default function PluggaTestPaper() {
         <header className="test-sheet-head">
           <div>
             <div className="t-hand muted">{test.unit.emoji} {test.unit.subjectLabel} · {test.unit.code} {test.unit.title}</div>
-            <h1 style={{ margin: '4px 0 0', fontSize: 28 }}>Övningsprov: {test.title}</h1>
+            <h1 style={{ margin: '4px 0 0', fontSize: 28 }}>{/^övningsprov/i.test(test.title) ? test.title : `Övningsprov: ${test.title}`}</h1>
           </div>
           <div className="test-sheet-fields">
             <div>Namn: <span className="test-sheet-line" /></div>

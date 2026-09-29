@@ -20,6 +20,8 @@ const { listUnits, unitUrl, folderUrl, testUrl } = require('../../services/study
 const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { activityFor } = require('../../services/study/activity');
+const { deleteItems } = require('../../services/study/itemDeletion');
+const StudyItemDeletion = require('../../models/StudyItemDeletion');
 const { loadTest, testItems, recordPaperTest } = require('../../services/study/tests');
 const G = require('../../services/study/testGrading');
 const { deleteStudyUnitsCascade } = require('../../services/studyData');
@@ -192,6 +194,7 @@ registerTool({
       term: u.term,
       grade_year: u.gradeYear,
       exam_date: u.examDate ? new Date(u.examDate).toISOString().slice(0, 10) : null,
+      ...(u.source?.book || u.source?.chapter ? { source: { book: u.source.book || '', chapter: u.source.chapter || '' } } : {}),
       is_owner: u.isOwner,
       ...(u.sharedBy ? { shared_by: u.sharedBy } : {}),
       ...(u.isOwner && u.sharedCount ? { shared_with: u.sharedCount } : {}),
@@ -236,15 +239,27 @@ registerTool({
     } else {
       return fail('invalid_input', 'Pass unit_id or code.');
     }
-    const [pages, items, tests] = await Promise.all([
+    const isOwner = String(unit.user) === String(ctx.user.id);
+    const [pages, items, tests, deletions] = await Promise.all([
       args.include_pages === false ? [] : StudyPage.find({ unit: unit._id }).sort({ order: 1, createdAt: 1 }).lean(),
       args.include_items === false ? [] : StudyItem.find({ unit: unit._id }).sort({ number: 1 }).lean(),
-      StudyTest.find({ unit: unit._id }).sort({ createdAt: 1 }).lean()
+      StudyTest.find({ unit: unit._id }).sort({ createdAt: 1 }).lean(),
+      // Vad eleven (eller AI:n) tagit bort — så samma dåliga uppgift inte skapas igen.
+      isOwner ? StudyItemDeletion.find({ unit: unit._id, restoredAt: null }).sort({ deletedAt: -1 }).limit(20).lean() : []
     ]);
     const codeById = new Map(items.map((i) => [String(i._id), itemCode(unit, i)]));
     return ok(`"${unit.title}" (${unit.code}) — ${pages.length} page(s), ${items.length} card(s)/exercise(s)`, {
       ...unitMeta(unit),
-      is_owner: String(unit.user) === String(ctx.user.id),
+      is_owner: isOwner,
+      ...(deletions.length ? {
+        recently_deleted: deletions.map((d) => ({
+          code: d.code,
+          kind: d.kind,
+          prompt: String(d.snapshot?.prompt || '').slice(0, 200),
+          deleted_by: d.via === 'ai' ? 'an AI (via MCP)' : 'the student, in the app',
+          at: d.deletedAt
+        }))
+      } : {}),
       pages: pages.map((p) => ({ page_id: String(p._id), title: p.title, body: p.body, order: p.order })),
       items: items.map((i) => itemFull(i, unit)),
       tests: tests.map((t) => ({
@@ -666,8 +681,8 @@ registerTool({
   name: 'delete_study_items',
   title: 'Delete cards or exercises',
   description:
-    'Permanently deletes cards/exercises from a unit you created, with everyone\'s progress on them. Codes are never reused. ' +
-    'Confirm with the student first, naming the codes.',
+    'Deletes cards/exercises from a unit you created, with everyone\'s progress on them. Codes are never reused. ' +
+    'Every deletion is logged under "Borttaget" on the unit page, where the student can undo it. Confirm with the student first, naming the codes.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -688,15 +703,8 @@ registerTool({
       }
       numbers.push(parsed.number);
     }
-    const items = await StudyItem.find({ unit: unit._id, number: { $in: numbers } }, '_id number').lean();
-    const ids = items.map((i) => i._id);
-    await StudyItem.deleteMany({ _id: { $in: ids } });
-    await StudyItemState.deleteMany({ item: { $in: ids } });
-    await StudyFlag.deleteMany({ item: { $in: ids } });
-    // Provfrågor försvinner ur sina prov; ett prov utan frågor tas bort.
-    await StudyTest.updateMany({ unit: unit._id }, { $pull: { questions: { item: { $in: ids } } } });
-    await StudyTest.deleteMany({ unit: unit._id, questions: { $size: 0 } });
-    const deleted = items.map((i) => `${unit.code}-${i.number}`);
+    const items = await StudyItem.find({ unit: unit._id, number: { $in: numbers } }).lean();
+    const deleted = await deleteItems(unit, items, { userId: ctx.user.id, via: 'ai' });
     const missing = numbers.filter((n) => !items.some((i) => i.number === n)).map((n) => `${unit.code}-${n}`);
     return ok(`Deleted ${deleted.length} item(s) from ${unit.code}`, { deleted, ...(missing.length ? { not_found: missing } : {}) });
   }
@@ -1046,10 +1054,11 @@ registerTool({
     if (!loaded) return fail('not_found', MSG_TEST_NOT_FOUND);
     if (!loaded.isOwner) return fail('forbidden', MSG_OWNER_ONLY);
     const ids = loaded.test.questions.map((q) => q.item);
-    await StudyItem.deleteMany({ _id: { $in: ids }, usage: 'test' });
-    await StudyFlag.deleteMany({ item: { $in: ids } });
+    // Frågorna loggas som alla borttagna uppgifter; provet försvinner med dem.
+    const items = await StudyItem.find({ _id: { $in: ids }, usage: 'test' }).lean();
+    await deleteItems(loaded.unit, items, { userId: ctx.user.id, via: 'ai' });
     await StudyTest.deleteOne({ _id: loaded.test._id });
-    return ok(`Deleted "${loaded.test.title}" and its ${ids.length} question(s)`, { test_id: String(loaded.test._id) });
+    return ok(`Deleted "${loaded.test.title}" and its ${items.length} question(s)`, { test_id: String(loaded.test._id) });
   }
 });
 
