@@ -173,7 +173,16 @@ async function main() {
     assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } })).status, 404);
     assert.equal((await api(`/api/study/share-links/${multi.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
     assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
-    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units');
+    // Raderas länkens FÖRSTA område lever länken vidare för resten.
+    const tmpUnit = await call(claude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'Tillfälligt område' });
+    const chain = await api('/api/study/share-links', A.token, { method: 'POST', body: { unitIds: [tmpUnit.data.unit_id, histId], ttlDays: 1, maxUses: 10 } });
+    assert.equal(chain.status, 201);
+    assert.equal((await call(claude, 'delete_study_unit', { unit_id: tmpUnit.data.unit_id })).isError, false);
+    const survived = await api(`/api/study-invite/${chain.body.link.code}`);
+    assert.equal(survived.status, 200, 'the link still works for the unit that is left');
+    assert.deepEqual(survived.body.units.map((u) => u.title), ['Industriella revolutionen']);
+    await api(`/api/study/share-links/${chain.body.link.code}`, A.token, { method: 'DELETE' });
+    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units; deleting the first unit keeps the link');
 
     // ── Dela via AI:n ───────────────────────────────────────────────────────
     const aiShare = await call(claude, 'share_study_units', { units: [unitId, histId], friends: [B.name] });
