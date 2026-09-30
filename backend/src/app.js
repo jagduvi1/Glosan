@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const { clientIp } = require('./utils/clientIp');
+const { userOrIpKey } = require('./middleware/rateKeys');
 
 const healthRoute = require('./routes/health');
 const authRoute = require('./routes/auth');
@@ -28,6 +30,14 @@ const studyInvitesRoute = require('./routes/studyInvites');
 const app = express();
 
 app.set('trust proxy', 2);
+
+// req.ip = klientens riktiga adress bakom Cloudflare (utils/clientIp.js). Med
+// bara trust proxy blev det Cloudflare-kanten, delad av alla som går via samma
+// datacenter — så varje per-IP-gräns delades av främlingar.
+app.use((req, res, next) => {
+  Object.defineProperty(req, 'ip', { value: clientIp(req), configurable: true, enumerable: true });
+  next();
+});
 
 // API:t returnerar bara JSON, så CSP-headern har ingen praktisk effekt här —
 // SPA:s CSP sätts av nginx (se frontend/nginx.conf). Vi behåller HSTS,
@@ -112,11 +122,14 @@ const hasOwnLimiter = (req) => {
     || p === '/api/study' || p.startsWith('/api/study/');
 };
 
+// Inloggade nycklas per konto, anonyma per adress (middleware/rateKeys.js) —
+// en klass bakom samma skol-IP delar inte på 300 anrop.
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: userOrIpKey,
   skip: hasOwnLimiter,
   handler: (req, res) => res.status(429).json({ error: 'Too many requests, please try again later' })
 });
@@ -127,6 +140,7 @@ const writeLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: userOrIpKey,
   skip: (req) => hasOwnLimiter(req) || req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
   handler: (req, res) => res.status(429).json({ error: 'Too many write requests, please try again later' })
 });

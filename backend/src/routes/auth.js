@@ -1,7 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const Token = require('../models/Token');
 const emailService = require('../services/email');
@@ -24,31 +23,12 @@ const REFRESH_GRACE_MS = 30 * 1000;
 
 const router = express.Router();
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => res.status(429).json({ error: 'Too many attempts, please try again later' })
-});
-
-const refreshLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => res.status(429).json({ error: 'Too many refresh attempts, please try again later' })
-});
-
-// Striktare limit för endpoints som triggar email-skickning så ingen
-// kan spamma våra Resend-kostnader genom att hamra knappen.
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => res.status(429).json({ error: 'Vänta en stund innan du begär ett nytt mail.' })
-});
+// Gränserna nycklas på det de skyddar (konto, session, mottagare) så att en
+// hel klass bakom samma skol-IP inte stängs ute — se middleware/authLimits.js.
+const {
+  loginLimiter, authFloodLimiter, registerLimiter, tokenLimiter,
+  refreshLimiter, refreshFloodLimiter, mailLimiter, mailFloodLimiter, resendLimiter
+} = require('../middleware/authLimits');
 
 // Email-token-helpers: råa token-strängen visas bara i email-länken,
 // DB-en innehåller endast SHA-256-hash så en kompromiss av Token-
@@ -178,7 +158,7 @@ async function sendMagicLinkEmail(user) {
   return true;
 }
 
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', authFloodLimiter, registerLimiter, async (req, res) => {
   try {
     const { username, email, password, ageConsent } = req.body;
 
@@ -221,7 +201,7 @@ router.post('/register', authLimiter, async (req, res) => {
 
 // POST /api/auth/verify-email — body { token }
 // Konsumerar en email-verify-token och markerar user.emailVerified = true.
-router.post('/verify-email', authLimiter, async (req, res) => {
+router.post('/verify-email', tokenLimiter, async (req, res) => {
   try {
     const { token } = req.body;
     const doc = await consumeEmailToken({ token, kind: 'verify-email' });
@@ -243,7 +223,7 @@ router.post('/verify-email', authLimiter, async (req, res) => {
 // Invaliderar tidigare oanvända verify-tokens för denna user och skickar
 // ett nytt mail. Striktare rate-limit (5/timme) så ingen kan spamma
 // email-skickning.
-router.post('/resend-verification', requireAuth, emailLimiter, async (req, res) => {
+router.post('/resend-verification', requireAuth, resendLimiter, async (req, res) => {
   try {
     if (!emailService.isEnabled()) {
       return res.status(503).json({ error: 'Email-tjänsten är inte konfigurerad på servern.' });
@@ -265,7 +245,7 @@ router.post('/resend-verification', requireAuth, emailLimiter, async (req, res) 
 // POST /api/auth/forgot-password — body { email }
 // Returnerar alltid 200 även om emailen inte finns — anti-enumeration.
 // Strikt rate-limit eftersom det skickar mail.
-router.post('/forgot-password', emailLimiter, async (req, res) => {
+router.post('/forgot-password', mailFloodLimiter, mailLimiter, async (req, res) => {
   const ack = { message: 'Om kontot finns har vi skickat ett mail med återställningslänk.' };
   try {
     const { email } = req.body;
@@ -298,7 +278,7 @@ router.post('/forgot-password', emailLimiter, async (req, res) => {
 // POST /api/auth/reset-password — body { token, password }
 // Konsumerar en reset-token, sätter nytt lösenord, rensar refresh-tokens
 // (tvingar omloggning på alla enheter — säkerhetspraxis).
-router.post('/reset-password', authLimiter, async (req, res) => {
+router.post('/reset-password', tokenLimiter, async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!password || typeof password !== 'string') {
@@ -346,7 +326,7 @@ router.post('/reset-password', authLimiter, async (req, res) => {
 
 // POST /api/auth/magic-link — body { email }
 // Returnerar alltid 200, anti-enumeration som forgot-password.
-router.post('/magic-link', emailLimiter, async (req, res) => {
+router.post('/magic-link', mailFloodLimiter, mailLimiter, async (req, res) => {
   const ack = { message: 'Om kontot finns har vi skickat en inloggningslänk.' };
   try {
     const { email } = req.body;
@@ -377,7 +357,7 @@ router.post('/magic-link', emailLimiter, async (req, res) => {
 // Validerar magic-link-token och ger access + refresh-tokens precis som
 // login. En lyckad consume markerar också email som verifierad (eftersom
 // magic-link bevisar att hen läser mailet på adressen).
-router.post('/magic-link/consume', authLimiter, async (req, res) => {
+router.post('/magic-link/consume', tokenLimiter, async (req, res) => {
   try {
     const { token } = req.body;
     const doc = await consumeEmailToken({ token, kind: 'magic-link' });
@@ -399,7 +379,7 @@ router.post('/magic-link/consume', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authFloodLimiter, loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -428,7 +408,7 @@ router.post('/login', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/refresh', refreshLimiter, async (req, res) => {
+router.post('/refresh', refreshFloodLimiter, refreshLimiter, async (req, res) => {
   const parsed = parseRefreshToken(req.cookies?.refreshToken);
   if (!parsed) {
     res.clearCookie('refreshToken', refreshCookieOptions);
@@ -476,7 +456,7 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
 // server-state rensas även när klienten har varit borta så länge att access
 // hunnit gå ut. Saknad/ogiltig cookie ger ändå 200 — det är inte ett fel
 // att försöka logga ut två gånger.
-router.post('/logout', refreshLimiter, async (req, res) => {
+router.post('/logout', refreshFloodLimiter, refreshLimiter, async (req, res) => {
   const parsed = parseRefreshToken(req.cookies?.refreshToken);
   try {
     if (parsed) {
