@@ -32,14 +32,15 @@ const watch = (page) => {
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function clickText(page, selector, text) {
-  for (const h of await page.$$(selector)) {
-    if ((await h.evaluate((el) => el.textContent)).includes(text)) {
-      await h.click();
-      return;
-    }
-  }
-  throw new Error(`no ${selector} containing "${text}" on ${page.url()}`);
+// Väntar tills elementet finns: dialoger visar "Laddar…" en stund innan
+// innehållet kommer (i CI:s långsammare Chrome hann testet före).
+async function clickText(page, selector, text, timeout = 10000) {
+  const found = await page
+    .waitForFunction((sel, t) => [...document.querySelectorAll(sel)].find((el) => el.textContent.includes(t)) || null, { timeout }, selector, text)
+    .catch(() => null);
+  const el = found && found.asElement();
+  if (!el) throw new Error(`no ${selector} containing "${text}" on ${page.url()}`);
+  await el.click();
 }
 const waitForText = (page, text, timeout = 10000) =>
   page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
@@ -101,12 +102,13 @@ async function main() {
     await page.waitForSelector('#share-study-title');
     await waitForText(page, 'Vad vill du dela?');
     await clickText(page, '.modal button', 'Välj alla');
-    await page.$$eval('.modal label', (labels, name) => labels.forEach((l) => { if (l.textContent.includes(name)) l.click(); }), B.name);
+    await clickText(page, '.modal label', B.name);
     await clickText(page, '.modal button', 'Dela 3');
     await waitForText(page, 'Klart!');
     const bUnits = (await api('/api/study/units?allTerms=1', B.token)).body.units;
     assert.equal(bUnits.length, 3, 'the friend has all three units');
     await clickText(page, '.modal button[role="tab"]', 'QR-kod');
+    await page.waitForSelector('.modal input.inp');
     await page.type('.modal input.inp', 'Allt inför provet');
     await clickText(page, '.modal button', 'Skapa QR-kod för 3');
     await page.waitForSelector('.modal img[alt^="QR"]');
@@ -175,7 +177,7 @@ async function main() {
     await clickText(page, '.modal button', 'Blockera');
     await waitForText(page, 'är blockerad');
     assert.equal((await api('/api/study/units?allTerms=1', B.token)).body.units.length, 0, 'blocking takes the shared units away');
-    await page.$$eval('details summary', (s) => s.forEach((x) => x.click()));
+    await clickText(page, 'details summary', 'Blockerade');
     await clickText(page, 'button', 'Häv blockering');
     await waitForText(page, 'är hävd');
     ok('Kompisar: block (the friend loses the shared units) and unblock');
