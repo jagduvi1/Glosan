@@ -118,7 +118,9 @@ cd ~/apps/glosan/scripts/backup
 It restores the snapshot into a throwaway `mongo` container (same image, no
 network, 512 MB cap), lists every collection's documents/indexes next to the
 live database's (read-only), fails if the backup has no users, and removes
-everything it created. Differences are expected — they are what changed after
+everything it created — including the container's volumes, which hold a full
+copy of the database (the image declares `VOLUME /data/db`, so `docker rm`
+needs `-v`). Differences are expected — they are what changed after
 the snapshot was taken, including collections and indexes from later releases.
 Run it monthly and after any change to the backup setup.
 
