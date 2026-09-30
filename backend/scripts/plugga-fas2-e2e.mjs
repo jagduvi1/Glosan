@@ -303,15 +303,17 @@ async function main() {
     assert.equal(week.body.bySubject[0].subject, 'matematik');
     const term = await api('/api/study/activity?period=term', B.token);
     assert.equal(term.body.timeline.kind, 'days');
-    // Månad och termin räknas i databasen (aggregering), dag och vecka svar för
-    // svar — dagens rad ska bli densamma oavsett väg.
+    // B skapades i dag, så vecka, månad och termin rymmer samma pass och svar —
+    // men månad och termin räknas i databasen (aggregering), veckan svar för
+    // svar. Siffrorna ska bli exakt desamma oavsett väg.
     const month = await api('/api/study/activity?period=month', B.token);
     const todayRow = (r) => r.body.days.find((d) => d.date === r.body.today);
+    const bySubject = (r) => Object.fromEntries(r.body.bySubject.map((s) => [s.subject, s]));
     assert.ok(todayRow(week).answered >= 5);
     for (const view of [month, term]) {
+      assert.deepEqual(view.body.totals, week.body.totals);
+      assert.deepEqual(bySubject(view), bySubject(week));
       assert.deepEqual(todayRow(view), todayRow(week));
-      assert.ok(view.body.totals.answered >= todayRow(week).answered);
-      assert.ok(view.body.bySubject.some((s) => s.subject === 'matematik' && s.answered >= 1 && s.activeSeconds > 0));
     }
     const viaAiActivity = await call(claude, 'get_study_activity', { period: 'week' });
     assert.ok(viaAiActivity.data.totals.answered >= act.body.totals.answered, 'the week includes today');
@@ -437,8 +439,13 @@ async function main() {
     assert.equal(afterDel.body.score.total, 4);
     await api(`/api/study/units/${unitId}/share/${B.id}`, A.token, { method: 'DELETE' });
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
+    // Att ta bort kompisen (här gör mottagaren det) avslutar delningen åt båda hållen.
+    assert.equal((await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id] } })).status, 200);
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
+    assert.equal((await api(`/api/me/friends/${A.id}`, B.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     await claude.close();
-    ok('delete_practice_test keeps the results; removing the friend takes the unit away');
+    ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
 
     // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);
