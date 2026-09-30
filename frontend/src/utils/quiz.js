@@ -12,12 +12,25 @@ export function shuffle(arr) {
 // Expand slash-separated alternatives in a target into every accepted phrasing.
 // "mycket söt/gullig" → ["mycket söt", "mycket gullig"]
 // "den/det är/var" → ["den är", "den var", "det är", "det var"]
+// Högst så här många: "a/b a/b a/b …" (en delad lista) gav annars 2^50
+// kombinationer och frös webbläsaren. Riktiga glosor har en handfull.
+const MAX_VARIANTS = 64;
+
 export function answerVariants(target) {
-  const tokens = target.trim().split(/\s+/);
+  const tokens = String(target ?? '').trim().split(/\s+/);
   const perToken = tokens.map((t) => t.split('/').map((s) => s.trim()).filter(Boolean));
-  return perToken
-    .reduce((acc, opts) => acc.flatMap((prefix) => opts.map((opt) => [...prefix, opt])), [[]])
-    .map((parts) => parts.join(' ').toLowerCase());
+  let acc = [[]];
+  for (const opts of perToken) {
+    const next = [];
+    for (const prefix of acc) {
+      for (const opt of opts) {
+        if (next.length >= MAX_VARIANTS) break;
+        next.push([...prefix, opt]);
+      }
+    }
+    acc = next;
+  }
+  return acc.map((parts) => parts.join(' ').toLowerCase());
 }
 
 // Plain Levenshtein edit distance. Used to forgive close STT mis-hearings
