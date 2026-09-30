@@ -277,7 +277,9 @@ function registerLiveDuel(io) {
       // eller timer löper ut
       socket.emit('live:answer-rejected', { index, given });
       // Om alla deltagare har svarat fel: gå vidare utan vinnare
-      if (game.roundAnswered.size === game.players.size) {
+      // Alla som är kvar har svarat fel (inte "lika många svar som spelare" —
+      // den som svarat och sedan gått räknades annars med).
+      if ([...game.players.keys()].every((id) => game.roundAnswered.has(id))) {
         advanceRound(io, duelId, game, null, null, false);
       }
     }));
@@ -288,6 +290,9 @@ function registerLiveDuel(io) {
       const game = games.get(duelId);
       if (!game) return;
       const userId = socket.user.id;
+      // En gammal anslutning som stängs efter att spelaren redan kopplat upp
+      // igen (wifi → 4G) får inte ta bort den nya.
+      if (game.players.get(userId) !== socket.id) return;
       game.players.delete(userId);
       game.ready.delete(userId);
       io.to(duelId).emit('live:opponent-left', { userId });

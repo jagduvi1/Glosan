@@ -45,7 +45,7 @@ function setup(doc) {
   const connect = (userId) => {
     const handlers = {};
     const socket = {
-      id: `s-${userId}`,
+      id: `s-${userId}-${++socketSeq}`, // varje anslutning sitt eget id, som i Socket.IO
       user: { id: userId },
       data: {},
       own: [],
@@ -59,11 +59,13 @@ function setup(doc) {
   return { emitted, connect };
 }
 
+let socketSeq = 0;
 const flush = () => new Promise((r) => setImmediate(r));
 const count = (emitted, ev) => emitted.filter((e) => e.ev === ev).length;
 
 beforeEach(() => {
-  jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+  // Date får gå på riktigt: tidsmätningen i 2^50-testet måste kunna slå till.
+  jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'Date'] });
   _games.clear();
 });
 afterEach(() => {
@@ -169,5 +171,39 @@ describe('the live duel', () => {
     await flush();
     expect(a.socket.own).toContainEqual({ ev: 'live:error', data: 'Duellen är redan klar' });
     expect(_games.size).toBe(0);
+  });
+});
+
+describe('reconnects and leaving', () => {
+  async function started(questions) {
+    const doc = duelDoc(questions);
+    const env = setup(doc);
+    const a = env.connect(A);
+    const b = env.connect(B);
+    a.fire('live:join', { duelId: DUEL });
+    b.fire('live:join', { duelId: DUEL });
+    await flush();
+    a.fire('live:ready');
+    b.fire('live:ready');
+    jest.advanceTimersByTime(1000);
+    return { ...env, a, b };
+  }
+
+  test('the old connection closing after a reconnect does not drop the player', async () => {
+    const { emitted, connect, b } = await started([{ source: 'häst', target: 'horse' }]);
+    const b2 = connect(B); // wifi → 4G: ny anslutning innan den gamla stängts
+    b2.fire('live:join', { duelId: DUEL });
+    await flush();
+    b.fire('disconnect'); // den gamla anslutningen stängs sent
+    expect(emitted.filter((e) => e.ev === 'live:opponent-left')).toHaveLength(0);
+    expect(_games.get(DUEL).players.get(B)).toBe(b2.socket.id);
+  });
+
+  test('when everyone still there has answered wrong, the round moves on at once', async () => {
+    const { emitted, a, b } = await started([{ source: 'häst', target: 'horse' }, { source: 'hund', target: 'dog' }]);
+    a.fire('live:answer', { index: 0, given: 'cat' });
+    a.fire('disconnect');
+    b.fire('live:answer', { index: 0, given: 'cow' });
+    expect(emitted.filter((e) => e.ev === 'live:round-result')).toHaveLength(1); // inte först efter 15 s
   });
 });

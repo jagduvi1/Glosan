@@ -70,6 +70,11 @@ export default function LiveDuel() {
         if (String(userId) !== String(myId)) setOpponentLeft(true);
       };
       const onError = (msg) => {
+        // Kom tillbaka efter att duellen avgjorts (missade slutet): till resultatet.
+        if (msg === 'Duellen är redan klar') {
+          navigate(`/duels/${id}/result`, { replace: true });
+          return;
+        }
         setError(typeof msg === 'string' ? msg : 'Något gick fel.');
         setPhase('error');
       };
