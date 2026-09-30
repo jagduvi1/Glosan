@@ -92,7 +92,8 @@ router.get('/friends', async (req, res) => {
 // Letar BARA i InviteCode (engångs). Permanenta koder är borta — om
 // någon skickar in en gammal 6-teckens kod får de "ingen användare".
 router.post('/friends/by-code', byCodeFloodLimiter, byCodeLimiter, async (req, res) => {
-  const code = (req.body.code || '').trim().toUpperCase();
+  // Bara text — ett tal (12345678) kastade här, utanför try, och tog ner servern.
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim().toUpperCase() : '';
   if (!code || code.length !== INVITE_CODE_LENGTH) {
     return res.status(400).json({ error: `Kompis-koder är ${INVITE_CODE_LENGTH} tecken långa.` });
   }

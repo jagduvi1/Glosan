@@ -1,25 +1,20 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
-import { internalPath } from '../utils/postLoginRedirect';
+import { postLoginPath } from '../utils/postLoginRedirect';
 
 export default function Login() {
   useDocumentTitle('Logga in');
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const location = useLocation();
-  const inviteCode = params.get('invite');
-  // Delningslänk till ett Plugga-område (/p/<kod>) — bara giltiga koder, så
-  // parametern aldrig kan styra om till något annat än /p/.
-  const studyInvite = /^[A-Z0-9]{4,16}$/.test(params.get('studyInvite') || '') ? params.get('studyInvite') : null;
-  // Utloggad av en utgången session (ProtectedRoute): tillbaka dit man var.
-  const from = internalPath(location.state?.from);
-  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : from;
+  // QR-inbjudan (/j/, /p/), annars dit man var på väg (en utgången session),
+  // annars listorna — samma svar som /login-vakten i App.jsx.
+  const afterLogin = postLoginPath(location);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -32,7 +27,7 @@ export default function Login() {
     const result = await login(username, password);
     setBusy(false);
     if (result.success) {
-      navigate(afterLogin || '/lists');
+      navigate(afterLogin, { replace: true });
     } else {
       setError(result.error);
     }
@@ -76,7 +71,7 @@ export default function Login() {
           <h1 style={{ fontSize: 38, marginBottom: 4 }}>Välkommen tillbaka</h1>
           <p className="t-hand muted" style={{ fontSize: 18, margin: '0 0 24px' }}>Logga in och kör vidare.</p>
 
-          <GoogleLoginButton redirectTo={afterLogin || undefined} />
+          <GoogleLoginButton redirectTo={afterLogin} />
 
           <label className="field" style={{ marginBottom: 16 }}>
             <span className="field-label">Användarnamn eller e-post</span>

@@ -8,7 +8,7 @@ import { postQuizComplete } from '../api/me';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
-import { shuffle, answerVariants, isVoiceMatch, isNearMiss } from '../utils/quiz';
+import { shuffle, matchesAnswer, isVoiceMatch, isNearMiss } from '../utils/quiz';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
@@ -138,7 +138,7 @@ export default function CategoryQuiz() {
     if (!current) return;
     const { expectedField } = cardInfo(current);
     const expectedWord = current[expectedField];
-    const isCorrect = answerVariants(expectedWord).includes(answer.trim().toLowerCase());
+    const isCorrect = matchesAnswer(answer, expectedWord);
     recordAnswer(isCorrect, answer.trim(), expectedWord);
   };
 

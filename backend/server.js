@@ -24,6 +24,14 @@ if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('Warning: ANTHROPIC_API_KEY not set — /api/ai/* routes will return 503.');
 }
 
+// Express 4 fångar inte fel i async-routes, och Node avslutar processen vid en
+// ohanterad rejection — en enda trasig förfrågan tog förut ner servern för
+// alla (och nollställde alla rate limits). Logga i stället; själva felen
+// rättas där de uppstår.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err?.stack || err);
+});
+
 const http = require('http');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
@@ -41,4 +49,10 @@ connectDB().then(() => {
   });
   // Diskvarning till admins och stängning av övergivna pass, en gång i timmen.
   startMaintenance();
+}).catch((err) => {
+  // Kommer servern inte igång ska processen avslutas, så att Docker startar
+  // om den — unhandledRejection-hanteraren ovan skulle annars lämna en
+  // process som inte lyssnar.
+  console.error('FATAL: startup failed:', err?.stack || err);
+  process.exit(1);
 });

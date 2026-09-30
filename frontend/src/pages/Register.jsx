@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { postLoginPath } from '../utils/postLoginRedirect';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
@@ -29,12 +30,9 @@ export default function Register() {
   useDocumentTitle('Skapa konto');
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const inviteCode = params.get('invite');
-  // Delningslänk till ett Plugga-område (/p/<kod>) — bara giltiga koder, så
-  // parametern aldrig kan styra om till något annat än /p/.
-  const studyInvite = /^[A-Z0-9]{4,16}$/.test(params.get('studyInvite') || '') ? params.get('studyInvite') : null;
-  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : null;
+  const location = useLocation();
+  // QR-inbjudan (/j/, /p/) eller listorna — samma svar som /register-vakten i App.jsx.
+  const afterLogin = postLoginPath(location);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,7 +48,7 @@ export default function Register() {
     const result = await register(username, email, password, ageConsent);
     setBusy(false);
     if (result.success) {
-      navigate(afterLogin || '/lists');
+      navigate(afterLogin, { replace: true });
     } else {
       setError(result.error);
     }
@@ -114,7 +112,7 @@ export default function Register() {
           <h2 style={{ marginBottom: 4 }}>Hoppa in</h2>
           <p className="t-hand muted" style={{ fontSize: 17, margin: '0 0 22px' }}>tre fält. Inget mer.</p>
 
-          <GoogleLoginButton redirectTo={afterLogin || undefined} />
+          <GoogleLoginButton redirectTo={afterLogin} />
 
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="field-label">Användarnamn</span>

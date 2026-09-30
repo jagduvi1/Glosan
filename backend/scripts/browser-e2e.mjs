@@ -46,6 +46,8 @@ const waitForText = (page, text, timeout = 10000) =>
   page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
 
 async function login(page, user) {
+  // Inloggningssidans kod kan fortfarande laddas (ett hopp i appen i en ny kontext).
+  await page.waitForSelector('input.inp');
   const inputs = await page.$$('input.inp');
   await inputs[0].type(user.name);
   await inputs[1].type(PASSWORD);
@@ -79,7 +81,12 @@ async function main() {
     const list = await api('/api/lists', A.token, { method: 'POST', body: { title: 'Djur', sourceLang: 'sv', targetLang: 'en' } });
     const listId = list.body.list._id;
     await api(`/api/lists/${listId}/glosor`, A.token, { method: 'POST', body: { source: 'häst', target: 'horse' } });
-    ok('two users (friends), three Plugga units, a list with one word');
+    // En trasig förfrågan får aldrig ta ner servern: ett tal som kompiskod
+    // kastade förut utanför try, och Node avslutade processen.
+    assert.equal((await api('/api/me/friends/by-code', B.token, { method: 'POST', body: { code: 12345678 } })).status, 400);
+    await pause(300);
+    assert.equal((await api('/api/health')).status, 200, 'the backend is still up');
+    ok('two users (friends), three Plugga units, a list with one word — and a malformed request is a 400, not a crash');
 
     // ── app-ikonerna: flikar, bokmärken och "Lägg till på hemskärmen" ────────
     // (även content-type: en saknad fil får inte slinka igenom som appens HTML)
@@ -106,6 +113,10 @@ async function main() {
     assert.equal(new URL(page.url()).pathname, '/login');
     await login(page, A);
     assert.equal(new URL(page.url()).pathname, '/plugga', 'back on the Plugga page after logging in');
+    // …och kvar där: /login-vakten skickade förut vidare till /lists en stund
+    // efter att sidan själv navigerat (React Router 7 byter sida i en transition).
+    await pause(2000);
+    assert.equal(new URL(page.url()).pathname, '/plugga', 'still on the Plugga page a moment later');
     await page.goto(`${BASE}/finns-inte`, { waitUntil: 'networkidle0' });
     await waitForText(page, 'vilse');
     ok('a Plugga page sends you to login and back again; unknown pages show the 404 page');
@@ -140,9 +151,19 @@ async function main() {
     await waitForText(gpage, 'Allt inför provet');
     await waitForText(gpage, 'delar 3 områden med dig');
     await waitForText(gpage, 'Skapa konto');
+    // En klasskompis med konto: "Jag har konto" → logga in → tillbaka till
+    // länken och med i områdena (inte bara till listorna).
+    const C = await signUp('brc');
+    await Promise.all([gpage.waitForNavigation({ waitUntil: 'networkidle0' }), clickText(gpage, 'button, a', 'Jag har konto')]);
+    assert.equal(new URL(gpage.url()).pathname, '/login');
+    await login(gpage, C);
+    await gpage.waitForFunction(() => /^\/plugga/.test(location.pathname), { timeout: 10000 });
+    await pause(1500);
+    assert.match(new URL(gpage.url()).pathname, /^\/plugga/, 'lands in Plugga, not on /lists');
+    assert.equal((await api('/api/study/units?allTerms=1', C.token)).body.units.length, 3, 'joined all three units');
     await guest.close();
     current = page;
-    ok('the link shows its name and all three units to someone without an account, with "Skapa konto"');
+    ok('the link shows its name and all three units to someone without an account; logging in from it joins them');
 
     // ── ämnessidan ──────────────────────────────────────────────────────────
     await page.goto(`${BASE}/plugga/amne/matematik`, { waitUntil: 'networkidle0' });
@@ -219,6 +240,16 @@ async function main() {
     await clickText(page, 'button', 'Häv blockering');
     await waitForText(page, 'är hävd');
     ok('Kompisar: block (the friend loses the shared units) and unblock');
+
+    // ── utloggning: nästa elev på samma dator hamnar inte på den förras sida ──
+    await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });
+    await page.click('button[aria-label="Visa meny"]');
+    await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle0' }), clickText(page, '.nav-drawer button', 'Logga ut')]);
+    assert.equal(new URL(page.url()).pathname, '/login');
+    await login(page, B);
+    await pause(1500);
+    assert.equal(new URL(page.url()).pathname, '/lists', 'the next person starts on their own lists, not on the last page of the one who logged out');
+    ok('after "Logga ut", the next person to log in starts on their own lists');
 
     assert.deepEqual(errors, [], `no page errors:\n${errors.join('\n')}`);
     ok('no errors in any page');

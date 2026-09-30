@@ -12,12 +12,35 @@ export function shuffle(arr) {
 // Expand slash-separated alternatives in a target into every accepted phrasing.
 // "mycket söt/gullig" → ["mycket söt", "mycket gullig"]
 // "den/det är/var" → ["den är", "den var", "det är", "det var"]
+// Högst så här många: "a/b a/b a/b …" (en delad lista) gav annars 2^50
+// kombinationer och frös webbläsaren. Riktiga glosor har en handfull.
+const MAX_VARIANTS = 64;
+
 export function answerVariants(target) {
-  const tokens = target.trim().split(/\s+/);
+  const tokens = String(target ?? '').trim().split(/\s+/);
   const perToken = tokens.map((t) => t.split('/').map((s) => s.trim()).filter(Boolean));
-  return perToken
-    .reduce((acc, opts) => acc.flatMap((prefix) => opts.map((opt) => [...prefix, opt])), [[]])
-    .map((parts) => parts.join(' ').toLowerCase());
+  let acc = [[]];
+  for (const opts of perToken) {
+    const next = [];
+    for (const prefix of acc) {
+      for (const opt of opts) {
+        if (next.length >= MAX_VARIANTS) break;
+        next.push([...prefix, opt]);
+      }
+    }
+    acc = next;
+  }
+  return acc.map((parts) => parts.join(' ').toLowerCase());
+}
+
+// Is `given` one of the accepted phrasings? Word by word, like the server's
+// live duel — never through the (capped) list of all combinations, so a word
+// with many alternatives is still graded right. Case and spacing are ignored.
+export function matchesAnswer(given, target) {
+  const words = String(given ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const tokens = String(target ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length !== tokens.length) return false;
+  return tokens.every((t, i) => t.split('/').map((s) => s.trim()).filter(Boolean).includes(words[i]));
 }
 
 // Plain Levenshtein edit distance. Used to forgive close STT mis-hearings
@@ -52,8 +75,8 @@ export function levenshtein(a, b) {
 export function isVoiceMatch(transcript, expectedWord) {
   if (!transcript || !expectedWord) return false;
   const t = transcript.trim().toLowerCase();
+  if (matchesAnswer(t, expectedWord)) return true;
   const variants = answerVariants(expectedWord);
-  if (variants.includes(t)) return true;
   for (const v of variants) {
     const threshold = v.length >= 7 ? 2 : v.length >= 4 ? 1 : 0;
     if (threshold === 0) continue;

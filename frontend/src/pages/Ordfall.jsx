@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchList, submitScore } from '../api/lists';
@@ -6,7 +6,7 @@ import { updateGlos } from '../api/glosor';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG } from '../utils/lang';
-import { shuffle, answerVariants } from '../utils/quiz';
+import { shuffle, matchesAnswer } from '../utils/quiz';
 
 const ROUNDS = 15;
 const LIVES = 3;
@@ -148,17 +148,12 @@ export default function Ordfall() {
     }
   }, [paused, progress]);
 
-  const acceptedAnswers = useMemo(() => {
-    if (!current) return [];
-    return answerVariants(current[expectedField]);
-  }, [current, expectedField]);
-
   const onSubmit = (e) => {
     e.preventDefault();
     if (!current || feedback || paused) return;
     const cleaned = answer.trim().toLowerCase();
     if (!cleaned) return;
-    if (acceptedAnswers.includes(cleaned)) {
+    if (matchesAnswer(cleaned, current[expectedField])) {
       recordOutcome(true, answer.trim(), current[expectedField]);
     } else {
       // Wrong submission — flash the input red but don't penalize until it lands.

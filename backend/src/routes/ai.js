@@ -35,6 +35,12 @@ function requireEnabled(req, res) {
 // returnera tidigt i det fallet.
 function rejectIfTooLong(res, fields) {
   for (const [name, spec] of Object.entries(fields)) {
+    // Bara text (eller inget) — en lista eller ett objekt hoppade förut över
+    // längdkollen och hamnade ändå i prompten (MB av text per anrop).
+    if (spec.value !== undefined && spec.value !== null && typeof spec.value !== 'string') {
+      res.status(400).json({ error: `${name} must be text` });
+      return true;
+    }
     if (typeof spec.value === 'string' && spec.value.length > spec.max) {
       res.status(400).json({ error: `${name} is too long (max ${spec.max} characters)` });
       return true;
@@ -251,7 +257,8 @@ router.post('/parse-image', async (req, res) => {
 
   const stripped = stripDataUrlPrefix(image.trim());
   const data = stripped.data;
-  const mediaType = (stripped.mediaType || req.body.mediaType || '').toLowerCase();
+  const bodyType = typeof req.body.mediaType === 'string' ? req.body.mediaType : '';
+  const mediaType = (stripped.mediaType || bodyType).toLowerCase();
 
   if (!ALLOWED_IMAGE_TYPES.includes(mediaType)) {
     return res.status(400).json({ error: 'mediaType must be one of image/jpeg, image/png, image/webp, image/gif' });
