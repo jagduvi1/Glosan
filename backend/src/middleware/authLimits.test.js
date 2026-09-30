@@ -12,7 +12,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { clientIp } = require('../utils/clientIp');
 const { userOrIpKey } = require('./rateKeys');
-const { loginLimiter, authFloodLimiter, refreshLimiter } = require('./authLimits');
+const { loginLimiter, authFloodLimiter, refreshLimiter, registerLimiter } = require('./authLimits');
+const { validateRegistration } = require('./validateRegistration');
 
 function makeApp() {
   const app = express();
@@ -25,6 +26,9 @@ function makeApp() {
   app.use(express.json());
   app.post('/login', authFloodLimiter, loginLimiter, (req, res) => res.status(401).json({ error: 'wrong password' }));
   app.post('/refresh', refreshLimiter, (req, res) => res.json({ ok: true }));
+  // Som i routes/auth.js; här misslyckas varje registrering som når fram
+  // (t.ex. upptaget namn) — den ska ändå räknas.
+  app.post('/register', authFloodLimiter, validateRegistration, registerLimiter, (req, res) => res.status(400).json({ error: 'taken' }));
   const api = rateLimit({ windowMs: 60000, max: 3, keyGenerator: userOrIpKey, standardHeaders: true, legacyHeaders: false });
   app.get('/api/thing', api, (req, res) => res.json({ ip: req.ip }));
   return app;
@@ -48,16 +52,49 @@ test('20 wrong logins for one student do not lock out the next student on the sa
   expect((await request(app).post('/login').set(SCHOOL).send({ username: 'Bert', password: 'x' })).status).toBe(401);
 });
 
-test('an IPv6 host cannot dodge the login limit by rotating through its /64 (review of #119)', async () => {
+test('an IPv6 host cannot dodge the login limit by rotating through its network (review of #119)', async () => {
   const app = makeApp();
-  const from = (host) => ({ 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': `2001:db8:1:2::${host.toString(16)}` });
+  // Nya /64-nät inom samma /56 — det en hemmauppkoppling normalt får.
+  const from = (net) => ({ 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': `2001:db8:1:${net.toString(16)}::1` });
   for (let i = 1; i <= 20; i++) {
     expect((await request(app).post('/login').set(from(i)).send({ username: 'anna', password: 'x' })).status).toBe(401);
   }
-  expect((await request(app).post('/login').set(from(999)).send({ username: 'anna', password: 'x' })).status).toBe(429);
-  // Ett annat /64-nät är en annan uppkoppling.
-  const other = { 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': '2001:db8:1:3::1' };
+  expect((await request(app).post('/login').set(from(0xff)).send({ username: 'anna', password: 'x' })).status).toBe(429);
+  // Ett annat /56-nät är en annan uppkoppling.
+  const other = { 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': '2001:db8:1:100::1' };
   expect((await request(app).post('/login').set(other).send({ username: 'anna', password: 'x' })).status).toBe(401);
+});
+
+test('an access token that just expired still counts for its account, not the school (review of #119)', async () => {
+  const app = makeApp();
+  const now = Math.floor(Date.now() / 1000);
+  const signed = (id, iat, exp) => jwt.sign({ id, roles: ['user'], iat, exp }, process.env.JWT_SECRET, { algorithm: 'HS256' });
+  const expired = (id) => signed(id, now - 1200, now - 300);
+  for (let i = 0; i < 3; i++) await request(app).get('/api/thing').set(SCHOOL).set('Authorization', `Bearer ${expired('anna')}`);
+  expect((await request(app).get('/api/thing').set(SCHOOL).set('Authorization', `Bearer ${expired('anna')}`)).status).toBe(429);
+  // Bert har också en utgången token — och sin egen hink, inte skolans.
+  expect((await request(app).get('/api/thing').set(SCHOOL).set('Authorization', `Bearer ${expired('bert')}`)).status).toBe(200);
+  // En token äldre än refresh-cookien (7 dagar) räknas på adressen.
+  const ancient = signed('carl', now - 8 * 86400, now - 8 * 86400 + 900);
+  for (let i = 0; i < 3; i++) await request(app).get('/api/thing').set(SCHOOL).set('Authorization', `Bearer ${ancient}`);
+  expect((await request(app).get('/api/thing').set(SCHOOL)).status).toBe(429);
+});
+
+test('forms with mistakes do not use up the sign-up quota; every real attempt counts (review of #119)', async () => {
+  const app = makeApp();
+  const form = (i, password) => ({ username: `elev${i}`, email: `elev${i}@skola.test`, password, ageConsent: true });
+  // 70 för korta lösenord från samma skola: fel i formuläret, aldrig 429.
+  for (let i = 0; i < 70; i++) {
+    const r = await request(app).post('/register').set(SCHOOL).send(form(i, 'kort'));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/at least 10 characters/);
+  }
+  // Formulär som kunde bli konton räknas, även när registreringen sedan
+  // misslyckas: 60 ryms, nummer 61 stoppas.
+  for (let i = 0; i < 60; i++) {
+    expect((await request(app).post('/register').set(SCHOOL).send(form(100 + i, 'Hemligt123abc'))).body.error).toBe('taken');
+  }
+  expect((await request(app).post('/register').set(SCHOOL).send(form(999, 'Hemligt123abc'))).status).toBe(429);
 });
 
 test('refresh counts per session, not per school', async () => {

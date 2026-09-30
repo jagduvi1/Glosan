@@ -28,10 +28,11 @@ describe('clientIp', () => {
     expect(inCloudflare('fe80::1')).toBe(false);
   });
 
-  test('rate limits count an IPv6 connection as its /64 (review of #119)', () => {
-    expect(ipBucket('2001:db8:1:2::a')).toBe('2001:db8:1:2::/64');
-    expect(ipBucket('2001:db8:1:2:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:2::/64');
-    expect(ipBucket('2001:db8:1:3::1')).toBe('2001:db8:1:3::/64');
+  test('rate limits count an IPv6 connection as its /56 (review of #119)', () => {
+    expect(ipBucket('2001:db8:1:2::a')).toBe('2001:db8:1:0::/56');
+    expect(ipBucket('2001:db8:1:ff:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:0::/56');
+    expect(ipBucket('2001:db8:1:100::1')).toBe('2001:db8:1:100::/56');
+    expect(ipBucket('2001:0DB8:0001:0002:0000:0000:0000:000a')).toBe('2001:db8:1:0::/56');
     expect(ipBucket('81.227.40.12')).toBe('81.227.40.12');
     expect(ipBucket('::ffff:81.227.40.12')).toBe('81.227.40.12');
     expect(ipBucket('')).toBe('');

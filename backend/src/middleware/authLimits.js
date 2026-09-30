@@ -5,7 +5,7 @@
 // (20 per kvart) stängde då ute elev 21–30. Därför nycklas varje gräns på det
 // den skyddar — ett konto, en session, en mottagaradress — med ett högt tak per
 // adress som bara stoppar den som hamrar på många konton.
-// Adressen = klientens riktiga adress bakom Cloudflare, IPv6 som /64
+// Adressen = klientens riktiga adress bakom Cloudflare, IPv6 som /56
 // (ipKey, middleware/rateKeys.js). De globala limitrarna i app.js hoppar över
 // de här routerna — annars delade en skola ändå på 100 skrivanrop per kvart.
 const rateLimit = require('express-rate-limit');
@@ -40,13 +40,14 @@ const authFloodLimiter = limiter({
 
 /**
  * Nya konton per adress: en klass (30) med marginal, inte en spam-fabrik.
- * Bara lyckade registreringar räknas — elever som får skriva om lösenordet
- * ska inte äta upp klassens kvot (authFloodLimiter räknar alla försök).
+ * Formulär med fel stoppas före den här (middleware/validateRegistration.js),
+ * så elever som skriver om lösenordet äter inte upp klassens kvot. Allt som
+ * når hit räknas — skipFailedRequests skulle också släppa igenom den som
+ * lägger på innan svaret, fast kontot skapas.
  */
 const registerLimiter = limiter({
   windowMs: MIN15,
   max: 60,
-  skipFailedRequests: true,
   keyGenerator: (req) => `register:${ipKey(req)}`
 }, 'Too many attempts, please try again later');
 

@@ -23,6 +23,14 @@ test('a school logging in from one IP is not stopped by the global limiters', as
   }
 });
 
+test('a school signing in with Google is not stopped by the global limiters (review of #119)', async () => {
+  // Inloggningssidan frågar /sso/providers; 320 elever > de globala 300.
+  for (let i = 0; i < 320; i++) {
+    const r = await request(app).get('/api/auth/sso/providers').set(SCHOOL);
+    expect(r.status).toBe(200);
+  }
+});
+
 test('the global limiters still cover paths without their own limiter', async () => {
   // Samma skola, en okänd sökväg under /api/auth: den slipper inte undan.
   let limited = false;

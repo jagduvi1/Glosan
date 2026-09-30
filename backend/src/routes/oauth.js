@@ -2,7 +2,9 @@ const express = require('express');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+const { ipKey } = require('../middleware/rateKeys');
 const { issueTokens } = require('../services/authTokens');
 const { CookieStateStore } = require('../services/oauthStateStore');
 
@@ -162,14 +164,26 @@ if (GOOGLE_ENABLED) {
   router.use(passport.initialize());
 }
 
+// Eget tak per adress (de globala limitrarna i app.js hoppar över de här
+// routerna): en inloggning via Google är tre anrop, och en skola där alla loggar
+// in med Google på Chromebooks delar en IP-adress.
+const ssoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  keyGenerator: (req) => `sso:${ipKey(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many requests, please try again later' })
+});
+
 // GET /api/auth/sso/providers — publik. Låter login-sidan rendera
 // Google-knappen bara när den faktiskt fungerar på den här instansen.
-router.get('/sso/providers', (req, res) => {
+router.get('/sso/providers', ssoLimiter, (req, res) => {
   res.json({ google: GOOGLE_ENABLED });
 });
 
 // GET /api/auth/google — starta OAuth-redirecten till Google.
-router.get('/google', (req, res, next) => {
+router.get('/google', ssoLimiter, (req, res, next) => {
   if (!GOOGLE_ENABLED) return res.redirect(failureRedirect('not_configured'));
   passport.authenticate('google', {
     scope: ['profile', 'email'],
@@ -182,7 +196,7 @@ router.get('/google', (req, res, next) => {
 // Custom callback så vi styr redirecten själva och aldrig läcker en token i
 // URL:en: vid success sätts httpOnly-refresh-cookien och webbläsaren studsar
 // till SPA:n, som hämtar sin access-token via /api/auth/refresh.
-router.get('/google/callback', (req, res, next) => {
+router.get('/google/callback', ssoLimiter, (req, res, next) => {
   if (!GOOGLE_ENABLED) return res.redirect(failureRedirect('not_configured'));
   passport.authenticate('google', { session: false }, async (err, user, info) => {
     if (err || !user) {

@@ -92,17 +92,18 @@ function inCloudflare(ip) {
 }
 
 /**
- * Nyckeln för per-adress-limitrar: IPv4-adressen, eller IPv6-adressens /64.
- * En IPv6-uppkoppling får normalt ett helt /64-nät och kan byta adress inom
- * det för varje anrop — nycklat på hela adressen vore gränsen ingen gräns.
+ * Nyckeln för per-adress-limitrar: IPv4-adressen, eller IPv6-adressens /56.
+ * En IPv6-uppkoppling får minst ett helt /64-nät (hemma oftast ett /56) och
+ * kan byta adress inom det för varje anrop — nycklat på hela adressen vore
+ * gränsen ingen gräns. /56 är också express-rate-limits egen standard.
  */
 function ipBucket(ip) {
   const s = normalize(ip);
   if (parseV4(s) !== null) return s;
   const v6 = parseV6(s);
   if (v6 === null) return s;
-  const prefix = v6 >> 64n;
-  return `${[48n, 32n, 16n, 0n].map((sh) => ((prefix >> sh) & 0xffffn).toString(16)).join(':')}::/64`;
+  const prefix = (v6 >> 72n) << 8n; // de översta 56 bitarna, som fyra grupper
+  return `${[48n, 32n, 16n, 0n].map((sh) => ((prefix >> sh) & 0xffffn).toString(16)).join(':')}::/56`;
 }
 
 /**

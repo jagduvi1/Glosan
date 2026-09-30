@@ -29,6 +29,7 @@ const {
   loginLimiter, authFloodLimiter, registerLimiter, tokenLimiter,
   refreshLimiter, refreshFloodLimiter, mailLimiter, mailFloodLimiter, resendLimiter
 } = require('../middleware/authLimits');
+const { validateRegistration } = require('../middleware/validateRegistration');
 
 // Email-token-helpers: råa token-strängen visas bara i email-länken,
 // DB-en innehåller endast SHA-256-hash så en kompromiss av Token-
@@ -158,28 +159,20 @@ async function sendMagicLinkEmail(user) {
   return true;
 }
 
-router.post('/register', authFloodLimiter, registerLimiter, async (req, res) => {
+// validateRegistration före registerLimiter: bara formulär som kan bli ett
+// konto räknas mot klassens kvot (middleware/validateRegistration.js).
+router.post('/register', authFloodLimiter, validateRegistration, registerLimiter, async (req, res) => {
   try {
-    const { username, email, password, ageConsent } = req.body;
-
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email, and password are required' });
-    }
-    if (ageConsent !== true) {
-      return res.status(400).json({
-        error: 'Du måste bekräfta att du är minst 13 år eller har en förälders tillåtelse.'
-      });
-    }
-
+    const user = req.newUser;
+    // Modellen gör e-post och användarnamn gemena (lowercase: true).
     const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }]
+      $or: [{ email: user.email }, { username: user.username }]
     });
 
     if (existingUser) {
       return res.status(400).json({ error: 'Registration failed. Please check your details and try again.' });
     }
 
-    const user = new User({ username, email, password, roles: ['user'], ageConsent: true });
     const accessToken = await issueTokens(user, res);
 
     // Skicka verify-email best-effort — om Resend krånglar ska register

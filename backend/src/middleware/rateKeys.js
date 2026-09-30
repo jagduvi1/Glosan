@@ -7,7 +7,7 @@ const { ipBucket } = require('../utils/clientIp');
 
 /**
  * Adressnyckeln för alla per-adress-limitrar: IPv4-adressen eller IPv6-nätets
- * /64 (utils/clientIp.js). Varje limiter som nycklar på adress ska använda den
+ * /56 (utils/clientIp.js). Varje limiter som nycklar på adress ska använda den
  * här — express-rate-limits standardnyckel är hela req.ip.
  */
 function ipKey(req) {
@@ -15,9 +15,13 @@ function ipKey(req) {
 }
 
 /**
- * Kontots id från en GILTIG JWT i Authorization-headern, annars null. JWT:n
- * verifieras — ett påhittat id ska inte ge en egen, ny hink. MCP-tokens
- * (glo_) hör till /api/mcp:s egna limitrar. Cachas på req (flera limitrar).
+ * Kontots id från en äkta JWT i Authorization-headern, annars null. Signaturen
+ * verifieras — ett påhittat id ska inte ge en egen, ny hink. En token som
+ * nyss gått ut räknas ändå på kontot: varje aktiv elev skickar en sådan var
+ * femtonde minut (appen refreshar först på ett 401), och i skolans delade
+ * adresshink skulle klassen till slut få 429 i stället för 401 — och aldrig
+ * refresha. Äldre än 7 dagar (refresh-cookiens livslängd) → per adress.
+ * MCP-tokens (glo_) hör till /api/mcp:s egna limitrar. Cachas på req.
  */
 function verifiedUserId(req) {
   if (req._rateUserId !== undefined) return req._rateUserId;
@@ -25,9 +29,9 @@ function verifiedUserId(req) {
   const h = req.headers?.authorization;
   if (typeof h === 'string' && h.startsWith('Bearer ') && !h.startsWith('Bearer glo_')) {
     try {
-      id = jwt.verify(h.slice(7), process.env.JWT_SECRET, { algorithms: ['HS256'] }).id || null;
+      id = jwt.verify(h.slice(7), process.env.JWT_SECRET, { algorithms: ['HS256'], ignoreExpiration: true, maxAge: '7d' }).id || null;
     } catch {
-      id = null; // utgången eller ogiltig — per adress
+      id = null; // falsk eller mycket gammal — per adress
     }
   }
   req._rateUserId = id ? String(id) : null;
