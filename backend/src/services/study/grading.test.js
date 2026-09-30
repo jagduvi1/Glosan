@@ -131,6 +131,15 @@ describe('gradeText', () => {
     expect(gradeText('fotosyntez', spec)).toMatchObject({ result: 'partial', expected: 'fotosyntes' });
     // En annan godkänd variant som stämmer bättre vinner.
     expect(gradeText('elektrod', { accepted: ['elektron', 'elektrod'] }).result).toBe('correct');
+    // Ord för ord när svaret har flera ord.
+    expect(gradeText('elektrod och proton', { accepted: ['elektron och proton'] }).result).toBe('partial');
+  });
+
+  test('an added or dropped ending and missing dots are ordinary slips, not another word (review of #120)', () => {
+    expect(gradeText('bakterien', { accepted: ['bakterie'] }).result).toBe('correct');
+    expect(gradeText('mitokondrien', { accepted: ['mitokondrie'] }).result).toBe('correct');
+    expect(gradeText('Ostersjön', { accepted: ['Östersjön'] }).result).toBe('correct');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('correct');
   });
 
   test('numbers (years) must match exactly; short words get no typo slack', () => {
@@ -148,7 +157,6 @@ describe('gradeText', () => {
     expect(gradeText('propen', { accepted: ['propan'] }).result).toBe('wrong');
     expect(gradeText('Karl XI', { accepted: ['Karl XII'] }).result).toBe('wrong');
     expect(gradeText('Gustav II Adolf', { accepted: ['Gustav III Adolf'] }).result).toBe('wrong');
-    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('partial');
     expect(gradeText('klorfyll', { accepted: ['klorofyll'] }).result).toBe('correct');
     expect(gradeText('klorfyll', { accepted: ['klorofyll'], exact: true }).result).toBe('wrong');
     // Två stavfel först från 12 tecken.
