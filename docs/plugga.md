@@ -163,9 +163,9 @@ level" only count steps the student earned.
   **Swedish local time** (`utils/localTime.js`, DST-safe): time, exercises and
   right answers per subject and day, paper solutions, practice tests with their
   grades, XP and the streak; a week chart, a month calendar, a term heatmap,
-  every session with its exercises. Printable. (The streak itself still ticks
-  at the server's midnight — UTC in the container — so study between midnight
-  and 01:00/02:00 Swedish time counts toward the previous day's streak.)
+  every session with its exercises. Printable. The streak (shared with the
+  vocabulary quizzes, `services/gamification.js`) also turns over at Swedish
+  midnight, as do the XP leaderboard's week and month.
 - History is denormalised (subject, unit title, exercise code, test title) so
   it survives if a shared unit is later deleted.
 
