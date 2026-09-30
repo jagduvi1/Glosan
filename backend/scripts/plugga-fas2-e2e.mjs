@@ -303,6 +303,16 @@ async function main() {
     assert.equal(week.body.bySubject[0].subject, 'matematik');
     const term = await api('/api/study/activity?period=term', B.token);
     assert.equal(term.body.timeline.kind, 'days');
+    // Månad och termin räknas i databasen (aggregering), dag och vecka svar för
+    // svar — dagens rad ska bli densamma oavsett väg.
+    const month = await api('/api/study/activity?period=month', B.token);
+    const todayRow = (r) => r.body.days.find((d) => d.date === r.body.today);
+    assert.ok(todayRow(week).answered >= 5);
+    for (const view of [month, term]) {
+      assert.deepEqual(todayRow(view), todayRow(week));
+      assert.ok(view.body.totals.answered >= todayRow(week).answered);
+      assert.ok(view.body.bySubject.some((s) => s.subject === 'matematik' && s.answered >= 1 && s.activeSeconds > 0));
+    }
     const viaAiActivity = await call(claude, 'get_study_activity', { period: 'week' });
     assert.ok(viaAiActivity.data.totals.answered >= act.body.totals.answered, 'the week includes today');
     assert.ok(viaAiActivity.data.sessions.some((s) => s.kind === 'test'));
