@@ -72,73 +72,94 @@ const cardInput = z.object({
   skill: z.string().trim().max(80).optional()
 });
 
-const answerInput = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('number'),
-    value: z.number().optional().describe('The exact answer as a number (use a dot in JSON: 3.5). In a template exercise use expr instead.'),
-    expr: z.string().trim().max(200).optional().describe('Template exercises only: the answer as an expression of the variables, e.g. "d * 10^k"'),
-    tolerance: z.number().min(0).optional().describe('Allowed deviation, e.g. 0.05 when the answer is rounded to one decimal'),
-    exact: z.boolean().optional().describe('true when the exact decimals are the point (0,043 must not pass as 0,04) — silences the rounding warning'),
-    unit: z.string().trim().max(20).optional().describe('e.g. "cm", "kr", "%", "m/s" — a missing unit is forgiven, a wrong one is not')
-  }),
-  z.object({
-    type: z.literal('choice'),
-    choices: z.array(z.string().trim().min(1).max(300)).min(2).max(8),
-    correct_index: z.number().int().min(0).describe('0-based index of the correct choice')
-  }),
-  z.object({
-    type: z.literal('text'),
-    accepted: z.array(z.string().trim().min(1).max(200)).min(1).max(10).describe('Accepted answers, e.g. ["fotosyntes", "fotosyntesen"]'),
-    exact: z.boolean().optional().describe('true when a one-letter slip is a different answer (etanol/metanol, Karl XI/XII) — turns off the small typo allowance for long words (a slip in the first or last two letters is already graded only as partial)')
-  }),
-  z.object({
-    type: z.literal('self'),
-    model_answer: z.string().trim().min(1).max(4000).describe('Model answer; for SO/NO/history describe what an E, C and A answer contains')
-  }),
-  z.object({
-    type: z.literal('multi'),
-    choices: z.array(z.string().trim().min(1).max(300)).min(2).max(8),
-    correct_indices: z.array(z.number().int().min(0)).min(1).max(8).describe('0-based indexes of ALL correct choices, e.g. "Vilka av talen är primtal?"')
-  }),
-  z.object({
-    type: z.literal('order'),
-    items: z.array(z.string().trim().min(1).max(300)).min(3).max(8).describe('3–8 items in the CORRECT order (smallest first, earliest first …) — the app shuffles them for the student')
-  }),
-  z.object({
-    type: z.literal('factors'),
-    factors: z.array(z.number().int().min(2).max(1000000000)).min(1).max(30)
-      .describe('The factors in any order, e.g. [2, 3, 3, 5] for "Primtalsfaktorisera 90" — the student may write 2·3·3·5, 3·2·5·3 or 2·3²·5')
-  })
-]);
+// Svars-, mall- och uppgiftsformen byggs två gånger: med beskrivningar för
+// add_exercises, utan för update_study_item och create_practice_test, som
+// hänvisar dit. Samma fält — men varje beskrivning skickas med i verktygslistan
+// i varje session, och tre kopior av dem var den största posten (audit B19).
+const docsFor = (docs) => (schema, text) => (docs ? schema.describe(text) : schema);
 
-const templateVar = z.object({
-  name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,15}$/, 'letters, digits and _'),
-  int: z.tuple([z.number().int(), z.number().int()]).optional().describe('A whole number in [min, max], e.g. [1000, 99999]'),
-  decimal: z.tuple([z.number(), z.number()]).optional().describe('A decimal number in [min, max] (set decimals)'),
-  decimals: z.number().int().min(1).max(4).optional(),
-  pick: z.array(z.number()).min(1).max(50).optional().describe('One of these numbers, e.g. [10, 100, 1000]'),
-  calc: z.string().trim().max(200).optional().describe('Computed from earlier variables, e.g. "digit(n, k)"')
-}).describe('Exactly one of int, decimal, pick or calc');
+function makeAnswerInput(docs) {
+  const D = docsFor(docs);
+  return z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('number'),
+      value: D(z.number().optional(), 'The exact answer as a number (use a dot in JSON: 3.5). In a template exercise use expr instead.'),
+      expr: D(z.string().trim().max(200).optional(), 'Template exercises only: the answer as an expression of the variables, e.g. "d * 10^k"'),
+      tolerance: D(z.number().min(0).optional(), 'Allowed deviation, e.g. 0.05 when the answer is rounded to one decimal'),
+      exact: D(z.boolean().optional(), 'true when the exact decimals are the point (0,043 must not pass as 0,04) — silences the rounding warning'),
+      unit: D(z.string().trim().max(20).optional(), 'e.g. "cm", "kr", "%", "m/s" — a missing unit is forgiven, a wrong one is not')
+    }),
+    z.object({
+      type: z.literal('choice'),
+      choices: z.array(z.string().trim().min(1).max(300)).min(2).max(8),
+      correct_index: D(z.number().int().min(0), '0-based index of the correct choice')
+    }),
+    z.object({
+      type: z.literal('text'),
+      accepted: D(z.array(z.string().trim().min(1).max(200)).min(1).max(10), 'Accepted answers, e.g. ["fotosyntes", "fotosyntesen"]'),
+      exact: D(z.boolean().optional(), 'true when a one-letter slip is a different answer (etanol/metanol, Karl XI/XII) — turns off the small typo allowance for long words (a slip in the first or last two letters is already graded only as partial)')
+    }),
+    z.object({
+      type: z.literal('self'),
+      model_answer: D(z.string().trim().min(1).max(4000), 'Model answer; for SO/NO/history describe what an E, C and A answer contains')
+    }),
+    z.object({
+      type: z.literal('multi'),
+      choices: z.array(z.string().trim().min(1).max(300)).min(2).max(8),
+      correct_indices: D(z.array(z.number().int().min(0)).min(1).max(8), '0-based indexes of ALL correct choices, e.g. "Vilka av talen är primtal?"')
+    }),
+    z.object({
+      type: z.literal('order'),
+      items: D(z.array(z.string().trim().min(1).max(300)).min(3).max(8), '3–8 items in the CORRECT order (smallest first, earliest first …) — the app shuffles them for the student')
+    }),
+    z.object({
+      type: z.literal('factors'),
+      factors: D(z.array(z.number().int().min(2).max(1000000000)).min(1).max(30),
+        'The factors in any order, e.g. [2, 3, 3, 5] for "Primtalsfaktorisera 90" — the student may write 2·3·3·5, 3·2·5·3 or 2·3²·5')
+    })
+  ]);
+}
 
-const templateInput = z.object({
-  vars: z.array(templateVar).min(1).max(12),
-  where: z.array(z.string().trim().max(200)).max(8).optional().describe('Conditions every instance meets, e.g. ["d != 0", "n % 3 == 0"]')
-}).describe(
+function makeTemplateInput(docs) {
+  const D = docsFor(docs);
+  const templateVar = D(z.object({
+    name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,15}$/, 'letters, digits and _'),
+    int: D(z.tuple([z.number().int(), z.number().int()]).optional(), 'A whole number in [min, max], e.g. [1000, 99999]'),
+    decimal: D(z.tuple([z.number(), z.number()]).optional(), 'A decimal number in [min, max] (set decimals)'),
+    decimals: z.number().int().min(1).max(4).optional(),
+    pick: D(z.array(z.number()).min(1).max(50).optional(), 'One of these numbers, e.g. [10, 100, 1000]'),
+    calc: D(z.string().trim().max(200).optional(), 'Computed from earlier variables, e.g. "digit(n, k)"')
+  }), 'Exactly one of int, decimal, pick or calc');
+  return D(z.object({
+    vars: z.array(templateVar).min(1).max(12),
+    where: D(z.array(z.string().trim().max(200)).max(8).optional(), 'Conditions every instance meets, e.g. ["d != 0", "n % 3 == 0"]')
+  }),
   'Makes a DRILL exercise that gets new numbers every time the student meets it, so it can\'t be learned by heart. ' +
   'Write {{name}} or {{ expression }} in prompt, hints and solution ({{name:tex}} inside $…$), and give the answer as answer.expr. ' +
-  'Operators + - * / % ^ and comparisons; functions round(x,d), floor, ceil, abs, sqrt, min, max, gcd, lcm, digit(n,k) (k=0 ones, 1 tens, −1 tenths), digits(n), posname(k) ("tiotal", "hundradel" …).'
-);
+  'Operators + - * / % ^ and comparisons; functions round(x,d), floor, ceil, abs, sqrt, min, max, gcd, lcm, digit(n,k) (k=0 ones, 1 tens, −1 tenths), digits(n), posname(k) ("tiotal", "hundradel" …).');
+}
 
-const exerciseInput = z.object({
-  prompt: z.string().trim().min(1).max(4000).describe('The task (Markdown + LaTeX)'),
-  answer: answerInput,
-  solution: z.string().trim().max(8000).optional().describe('Worked solution, step by step — required for number/choice/text'),
-  hints: z.array(z.string().trim().min(1).max(1000)).max(5).optional().describe('1–3 hints that nudge without giving the answer away'),
-  level: level.describe('E = easy (lätt), C = medium, A = hard — follow the book\'s own level markings'),
-  skill: z.string().trim().max(80).optional().describe('What it trains, e.g. "ekvationer med x i båda led"'),
-  source_ref: z.string().trim().max(60).optional().describe('The book exercise it is modelled on, e.g. "uppg 3.14"'),
-  template: templateInput.optional()
-});
+function makeExerciseInput(docs) {
+  const D = docsFor(docs);
+  return z.object({
+    prompt: D(z.string().trim().min(1).max(4000), 'The task (Markdown + LaTeX)'),
+    answer: makeAnswerInput(docs),
+    solution: D(z.string().trim().max(8000).optional(), 'Worked solution, step by step — required for number/choice/text'),
+    hints: D(z.array(z.string().trim().min(1).max(1000)).max(5).optional(), '1–3 hints that nudge without giving the answer away'),
+    level: D(level, 'E = easy (lätt), C = medium, A = hard — follow the book\'s own level markings'),
+    skill: D(z.string().trim().max(80).optional(), 'What it trains, e.g. "ekvationer med x i båda led"'),
+    source_ref: D(z.string().trim().max(60).optional(), 'The book exercise it is modelled on, e.g. "uppg 3.14"'),
+    template: makeTemplateInput(docs).optional()
+  });
+}
+
+const answerInput = makeAnswerInput(true);
+const templateInput = makeTemplateInput(true);
+const exerciseInput = makeExerciseInput(true);
+// Utan beskrivningar — för verktyg som hänvisar till add_exercises.
+const answerInputBare = makeAnswerInput(false);
+const templateInputBare = makeTemplateInput(false);
+const exerciseInputBare = makeExerciseInput(false);
 
 // ── hjälpare ─────────────────────────────────────────────────────────────────
 const toDate = (s) => (s ? new Date(`${s}T12:00:00Z`) : null);
@@ -1034,7 +1055,7 @@ registerTool({
   title: 'Correct a card or exercise',
   description:
     'Changes a card or exercise in a unit you created — fix a wrong answer, improve a solution or hint, change the level. Only the fields you pass change ' +
-    '(it overwrites the item for everyone the unit is shared with). The result must pass the same checks as add_exercises. template: null turns a template back into a fixed exercise (pass an answer with value too). ' +
+    '(it overwrites the item for everyone the unit is shared with). The fields and the checks are the same as in add_exercises. template: null turns a template back into a fixed exercise (pass an answer with value too). ' +
     'Use it after verifying your own content and when resolving "fel i facit" reports.',
   scope: 'write',
   feature: FEATURE,
@@ -1044,13 +1065,13 @@ registerTool({
     code: z.string().trim().max(20).optional(),
     prompt: z.string().trim().min(1).max(4000).optional(),
     back: z.string().trim().min(1).max(4000).optional().describe('Cards only'),
-    answer: answerInput.optional().describe('Exercises only — replaces the whole answer'),
+    answer: answerInputBare.optional().describe('Exercises only — replaces the whole answer; same fields as in add_exercises'),
     solution: z.string().trim().max(8000).optional(),
     hints: z.array(z.string().trim().min(1).max(1000)).max(5).optional(),
     level: level.optional(),
     skill: z.string().trim().max(80).optional(),
     source_ref: z.string().trim().max(60).optional(),
-    template: templateInput.nullable().optional().describe('Exercises only — replaces the template (new numbers every time); null removes it')
+    template: templateInputBare.nullable().optional().describe('Exercises only — replaces the template, same fields as in add_exercises; null removes it')
   },
   handler: async (args, ctx) => {
     const badFigure = figureError('The item', args.prompt, args.back, args.solution, args.hints, args.answer?.model_answer);
@@ -1333,7 +1354,7 @@ registerTool({
     '(default 1 point on its level; e.g. { E: 1, C: 1 } for a question that shows both). Optional time limit, and grade limits if the book or teacher gives them ' +
     '(otherwise limits like the national tests are used). The questions get codes like other exercises but are hidden from normal practice. ' +
     'The student takes the test in the app (auto-graded; open questions self-assessed against your model answer) or on paper — then check the photos and call record_paper_test. ' +
-    'Returns test_id, the question codes and a url.',
+    'Each question has the fields of an add_exercises exercise (no template) plus points and part. Returns test_id, the question codes and a url.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -1342,7 +1363,7 @@ registerTool({
     title: z.string().trim().min(1).max(120).describe('e.g. "Övningsprov — Ekvationer"'),
     description: z.string().trim().max(1000).optional().describe('What it covers, allowed aids (miniräknare, formelblad), a tip'),
     time_limit_min: z.number().int().min(5).max(180).optional(),
-    questions: z.array(exerciseInput.omit({ template: true }).extend({
+    questions: z.array(exerciseInputBare.omit({ template: true }).extend({
       points: pointsInput.optional().describe('Points per level — default 1 point on the question\'s level'),
       part: z.string().trim().max(60).optional().describe('The test part it belongs to, e.g. "Del A — utan miniräknare". Questions of one part go together, in order.')
     })).min(1).max(40),
