@@ -171,7 +171,8 @@ async function main() {
     await clickText(page, 'label', 'Facit');
     await page.waitForFunction(() => !document.querySelector('.sheet-facit'));
     await page.emulateMediaType('print');
-    assert.equal(await page.$eval('.no-print', (el) => getComputedStyle(el).display), 'none', 'the controls are not printed');
+    assert.equal(await page.$eval('.sheet-controls', (el) => getComputedStyle(el).display), 'none', 'the sheet\'s controls are not printed');
+    assert.equal(await page.$eval('.test-sheet', (el) => getComputedStyle(el).display), 'block', 'the sheet itself is');
     await page.emulateMediaType(null);
     ok('Skriv ut on a unit gives an övningsblad with the facit last (can be left out), and no controls on paper');
 

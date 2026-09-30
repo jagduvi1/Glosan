@@ -508,6 +508,14 @@ async function main() {
     assert.equal((await call(claude, 'create_practice_test', { unit_id: drillId, title: 'diagnos — tal', questions: [exs[2]] })).error?.code, 'conflict');
     const partSheet = await api(`/api/study/tests/${parts.data.test_id}/sheet`, A.token);
     assert.deepEqual(partSheet.body.questions.map((q) => q.part), ['Del A — utan miniräknare', 'Del A — utan miniräknare', 'Del B']);
+    // Provfrågor hamnar aldrig på ett övningsblad (där står facit).
+    const afterTest = await api(`/api/study/sheet?units=${drillId}&mode=mixed&count=50`, A.token);
+    assert.equal(afterTest.status, 200);
+    assert.ok(afterTest.body.items.length > 0 && afterTest.body.items.every((i) => !parts.data.question_codes.includes(i.code)), 'no test question on a sheet');
+    // "Nya uppgifter": det redan utskrivna väljs sist — bara om inget annat finns.
+    const firstIds = afterTest.body.items.slice(0, 3).map((i) => i.id);
+    const next = await api(`/api/study/sheet?units=${drillId}&mode=exercises&count=3&exclude=${firstIds.join(',')}`, A.token);
+    assert.ok(next.body.items.every((i) => !firstIds.includes(i.id)), 'exclude picks other exercises first');
     const paperDiag = await call(claude, 'record_paper_test', {
       test_id: parts.data.test_id,
       results: [{ code: parts.data.question_codes[0], points: { C: 1 } }, { code: parts.data.question_codes[2], points: { E: 1 } }],

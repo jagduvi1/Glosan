@@ -68,10 +68,20 @@ describe('template exercises', () => {
     expect(sheetItem(tpl, unit, { rand: seq(0.4815) }).variant).toBe(1 + Math.floor(0.4815 * MAX_VARIANT));
   });
 
-  test('a broken template is printed as it is, without a variant', () => {
+  test('a template whose conditions rule out some variants tries others', () => {
+    // n = 7·k går bara för var 7:e frö-utfall — med 20 försök hittas ett nästan alltid.
+    const picky = { ...tpl, prompt: 'Talet {{n}}', answer: { type: 'number', expr: 'n' }, solution: '{{n}}', hints: [], template: { vars: [{ name: 'n', int: [1, 70] }], where: ['n % 7 == 0'] } };
+    for (let run = 0; run < 30; run++) {
+      const out = sheetItem(picky, unit);
+      if (!out) continue; // ytterst sällsynt: alla 20 fröna föll bort
+      expect(out.prompt).toMatch(/^Talet \d+$/);
+      expect(Number(out.facit.answer) % 7).toBe(0);
+    }
+  });
+
+  test('a template no variant works for is left off the sheet, never printed as {{a}}', () => {
     const broken = { ...tpl, template: { vars: [{ name: 'a', int: [1, 2] }], where: ['a > 5'] } };
-    const out = sheetItem(broken, unit);
-    expect(out.variant).toBeUndefined();
-    expect(out.prompt).toBe('Beräkna {{a}} · {{b}}');
+    expect(sheetItem(broken, unit)).toBeNull();
+    expect(sheetItem(broken, unit, { variant: 3 })).toBeNull();
   });
 });

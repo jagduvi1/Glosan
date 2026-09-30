@@ -25,7 +25,7 @@ const MAX_SESSION_ITEMS = 50;
 // urvalet görs på ett fåtal fält, och bara de valda hämtas hela.
 const MAX_SCOPE_UNITS = 200;
 const MAX_CANDIDATES = 3000;
-const UNIT_FIELDS = '_id user code title subject term';
+const UNIT_FIELDS = '_id user code title subject term gradeYear';
 const PICK_FIELDS = '_id unit kind level number';
 const STATE_FIELDS = 'item box dueAt lastResult correct wrong lastSeenAt';
 // XP: samma skala som glos-quizzen (10 per rätt), halva för "nästan".
@@ -45,9 +45,9 @@ const PAPER_DUPLICATE_MS = 10 * 60 * 1000;
  */
 async function resolveScopeUnits(userId, scope = {}) {
   const filter = { ...readableFilter(userId), archivedAt: null };
-  const ids = Array.isArray(scope.unitIds) ? scope.unitIds.filter(isId).map(oid) : [];
-  if (ids.length) {
-    filter._id = { $in: ids.slice(0, 50) };
+  if (Array.isArray(scope.unitIds) && scope.unitIds.length) {
+    // Valda områden — inga giltiga id:n ger inga områden, aldrig hela biblioteket.
+    filter._id = { $in: scope.unitIds.filter(isId).map(oid).slice(0, 50) };
   } else if (scope.folderId !== undefined) {
     // Direkt mot StudyFolder (inte services/study/folders.js) — undviker en
     // require-cirkel practice → folders → views → practice.
@@ -182,7 +182,7 @@ const sessionCount = (count) => Math.min(Math.max(parseInt(count, 10) || 15, 1),
  * väljer i områdena: { picked (hela, i urvalets ordning), total }.
  * mode: mixed | cards | exercises | due | wrong.
  */
-async function pickFromUnits(userId, units, { mode = 'mixed', levels = [], count = 15, skills = [] } = {}) {
+async function pickFromUnits(userId, units, { mode = 'mixed', levels = [], count = 15, skills = [], exclude = [] } = {}) {
   const query = { unit: { $in: units.map((u) => u._id) }, usage: 'practice' };
   if (mode === 'cards') query.kind = 'card';
   if (mode === 'exercises') query.kind = 'exercise';
@@ -196,7 +196,18 @@ async function pickFromUnits(userId, units, { mode = 'mixed', levels = [], count
   const items = await StudyItem.find(query, PICK_FIELDS).limit(MAX_CANDIDATES).lean();
   const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }, STATE_FIELDS).lean();
   const stateMap = new Map(states.map((s) => [String(s.item), s]));
-  const picked = await loadPicked(pickItems(items, stateMap, { mode, count: sessionCount(count) }));
+  const n = sessionCount(count);
+  // Övningsbladets "Nya uppgifter": det som redan skrivits ut väljs sist — det
+  // fyller bara på bladet om inget annat finns kvar (utskrift sparar ingen
+  // progress, så urvalet blev annars detsamma varje gång).
+  const ex = new Set((Array.isArray(exclude) ? exclude : []).map(String));
+  const fresh = ex.size ? items.filter((i) => !ex.has(String(i._id))) : items;
+  let lite = pickItems(fresh, stateMap, { mode, count: n });
+  if (lite.length < n && fresh.length < items.length) {
+    const printed = items.filter((i) => ex.has(String(i._id)));
+    lite = [...lite, ...pickItems(printed, stateMap, { mode, count: n - lite.length })];
+  }
+  const picked = await loadPicked(lite);
   return { picked, total: items.length };
 }
 

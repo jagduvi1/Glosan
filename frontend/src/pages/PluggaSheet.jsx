@@ -41,7 +41,9 @@ export default function PluggaSheet() {
   const scope = useMemo(() => readScope(params), [params]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [nonce, setNonce] = useState(0);
+  // Redan utskrivna uppgifter: "Nya uppgifter" väljer andra först (utskrift
+  // sparar ingen progress, så urvalet blev annars detsamma).
+  const [exclude, setExclude] = useState([]);
   const [showHints, setShowHints] = useState(false);
   const [showFacit, setShowFacit] = useState(true);
   const [showSolutions, setShowSolutions] = useState(true);
@@ -54,11 +56,13 @@ export default function PluggaSheet() {
     let alive = true;
     setError('');
     // Tillbaka-länken hör till sidan, inte till urvalet.
-    fetchStudySheet(apiFetch, scopeQuery({ ...scope, back: undefined }, scope))
+    const query = scopeQuery({ ...scope, back: undefined }, scope);
+    if (exclude.length) query.set('exclude', exclude.join(','));
+    fetchStudySheet(apiFetch, query)
       .then((d) => { if (alive) setData(d); })
       .catch((e) => { if (alive) setError(e.message); });
     return () => { alive = false; };
-  }, [apiFetch, scope, nonce]);
+  }, [apiFetch, scope, exclude]);
 
   if (error) {
     return (
@@ -91,7 +95,7 @@ export default function PluggaSheet() {
 
   return (
     <div className="stack" style={{ gap: 18 }}>
-      <div className="no-print stack" style={{ gap: 12 }}>
+      <div className="no-print sheet-controls stack" style={{ gap: 12 }}>
         <Link to={scope.back} className="t-hand" style={{ fontSize: 15 }}>← Tillbaka</Link>
         <div className="card" style={{ background: 'var(--sky-soft)' }}>
           <h2 style={{ margin: '0 0 6px' }}>🖨️ Öva på papper</h2>
@@ -118,7 +122,14 @@ export default function PluggaSheet() {
           <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={() => window.print()}>🖨️ Skriv ut</button>
             <button type="button" className="btn" onClick={copy}>{copied ? '✓ Kopierat' : '📋 Kopiera texten'}</button>
-            <button type="button" className="btn btn-ghost" onClick={() => setNonce((n) => n + 1)} title="Ett nytt urval — och nya tal i mallövningarna">🎲 Nya uppgifter</button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setExclude((prev) => [...new Set([...prev, ...data.items.map((it) => it.id)])].slice(-100))}
+              title="Andra uppgifter än de du redan skrivit ut, när det finns fler — och nya tal i mallövningarna"
+            >
+              🎲 Nya uppgifter
+            </button>
           </div>
         </div>
       </div>

@@ -13,6 +13,9 @@ const { itemCode } = require('./access');
 const SHEET_MODES = ['mixed', 'cards', 'exercises', 'due', 'wrong'];
 // Varianterna är korta så att de går att läsa (och skriva av) på pappret.
 const MAX_VARIANT = 999;
+// En mall prövas med 30 frön när den skapas, men villkoren kan ändå sålla bort
+// enstaka varianter — pröva några innan uppgiften lämnas utanför bladet.
+const VARIANT_TRIES = 20;
 const LEVEL_RANK = { E: 0, C: 1, A: 2 };
 
 const letter = (i) => String.fromCharCode(65 + i);
@@ -37,19 +40,25 @@ function facitText(answer, perm = null) {
 }
 
 /**
- * En uppgift som den skrivs ut — med facit. `rand` väljer mallens variant och
- * ordningen på ordna-alternativen; `variant` ger en bestämd variant.
+ * En uppgift som den skrivs ut — med facit — eller null för en mall där ingen
+ * variant gick att räkna ut (hellre borta än "{{n}}" och ett tomt facit).
+ * `rand` väljer mallens variant och ordningen på ordna-alternativen; `variant`
+ * ger en bestämd variant.
  */
 function sheetItem(item, unit, { rand = Math.random, variant = null } = {}) {
   let { prompt, solution, answer } = item;
   let hints = item.hints || [];
   let used = null;
   if (item.template) {
-    try {
-      const v = variant ?? 1 + Math.floor(rand() * MAX_VARIANT);
-      ({ prompt, hints, solution, answer } = instance(item, v));
-      used = v;
-    } catch { /* trasig mall: skrivs ut som den är — rättningen säger till i appen */ }
+    const tries = variant ? [variant] : Array.from({ length: VARIANT_TRIES }, () => 1 + Math.floor(rand() * MAX_VARIANT));
+    for (const v of tries) {
+      try {
+        ({ prompt, hints, solution, answer } = instance(item, v));
+        used = v;
+        break;
+      } catch { /* villkoren gick inte att uppfylla med det fröet — nästa */ }
+    }
+    if (!used) return null;
   }
   const out = {
     id: String(item._id),
@@ -84,11 +93,13 @@ async function practiceSheet(userId, params = {}) {
   const units = await resolveScopeUnits(userId, params);
   if (!units.length) return { error: 'not_found', message: 'Hittade inga områden att skriva ut.' };
   const { picked, total } = await pickFromUnits(userId, units, {
-    mode, levels: params.levels, count: params.count, skills: params.skills
+    mode, levels: params.levels, count: params.count, skills: params.skills, exclude: params.exclude
   });
   if (!picked.length) return { error: 'empty', message: emptyMessage(mode) };
 
-  const unitOrder = new Map(units.map((u, i) => [String(u._id), i]));
+  // Områdena i kodordning (MA2 före MA3 före MA10), som kapitlen på ämnessidan.
+  const ordered = [...units].sort((a, b) => String(a.code).localeCompare(String(b.code), 'sv', { numeric: true }));
+  const unitOrder = new Map(ordered.map((u, i) => [String(u._id), i]));
   const unitById = new Map(units.map((u) => [String(u._id), u]));
   const rank = (i) => [
     i.kind === 'card' ? -1 : (LEVEL_RANK[i.level] ?? 3),
@@ -100,10 +111,13 @@ async function practiceSheet(userId, params = {}) {
     const b = rank(y);
     return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
   });
-  const usedUnits = [...new Set(sorted.map((i) => String(i.unit)))].map((id) => unitById.get(id));
+  const items = sorted.map((i) => sheetItem(i, unitById.get(String(i.unit)))).filter(Boolean);
+  if (!items.length) return { error: 'empty', message: emptyMessage(mode) };
+  const inSheet = new Set(items.map((i) => i.id));
+  const usedIds = new Set(sorted.filter((i) => inSheet.has(String(i._id))).map((i) => String(i.unit)));
   return {
-    units: usedUnits.map(unitBrief),
-    items: sorted.map((i) => sheetItem(i, unitById.get(String(i.unit)))),
+    units: ordered.filter((u) => usedIds.has(String(u._id))).map(unitBrief),
+    items,
     total
   };
 }

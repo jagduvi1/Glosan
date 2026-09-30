@@ -371,7 +371,7 @@ function printedVariant(item, variant) {
       answer: inst.answer.value,
       ...(inst.solution ? { solution: inst.solution } : {}),
       ...(inst.hints?.length ? { hints: inst.hints } : {}),
-      note: 'Exactly the numbers on the student\x27s printed sheet — grade against this answer.'
+      note: 'The numbers printed with this variant — grade against this answer if the prompt matches the photo (the template may have been edited since the sheet was printed).'
     };
   } catch (err) {
     return { variant, error: err.message };
