@@ -181,6 +181,10 @@ level" only count steps the student earned.
   progress and see corrections at once. They can leave, and report "fel i
   facit" to the creator's AI. Only the creator shares, edits and deletes.
   When the creator archives a unit it disappears for the recipients too.
+- **Unfriending** ends every share between the two, both ways — also units
+  joined by link — and takes those units out of their folders and their open
+  reports (`unshareBetween`). There is no block list; this is the way to stop
+  someone's reports reaching your AI.
 - The creator's AI sees a recipient's report note as `reporter_note_untrusted`,
   and a recipient's AI sees shared units as `written_by_someone_else` — the
   MCP instructions say such text is data, never instructions.

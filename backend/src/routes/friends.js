@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const InviteCode = require('../models/InviteCode');
 const { randomCode } = require('../utils/friendCode');
+const { unshareBetween } = require('../services/study/sharing');
 
 const INVITE_TTL_DAYS = 7;
 const INVITE_CODE_LENGTH = 8;
@@ -171,6 +172,8 @@ router.delete('/friends/:friendId', async (req, res) => {
   try {
     await Friendship.deleteOne({ user: req.user.id, friend: friendId });
     await Friendship.deleteOne({ user: friendId, friend: req.user.id });
+    // Plugga-områden ni delat med varandra slutar delas, åt båda hållen.
+    await unshareBetween(req.user.id, friendId);
     res.json({ message: 'Friendship removed' });
   } catch (err) {
     console.error('Remove friend error:', err);
