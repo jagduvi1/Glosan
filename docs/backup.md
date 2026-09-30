@@ -95,8 +95,10 @@ cd ~/apps/glosan/scripts/backup
 ./restore.sh 4b37e685   # a specific one — see `restic snapshots`
 ```
 
-It asks for confirmation, then runs `mongorestore --drop`, replacing the
-current database.
+It asks for confirmation, drops the whole `glosan` database, then runs
+`mongorestore`. Dropping first matters: `mongorestore --drop` only replaces the
+collections that are in the archive, so collections added by a later release
+(e.g. `studytests`) would otherwise survive and point at data that is gone.
 
 **Run a restore drill periodically.** An untested backup is not a backup — the
 failure modes (wrong database name, a password nobody wrote down, an

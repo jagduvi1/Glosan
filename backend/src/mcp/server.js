@@ -1,7 +1,7 @@
 const { toolsForScopes, promptsForScopes } = require('./registry');
 const { buildInstructions } = require('./instructions');
 const { takeMutationSlot } = require('./mutationBudget');
-const pkg = require('../../package.json');
+const version = require('../version');
 require('./tools');   // registrera alla verktyg (sidoeffekt)
 require('./prompts'); // registrera alla prompts (sidoeffekt)
 
@@ -87,7 +87,7 @@ async function buildServer(ctx) {
   const { McpServer } = await loadSdk();
   const features = ctx.features || [];
   const server = new McpServer(
-    { name: 'glosan', version: pkg.version },
+    { name: 'glosan', version },
     { instructions: buildInstructions(features) }
   );
   const state = { calls: 0 };

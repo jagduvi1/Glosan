@@ -2,49 +2,42 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyUnits, fetchStudyOverview } from '../api/study';
-import { PracticePicker, ProgressBar, practiceUrl, daysUntil } from '../components/study/StudyBits';
+import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
+import UnitCard from '../components/study/UnitCard';
+import FolderPicker from '../components/study/FolderPicker';
+import { groupByChapter } from '../components/study/chapters';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
-// Ett ämne i Plugga: alla områden, grupperade per termin (vald termin först).
-// Välj ett eller flera områden och öva på dem — eller på allt i terminen.
+// Ett ämne i Plugga: alla områden, grupperade per termin (vald termin först)
+// och inom terminen per kapitel (samma bok + kapitel, components/study/chapters.js).
+// Välj ett eller flera områden — eller ett helt kapitel — och öva på dem, eller
+// på allt i terminen.
 
-function UnitCard({ unit, selected, onToggle }) {
-  const days = daysUntil(unit.examDate);
+function ChapterGroup({ chapter, selected, onToggle, onToggleAll }) {
+  const ids = chapter.units.map((u) => u.id);
+  const all = ids.every((id) => selected.includes(id));
+  const total = chapter.units.reduce((n, u) => n + (u.progress?.total || 0), 0);
+  const mastered = chapter.units.reduce((n, u) => n + (u.progress?.mastered || 0), 0);
   return (
-    <div className="card" style={{ padding: 16, outline: selected ? '3px solid var(--coral-deep)' : 'none' }}>
-      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggle}
-          aria-label={`Välj ${unit.title}`}
-          style={{ marginTop: 6, width: 20, height: 20, flex: 'none' }}
-        />
-        <div className="grow" style={{ minWidth: 0 }}>
-          <Link to={`/plugga/omrade/${unit.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-              <span className="study-code">{unit.code}</span>
-              <h3 style={{ margin: 0, fontSize: 20 }}>{unit.title}</h3>
-            </div>
-          </Link>
-          <p className="t-hand muted" style={{ margin: '4px 0 8px', fontSize: 14 }}>
-            {[unit.gradeYear ? `åk ${unit.gradeYear}` : null, unit.source?.book, unit.source?.chapter].filter(Boolean).join(' · ')}
-            {unit.sharedBy ? ` · delad av ${unit.sharedBy}` : ''}
+    <section className="chapter-group" aria-label={`Kapitel ${chapter.label}`}>
+      <div className="row between" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <h3 style={{ margin: 0, fontSize: 20 }}>📖 {chapter.label}</h3>
+          <p className="t-hand muted" style={{ margin: '2px 0 0', fontSize: 14 }}>
+            {[chapter.book, `${chapter.units.length} områden`, total ? `${mastered} av ${total} sitter` : null].filter(Boolean).join(' · ')}
           </p>
-          <p className="t-hand" style={{ margin: '0 0 8px', fontSize: 14 }}>
-            {unit.progress.cards} kort · {unit.progress.exercises} övningar
-            {unit.progress.exercises > 0 && ` (${['E', 'C', 'A'].map((l) => `${unit.progress.levels[l]} ${l}`).join(', ')})`}
-            {days !== null && days >= 0 && (
-              <strong style={{ marginLeft: 8, color: days <= 3 ? 'var(--berry-deep)' : 'inherit' }}>
-                · Prov {days === 0 ? 'idag!' : days === 1 ? 'imorgon' : `om ${days} dagar`}
-              </strong>
-            )}
-          </p>
-          <ProgressBar progress={unit.progress} />
         </div>
+        <button type="button" className="btn btn-sm" aria-pressed={all} onClick={() => onToggleAll(ids, !all)}>
+          {all ? '✓ Kapitlet valt' : 'Välj hela kapitlet'}
+        </button>
       </div>
-    </div>
+      <div className="stack" style={{ gap: 10 }}>
+        {chapter.units.map((u) => (
+          <UnitCard key={u.id} unit={u} hideSource selected={selected.includes(u.id)} onToggle={() => onToggle(u.id)} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -57,6 +50,7 @@ export default function PluggaSubject() {
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState([]);
+  const [picking, setPicking] = useState(false);
   const term = params.get('term');
 
   useEffect(() => {
@@ -78,10 +72,13 @@ export default function PluggaSubject() {
       if (!groups.has(u.term)) groups.set(u.term, { term: u.term, label: u.termLabel, units: [] });
       groups.get(u.term).units.push(u);
     }
+    // Nyast först: HT kommer efter VT samma år ("2026-HT" > "2026-VT"), vilket
+    // en ren strängjämförelse får om bakfoten.
+    const termOrder = (t) => Number(t.slice(0, 4)) * 2 + (t.endsWith('HT') ? 1 : 0);
     return [...groups.values()].sort((a, b) => {
       if (a.term === shownTerm) return -1;
       if (b.term === shownTerm) return 1;
-      return b.term.localeCompare(a.term);
+      return termOrder(b.term) - termOrder(a.term);
     });
   }, [units, shownTerm]);
 
@@ -90,6 +87,10 @@ export default function PluggaSubject() {
   if (!subjectInfo) return <p className="error">Okänt ämne.</p>;
 
   const toggle = (id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const toggleAll = (ids, on) => setSelected((cur) => (on ? [...new Set([...cur, ...ids])] : cur.filter((x) => !ids.includes(x))));
+  // Är exakt ett kapitel valt? Då heter passet efter kapitlet.
+  const chapters = byTerm.flatMap((g) => groupByChapter(g.units)).filter((b) => b.kind === 'chapter');
+  const selectedChapter = chapters.find((c) => c.units.length === selected.length && c.units.every((u) => selected.includes(u.id)));
   const inShownTerm = units.filter((u) => u.term === shownTerm);
   const back = `/plugga/amne/${subject}${term ? `?term=${term}` : ''}`;
   const start = (opts) => {
@@ -98,9 +99,11 @@ export default function PluggaSubject() {
       : { subject, term: shownTerm, back };
     navigate(practiceUrl(scope, opts));
   };
-  const practiceTarget = selected.length
-    ? `${selected.length} ${selected.length === 1 ? 'valt område' : 'valda områden'}`
-    : `allt i ${subjectInfo.label} ${meta.terms.find((t) => t.key === shownTerm)?.label || ''}`;
+  const practiceTarget = selectedChapter
+    ? `kapitlet ${selectedChapter.label}`
+    : selected.length
+      ? `${selected.length} ${selected.length === 1 ? 'valt område' : 'valda områden'}`
+      : `allt i ${subjectInfo.label} ${meta.terms.find((t) => t.key === shownTerm)?.label || ''}`;
 
   return (
     <div className="stack" style={{ gap: 22 }}>
@@ -123,7 +126,12 @@ export default function PluggaSubject() {
         <>
           {(inShownTerm.length > 0 || selected.length > 0) && (
             <div className="card" style={{ background: 'var(--mustard-soft)' }}>
-              <h2 style={{ margin: '0 0 10px', fontSize: 21 }}>Öva på {practiceTarget}</h2>
+              <div className="row between" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 21 }}>Öva på {practiceTarget}</h2>
+                {selected.length > 0 && (
+                  <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Lägg i mapp</button>
+                )}
+              </div>
               <PracticePicker onStart={start} />
             </div>
           )}
@@ -133,14 +141,17 @@ export default function PluggaSubject() {
                 {g.label}{g.term === meta.currentTerm ? ' (nu)' : ''}
               </h2>
               <div className="stack" style={{ gap: 12 }}>
-                {g.units.map((u) => (
-                  <UnitCard key={u.id} unit={u} selected={selected.includes(u.id)} onToggle={() => toggle(u.id)} />
-                ))}
+                {groupByChapter(g.units).map((b) => (b.kind === 'chapter' ? (
+                  <ChapterGroup key={b.key} chapter={b} selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
+                ) : (
+                  <UnitCard key={b.unit.id} unit={b.unit} selected={selected.includes(b.unit.id)} onToggle={() => toggle(b.unit.id)} />
+                )))}
               </div>
             </div>
           ))}
         </>
       )}
+      {picking && <FolderPicker unitIds={selected} onClose={() => setPicking(false)} />}
     </div>
   );
 }

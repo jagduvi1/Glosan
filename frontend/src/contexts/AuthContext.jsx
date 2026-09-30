@@ -27,16 +27,27 @@ export function AuthProvider({ children }) {
     tokenRef.current = null;
   };
 
-  const handleRefresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
-      if (!res.ok) return null;
-      const data = await res.json();
-      storeToken(data.token);
-      return data.token;
-    } catch {
-      return null;
+  // EN refresh i taget: servern roterar refresh-cookien, och två anrop med
+  // samma cookie kunde logga ut eleven (Plugga-sidorna laddar parallellt).
+  // Alla som får 401 samtidigt väntar på samma förfrågan.
+  const refreshInFlight = useRef(null);
+  const handleRefresh = useCallback(() => {
+    if (!refreshInFlight.current) {
+      refreshInFlight.current = (async () => {
+        try {
+          const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+          if (!res.ok) return null;
+          const data = await res.json();
+          storeToken(data.token);
+          return data.token;
+        } catch {
+          return null;
+        } finally {
+          refreshInFlight.current = null;
+        }
+      })();
     }
+    return refreshInFlight.current;
   }, []);
 
   const logout = useCallback(async () => {
@@ -47,6 +58,13 @@ export function AuthProvider({ children }) {
         headers: tokenRef.current ? { Authorization: `Bearer ${tokenRef.current}` } : {}
       });
     } catch { /* best effort */ }
+    // Provutkast (Plugga) ska inte ligga kvar på en delad skoldator.
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('glosan.test.')) localStorage.removeItem(key);
+      }
+    } catch { /* privat läge */ }
     clearToken();
     setUser(null);
   }, []);
@@ -136,7 +154,29 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken };
+  // Läs om användaren från servern — t.ex. när en Plugga-inbjudan just slagit
+  // på en funktionsflagga, så att menyn och sidorna följer med utan omloggning.
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/auth/me');
+      if (!res.ok) return null;
+      const data = await res.json();
+      setUser(data.user);
+      return data.user;
+    } catch {
+      return null;
+    }
+  }, [apiFetch]);
+
+  // En modul slogs av medan sidan var öppen (api/study.js säger till) — läs
+  // om användaren så att menyn och de dolda sidorna följer med.
+  useEffect(() => {
+    const onFeatureOff = () => { refreshUser(); };
+    window.addEventListener('glosan:feature-off', onFeatureOff);
+    return () => window.removeEventListener('glosan:feature-off', onFeatureOff);
+  }, [refreshUser]);
+
+  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken, refreshUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

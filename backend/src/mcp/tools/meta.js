@@ -6,7 +6,7 @@ const { effectivePlan } = require('../../config/plans');
 const { registerTool } = require('../registry');
 const { ok } = require('../toolUtil');
 const { issuer } = require('../../services/mcpOAuth');
-const pkg = require('../../../package.json');
+const version = require('../../version');
 
 // Samma kurva som routes/me.js: nivå N kräver (N-1)² × 100 XP.
 const levelFromXp = (xp) => Math.floor(Math.sqrt((xp || 0) / 100)) + 1;
@@ -25,7 +25,7 @@ registerTool({
     app_url: issuer(),
     source_code: 'https://github.com/jagduvi1/Glosan',
     license: 'AGPL-3.0-or-later',
-    server_version: pkg.version
+    server_version: version
   })
 });
 

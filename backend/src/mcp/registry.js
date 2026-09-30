@@ -44,7 +44,9 @@ function registerTool(def) {
 /** True när en anslutning med `tokenScopes` får nå något som kräver `required`. */
 function scopeSatisfies(tokenScopes, required) {
   if (required === 'public') return true;
-  return Array.isArray(tokenScopes) && tokenScopes.includes(required);
+  if (!Array.isArray(tokenScopes)) return false;
+  // write innebär read — en anslutning som får ändra får också se.
+  return tokenScopes.includes(required) || (required === 'read' && tokenScopes.includes('write'));
 }
 
 /** True när en användare med `features` får se något som kräver `feature`. */

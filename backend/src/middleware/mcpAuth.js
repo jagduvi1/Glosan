@@ -1,7 +1,7 @@
 const McpToken = require('../models/McpToken');
 const User = require('../models/User');
 const { requireAuth } = require('./auth');
-const { effectiveFeatures } = require('../config/features');
+const { effectiveFeatures, FEATURE_FIELDS } = require('../config/features');
 
 const { TOKEN_PREFIX, TOKEN_SCOPES } = McpToken;
 
@@ -32,7 +32,7 @@ async function requireMcpAuth(req, res, next) {
   if (!raw || !raw.startsWith(TOKEN_PREFIX)) {
     return requireAuth(req, res, async () => {
       try {
-        const user = await User.findById(req.user.id).select('features').lean();
+        const user = await User.findById(req.user.id).select(FEATURE_FIELDS).lean();
         if (!user) return res.status(401).json({ error: 'Invalid token' });
         req.mcpScopes = [...TOKEN_SCOPES];
         req.mcpFeatures = effectiveFeatures(user);
@@ -50,7 +50,7 @@ async function requireMcpAuth(req, res, next) {
     if (token.expiresAt.getTime() <= Date.now()) {
       return res.status(401).json({ error: 'Token expired' });
     }
-    const user = await User.findById(token.user).select('roles features').lean();
+    const user = await User.findById(token.user).select(`roles ${FEATURE_FIELDS}`).lean();
     if (!user) return res.status(401).json({ error: 'Invalid token' });
 
     req.user = {

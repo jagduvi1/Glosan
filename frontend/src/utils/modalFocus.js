@@ -10,6 +10,10 @@ import { useEffect, useRef } from 'react';
 // som hade det innan modalen öppnades.
 export function useModalFocus(onClose) {
   const ref = useRef(null);
+  // onClose i en ref: en ny funktion vid varje render (t.ex. inline-pilar i
+  // föräldern) ska inte köra om effekten — då hoppade fokus till × efter varje ändring.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const node = ref.current;
@@ -34,7 +38,7 @@ export function useModalFocus(onClose) {
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        if (onClose) onClose();
+        if (onCloseRef.current) onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -62,7 +66,7 @@ export function useModalFocus(onClose) {
         try { prevFocus.focus(); } catch { /* ignore */ }
       }
     };
-  }, [onClose]);
+  }, []);
 
   return ref;
 }

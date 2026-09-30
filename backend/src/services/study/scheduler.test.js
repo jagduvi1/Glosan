@@ -15,13 +15,27 @@ describe('nextState (Leitner)', () => {
 
   test('right answers climb the boxes with growing intervals, capped at box 5', () => {
     let s = null;
+    let at = NOW;
     const days = [];
     for (let i = 0; i < 7; i++) {
-      s = nextState(s, 'correct', NOW);
-      days.push(Math.round((s.dueAt - NOW) / DAY_MS));
+      s = nextState(s, 'correct', at);
+      days.push(Math.round((s.dueAt - at) / DAY_MS));
+      at = s.dueAt; // svarar när den är dags igen
     }
     expect(days).toEqual([1, 2, 4, 8, 16, 16, 16]);
     expect(s.box).toBe(5);
+  });
+
+  test('right again the same day does not climb further (audit)', () => {
+    let s = nextState(null, 'correct', NOW);
+    s = nextState(s, 'correct', new Date(NOW.getTime() + 60 * 60 * 1000));
+    s = nextState(s, 'correct', new Date(NOW.getTime() + 2 * 60 * 60 * 1000));
+    expect(s).toMatchObject({ box: 1, correct: 3 });
+    // Efter ett fel samma dag får ett rätt klättra som vanligt.
+    const afterWrong = nextState({ box: 1, lastResult: 'wrong', lastSeenAt: NOW }, 'correct', NOW);
+    expect(afterWrong.box).toBe(2);
+    // Nästa dag klättrar den igen.
+    expect(nextState(s, 'correct', new Date(NOW.getTime() + DAY_MS)).box).toBe(2);
   });
 
   test('a wrong answer drops to box 1 and is due immediately', () => {

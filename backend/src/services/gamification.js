@@ -4,6 +4,7 @@
 const User = require('../models/User');
 const CoopStreak = require('../models/CoopStreak');
 const XpEvent = require('../models/XpEvent');
+const { SUBJECT_KEYS } = require('../config/subjects');
 
 function startOfDay(d) {
   const x = new Date(d);
@@ -99,21 +100,24 @@ function subjectXpTotal(user) {
  * aktivitet som inte ska räknas som en pluggdag (t.ex. ett tomt pass).
  */
 async function awardStudyActivity(userId, { xp, subject, tickStreakToo = true }) {
-  const user = await User.findById(userId);
-  if (!user) return null;
   const today = startOfDay(new Date());
   const amount = Math.max(0, Math.round(xp || 0));
-  if (amount > 0) {
-    user.xp = (user.xp || 0) + amount;
-    const map = user.subjectXp && typeof user.subjectXp === 'object' ? { ...user.subjectXp } : {};
-    map[subject] = (Number(map[subject]) || 0) + amount;
-    user.subjectXp = map;
-    user.markModified('subjectXp');
+  const key = SUBJECT_KEYS.includes(subject) ? subject : 'ovrigt';
+  // $inc, inte läs–ändra–spara: två pass som avslutas samtidigt ska båda räknas.
+  const user = amount > 0
+    ? await User.findByIdAndUpdate(userId, { $inc: { xp: amount, [`subjectXp.${key}`]: amount } }, { new: true })
+    : await User.findById(userId);
+  if (!user) return null;
+  let streakChange = 'unchanged';
+  if (tickStreakToo) {
+    streakChange = tickStreak(user, today);
+    const { current, longest, lastActiveDay } = user.streak;
+    await User.updateOne({ _id: user._id }, {
+      $set: { 'streak.current': current, 'streak.longest': longest, 'streak.lastActiveDay': lastActiveDay }
+    });
   }
-  const streakChange = tickStreakToo ? tickStreak(user, today) : 'unchanged';
-  await user.save();
   if (amount > 0) {
-    XpEvent.create({ user: user._id, amount, sourceLang: `study:${subject}` })
+    await XpEvent.create({ user: user._id, amount, sourceLang: `study:${key}` })
       .catch((e) => console.error('XpEvent log error:', e.message));
   }
   const coopUpdates = tickStreakToo ? await tickCoopStreaks(user, today) : [];

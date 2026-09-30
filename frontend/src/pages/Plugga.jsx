@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchStudyOverview } from '../api/study';
+import { fetchStudyOverview, fetchStudyFolders, createStudyFolder } from '../api/study';
 import GloAvatar from '../components/GloAvatar';
+import { ColorChoice } from '../components/study/FolderPicker';
+import { formatMinutes } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
 
@@ -44,6 +46,75 @@ function SubjectCard({ subject, term }) {
   );
 }
 
+// Mappar: elevens egna urval av områden, tvärs över ämnen och terminer.
+function FoldersSection({ folders, onCreate }) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onCreate({ name: name.trim(), color });
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="row" style={{ gap: 10, alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0 }}>📁 Mappar</h2>
+        <span className="t-hand muted" style={{ fontSize: 15 }}>dina egna urval — blanda ämnen och terminer</span>
+      </div>
+      <div className="features-grid">
+        {folders.map((f) => (
+          <Link
+            key={f.id}
+            to={`/plugga/mapp/${f.id}`}
+            className="card"
+            style={{ padding: 16, display: 'block', color: 'inherit', textDecoration: 'none', background: f.color ? `var(--${f.color}-soft)` : 'var(--bg-elev)' }}
+          >
+            <div style={{ fontSize: 22, minHeight: 30 }} aria-hidden="true">{f.emojis.length ? f.emojis.slice(0, 4).join(' ') : '📁'}</div>
+            <h3 style={{ margin: '6px 0 2px', fontSize: 19 }}>{f.name}</h3>
+            <p className="t-hand muted" style={{ margin: 0, fontSize: 14 }}>
+              {f.unitCount === 0 ? 'Tom' : `${f.unitCount} ${f.unitCount === 1 ? 'område' : 'områden'}`}
+            </p>
+          </Link>
+        ))}
+        {creating ? (
+          <form className="card stack" style={{ padding: 16, gap: 10 }} onSubmit={submit}>
+            <input className="inp" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus placeholder="t.ex. Inför provet v. 42" aria-label="Mappens namn" />
+            <ColorChoice value={color} onChange={setColor} />
+            {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+            <div className="row" style={{ gap: 8 }}>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>Skapa</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setCreating(false)}>Avbryt</button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="card"
+            onClick={() => setCreating(true)}
+            style={{ padding: 16, textAlign: 'left', cursor: 'pointer', borderStyle: 'dashed', background: 'transparent' }}
+          >
+            <div style={{ fontSize: 26 }} aria-hidden="true">＋</div>
+            <h3 style={{ margin: '6px 0 2px', fontSize: 19 }}>Ny mapp</h3>
+            <p className="t-hand muted" style={{ margin: 0, fontSize: 14 }}>t.ex. allt inför ett prov</p>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HowToCreate() {
   return (
     <div className="card card-lg" style={{ background: 'var(--paper-edge)' }}>
@@ -58,7 +129,7 @@ function HowToCreate() {
             <li>Claude frågar vilken årskurs du går i, föreslår vad som ska skapas och lägger in allt här.</li>
           </ol>
           <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-            Snart kan kompisar dela sina områden med dig — då behöver du ingen egen AI.
+            Har en kompis redan gjort ett område? Be om QR-koden under <em>Dela</em> — då behöver du ingen egen AI.
           </p>
         </div>
       </div>
@@ -69,19 +140,28 @@ function HowToCreate() {
 export default function Plugga() {
   useDocumentTitle('Plugga');
   const { apiFetch } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [folders, setFolders] = useState([]);
   const [params] = useSearchParams();
   const [term, setTerm] = useState(params.get('term'));
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      setData(await fetchStudyOverview(apiFetch, term));
+      const [overview, f] = await Promise.all([fetchStudyOverview(apiFetch, term), fetchStudyFolders(apiFetch)]);
+      setData(overview);
+      setFolders(f);
       setError('');
     } catch (e) {
       setError(e.message);
     }
   }, [apiFetch, term]);
+
+  const createFolder = async ({ name, color }) => {
+    const folder = await createStudyFolder(apiFetch, { name, color });
+    navigate(`/plugga/mapp/${folder.id}`);
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,6 +194,25 @@ export default function Plugga() {
         </label>
       </div>
 
+      {data.totalUnits > 0 && (
+        <Link
+          to="/plugga/min-plugg"
+          className="card row between"
+          style={{ flexWrap: 'wrap', gap: 12, color: 'inherit', textDecoration: 'none', background: 'var(--plum-soft)' }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22 }}>📊 Min plugg</h2>
+            <p className="t-hand muted" style={{ margin: '2px 0 0' }}>
+              {data.today.activeSeconds > 0 || data.today.answered > 0
+                ? `Idag: ${formatMinutes(data.today.activeSeconds)}${data.today.answered ? ` · ${data.today.answered} uppgifter` : ''}`
+                : 'Inget pluggat idag än'}
+              {data.streak.current > 0 ? ` · 🔥 ${data.streak.current} ${data.streak.current === 1 ? 'dag' : 'dagar'} i rad` : ''}
+            </p>
+          </div>
+          <span className="t-hand" style={{ fontSize: 16 }}>Dag, vecka, månad →</span>
+        </Link>
+      )}
+
       {data.due > 0 && (
         <div className="card row between" style={{ background: 'var(--sky-soft)', flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -144,6 +243,8 @@ export default function Plugga() {
           </div>
         </div>
       ))}
+
+      {(data.totalUnits > 0 || folders.length > 0) && <FoldersSection folders={folders} onCreate={createFolder} />}
     </div>
   );
 }

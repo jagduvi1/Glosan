@@ -2,6 +2,7 @@
 // Rena funktioner — enkla att förklara för en elev: "det du kan kommer
 // tillbaka mer sällan, det du missar kommer tillbaka direkt".
 const { BOX_INTERVAL_DAYS } = require('../../models/StudyItemState');
+const { localYmd } = require('../../utils/localTime');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -10,13 +11,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *   rätt    → upp en låda (ny → 1), tillbaka om 1/2/4/8/16 dagar
  *   nästan  → samma låda (minst 1), tillbaka imorgon
  *   fel     → låda 1, tillbaka direkt (dyker upp i "Repetera" och "Bara fel")
+ * Rätt igen samma dag (efter ett rätt) flyttar inte upp fler lådor — tre pass
+ * i rad ska inte skicka en uppgift en vecka bort första dagen.
  */
 function nextState(prev, result, now = new Date()) {
   const box0 = prev?.box || 0;
   let box;
   let dueAt;
   if (result === 'correct') {
-    box = Math.min(5, Math.max(1, box0 + 1));
+    const againToday = prev?.lastResult === 'correct' && prev.lastSeenAt && localYmd(new Date(prev.lastSeenAt)) === localYmd(now);
+    box = againToday ? Math.max(1, box0) : Math.min(5, Math.max(1, box0 + 1));
     dueAt = new Date(now.getTime() + BOX_INTERVAL_DAYS[box] * DAY_MS);
   } else if (result === 'partial') {
     box = Math.max(1, box0);

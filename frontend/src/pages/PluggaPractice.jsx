@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem } from '../api/study';
+import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
-import { LevelPill, CodeTag, practiceUrl, formatDuration } from '../components/study/StudyBits';
+import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
+import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
 
 // Pluggpasset: kort (vänd + bedöm dig själv) och övningar (tal, flerval,
@@ -28,15 +30,22 @@ function readScope(params) {
   const list = (k) => (params.get(k) ? params.get(k).split(',').filter(Boolean) : undefined);
   return {
     unitIds: list('units'),
+    folderId: params.get('folder') || undefined,
     subject: params.get('subject') || undefined,
     group: params.get('group') || undefined,
     term: params.get('term') || undefined,
     allTerms: params.get('allTerms') === '1',
     mode: params.get('mode') || 'mixed',
     levels: list('levels'),
+    skill: params.get('skill') || undefined,
     count: Number(params.get('count')) || 15,
-    back: params.get('back') || '/plugga'
+    back: safeBack(params.get('back'))
   };
+}
+
+/** Bara en sökväg i appen ("/plugga/…") — aldrig en annan sajt ("https://…", "//…"). */
+function safeBack(value) {
+  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/plugga';
 }
 
 function FlagForm({ itemId }) {
@@ -86,6 +95,9 @@ export default function PluggaPractice() {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState('loading'); // loading | question | feedback | done | empty
   const [answer, setAnswer] = useState('');
+  // Flera rätta (valda index) och ordna (nuvarande ordning) — nollställs per uppgift.
+  const [picked, setPicked] = useState([]);
+  const [ordered, setOrdered] = useState(null);
   const [revealed, setRevealed] = useState(false);
   const [hintsShown, setHintsShown] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -94,6 +106,8 @@ export default function PluggaPractice() {
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState(null);
   const [missed, setMissed] = useState(0);
+  // Nivåstegen: { level, reached, levels, count, moved } — nästa uppgift kommer med varje svar.
+  const [ladder, setLadder] = useState(null);
   const finished = useRef(false);
   const answeredCount = useRef(0);
   const sessionRef = useRef(null);
@@ -102,14 +116,16 @@ export default function PluggaPractice() {
     let active = true;
     setPhase('loading');
     startStudySession(apiFetch, {
-      unitIds: scope.unitIds, subject: scope.subject, group: scope.group, term: scope.term,
-      allTerms: scope.allTerms, mode: scope.mode, levels: scope.levels, count: scope.count
+      unitIds: scope.unitIds, folderId: scope.folderId, subject: scope.subject, group: scope.group, term: scope.term,
+      allTerms: scope.allTerms, mode: scope.mode, levels: scope.levels, count: scope.count,
+      skills: scope.skill ? [scope.skill] : undefined
     })
       .then((r) => {
         if (!active) return;
         setSession(r.session);
         sessionRef.current = r.session;
         setItems(r.items);
+        setLadder(r.ladder ? { ...r.ladder, moved: null } : null);
         setIndex(0);
         setPhase('question');
       })
@@ -135,6 +151,8 @@ export default function PluggaPractice() {
 
   const resetForNext = () => {
     setAnswer('');
+    setPicked([]);
+    setOrdered(null);
     setRevealed(false);
     setHintsShown(0);
     setFeedback(null);
@@ -146,9 +164,14 @@ export default function PluggaPractice() {
     setBusy(true);
     setInvalidMsg('');
     try {
-      const res = await answerStudyItem(apiFetch, session.id, { itemId: current.id, ...payload });
+      // Mallövning: fröet tillbaka, så servern rättar exakt de tal som visades.
+      const res = await answerStudyItem(apiFetch, session.id, { itemId: current.id, ...payload, ...(current.seed ? { seed: current.seed } : {}) });
       answeredCount.current += 1;
       if (res.result !== 'correct') setMissed((m) => m + 1);
+      if (res.ladder) {
+        setLadder((cur) => ({ ...cur, level: res.ladder.level, reached: res.ladder.reached, moved: res.ladder.moved }));
+        if (res.ladder.next) setItems((cur) => (cur.some((i) => i.id === res.ladder.next.id) ? cur : [...cur, res.ladder.next]));
+      }
       setFeedback(res);
       setPhase('feedback');
     } catch (e) {
@@ -184,6 +207,35 @@ export default function PluggaPractice() {
     }
   };
 
+  // Papperskorgen (bara i egna områden): ta bort en dålig uppgift för gott och
+  // gå vidare. Borttaget loggas på områdessidan, där det går att ångra.
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const removeCurrent = async () => {
+    setConfirmRemove(false);
+    if (!current?.own || busy) return;
+    setBusy(true);
+    try {
+      await deleteStudyItem(apiFetch, current.id);
+      const rest = items.filter((_, i) => i !== index);
+      resetForNext();
+      setItems(rest);
+      if (index < rest.length) {
+        setPhase('question');
+      } else if (answeredCount.current > 0) {
+        setBusy(false);
+        await finish();
+        return;
+      } else {
+        setMessage(`${current.code} är borttagen. Det finns inget mer i passet.`);
+        setPhase('empty');
+      }
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (phase === 'loading') return <p className="t-hand muted">Glo plockar fram uppgifter…</p>;
 
   if (phase === 'empty') {
@@ -196,7 +248,7 @@ export default function PluggaPractice() {
   }
 
   if (phase === 'done' && summary) {
-    const againUrl = practiceUrl({ ...scope, unitIds: scope.unitIds }, { mode: scope.mode, levels: scope.levels, count: scope.count });
+    const againUrl = practiceUrl({ ...scope, unitIds: scope.unitIds }, { mode: scope.mode, levels: scope.levels, count: scope.count, skill: scope.skill });
     return (
       <div className="card card-lg practice-shell" style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 48 }} aria-hidden="true">{summary.perfect ? '🏆' : '💪'}</div>
@@ -207,6 +259,7 @@ export default function PluggaPractice() {
         </p>
         <div className="row" style={{ gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           {summary.xpEarned > 0 && <span className="pill" style={{ background: 'var(--mustard-soft)' }}>+{summary.xpEarned} XP</span>}
+          {summary.ladderReached && <span className="pill" style={{ background: 'var(--sky-soft)' }}>🪜 Högsta nivå: {LEVEL_LABEL[summary.ladderReached]} · {summary.ladderReached}</span>}
           {summary.streak && (
             <span className="pill" style={{ background: 'var(--coral-soft)' }}>
               🔥 {summary.streak.current} {summary.streak.current === 1 ? 'dag' : 'dagar'} i rad
@@ -215,13 +268,16 @@ export default function PluggaPractice() {
         </div>
         <div className="row" style={{ gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
           {missed > 0 && (
-            <button type="button" className="btn btn-primary" onClick={() => navigate(practiceUrl(scope, { mode: 'wrong', count: scope.count }))}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate(`${practiceUrl(scope, { mode: 'wrong', count: scope.count })}&n=${Date.now()}`, { replace: true })}>
               Öva på det du missade
             </button>
           )}
-          <button type="button" className="btn" onClick={() => navigate(`${againUrl}&n=${Date.now()}`)}>Öva igen</button>
+          <button type="button" className="btn" onClick={() => navigate(`${againUrl}&n=${Date.now()}`, { replace: true })}>Öva igen</button>
           <Link to={scope.back} className="btn btn-ghost">Tillbaka</Link>
         </div>
+        <p style={{ margin: '16px 0 0' }}>
+          <Link to="/plugga/min-plugg?p=day" className="t-hand">📊 Se allt du pluggat idag</Link>
+        </p>
       </div>
     );
   }
@@ -234,17 +290,25 @@ export default function PluggaPractice() {
     <div className="practice-shell stack" style={{ gap: 16 }}>
       <div className="row between" style={{ gap: 10, flexWrap: 'wrap' }}>
         <Link to={scope.back} className="t-hand" style={{ fontSize: 15 }}>← Avsluta</Link>
-        <span className="t-hand muted">{index + 1} / {items.length}</span>
+        <span className="t-hand muted">{index + 1} / {ladder ? ladder.count : items.length}</span>
       </div>
       <div className="bar-shell" style={{ height: 10 }}>
-        <div className="bar-fill bar-fill-coral" style={{ width: `${Math.round((index / items.length) * 100)}%` }} />
+        <div className="bar-fill bar-fill-coral" style={{ width: `${Math.round((index / (ladder ? ladder.count : items.length)) * 100)}%` }} />
       </div>
+      {ladder && <LadderSteps levels={ladder.levels} level={ladder.level} reached={ladder.reached} />}
 
       <div className="card card-lg">
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           <CodeTag code={current.code} />
           <LevelPill level={current.level} />
-          <span className="t-hand muted" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
+          {current.templated && <span className="pill" title="Den här uppgiften får nya tal varje gång">🎲 nya tal</span>}
+          <span className="t-hand muted grow" style={{ fontSize: 14 }}>{isCard ? 'Kort' : 'Övning'} · {current.unitTitle}</span>
+          {/* Inte i nivåstegen: där kommer nästa uppgift först med svaret. */}
+          {current.own && !ladder && (
+            <button type="button" className="trash-btn" onClick={() => setConfirmRemove(true)} disabled={busy} title="Ta bort uppgiften" aria-label={`Ta bort ${current.code}`}>
+              🗑️
+            </button>
+          )}
         </div>
         <StudyMarkdown>{current.prompt}</StudyMarkdown>
 
@@ -282,7 +346,7 @@ export default function PluggaPractice() {
         )
       )}
 
-      {phase === 'question' && !isCard && (type === 'number' || type === 'text') && (
+      {phase === 'question' && !isCard && (type === 'number' || type === 'text' || type === 'factors') && (
         <form
           className="stack"
           style={{ gap: 8 }}
@@ -297,7 +361,7 @@ export default function PluggaPractice() {
               autoComplete="off"
               autoFocus
               maxLength={200}
-              placeholder={type === 'number' ? 't.ex. 3,5 eller 7/2' : 'Skriv ditt svar'}
+              placeholder={type === 'number' ? 't.ex. 3,5 eller 7/2' : type === 'factors' ? 't.ex. 2·3·3·5 eller 2*3^2*5' : 'Skriv ditt svar'}
               aria-label="Ditt svar"
             />
             {current.unitLabel && <span className="t-hand" style={{ fontSize: 18 }}>{current.unitLabel}</span>}
@@ -305,6 +369,22 @@ export default function PluggaPractice() {
           {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
           <button type="submit" className="btn btn-primary btn-lg" disabled={busy || !answer.trim()}>Svara</button>
         </form>
+      )}
+
+      {phase === 'question' && !isCard && type === 'multi' && (
+        <div className="stack" style={{ gap: 10 }}>
+          <MultiChoice choices={current.choices} value={picked} onChange={(v) => { setPicked(v); setInvalidMsg(''); }} disabled={busy} />
+          {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
+          <button type="button" className="btn btn-primary btn-lg" disabled={busy || picked.length === 0} onClick={() => submit({ answer: picked })}>Svara</button>
+        </div>
+      )}
+
+      {phase === 'question' && !isCard && type === 'order' && (
+        <div className="stack" style={{ gap: 10 }}>
+          <OrderList items={ordered || current.items} onChange={setOrdered} disabled={busy} />
+          {invalidMsg && <p className="error" style={{ margin: 0 }}>{invalidMsg}</p>}
+          <button type="button" className="btn btn-primary btn-lg" disabled={busy} onClick={() => submit({ answer: ordered || current.items })}>Svara</button>
+        </div>
       )}
 
       {phase === 'question' && !isCard && type === 'choice' && (
@@ -356,6 +436,12 @@ export default function PluggaPractice() {
 
       {phase === 'feedback' && feedback && (
         <div className="stack" style={{ gap: 12 }}>
+          {ladder?.moved === 'up' && (
+            <div className="ladder-moved is-up">🎉 Snyggt — upp till {LEVEL_LABEL[ladder.level]} · {ladder.level}!</div>
+          )}
+          {ladder?.moved === 'down' && (
+            <div className="ladder-moved is-down">Vi tar det lite lugnare — tillbaka till {LEVEL_LABEL[ladder.level]} · {ladder.level}. Du klättrar snart igen.</div>
+          )}
           <div className={`result-banner result-${feedback.result}`}>
             {RESULT_TEXT[feedback.result]}
             {feedback.note && <div style={{ fontWeight: 600, fontSize: 16, marginTop: 4 }}>{feedback.note}</div>}
@@ -378,6 +464,16 @@ export default function PluggaPractice() {
             <FlagForm key={current.id} itemId={current.id} />
           </div>
         </div>
+      )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title={`Ta bort ${current.code}?`}
+          message="Den försvinner ur området, även för dem du delat det med. Du kan ångra under ”Borttaget” på områdessidan."
+          confirmLabel="Ta bort"
+          destructive
+          onConfirm={removeCurrent}
+          onCancel={() => setConfirmRemove(false)}
+        />
       )}
     </div>
   );

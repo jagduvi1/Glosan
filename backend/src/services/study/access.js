@@ -4,15 +4,19 @@
 const mongoose = require('mongoose');
 const StudyUnit = require('../../models/StudyUnit');
 const StudyItem = require('../../models/StudyItem');
+const User = require('../../models/User');
 const { parseStudyCode, formatItemCode } = require('../../utils/studyCodes');
 
 const isId = (id) => mongoose.Types.ObjectId.isValid(String(id));
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
 
-/** Filter för områden användaren får läsa. */
+/**
+ * Filter för områden användaren får läsa: egna (även arkiverade) och delade
+ * med en — utom dem skaparen arkiverat, som försvinner för mottagarna.
+ */
 function readableFilter(userId) {
   const uid = oid(userId);
-  return { $or: [{ user: uid }, { sharedWith: uid }] };
+  return { $or: [{ user: uid }, { sharedWith: uid, archivedAt: null }] };
 }
 
 /**
@@ -40,27 +44,42 @@ async function loadItem(userId, itemId, level = 'read') {
 }
 
 /**
- * Slå upp en uppgift via koden eleven skrev på pappret ("MA3-14"). Söker i
- * egna och delade områden; finns koden i flera (ett eget MA3 och en kompis
- * MA3) vinner det egna, annars returneras kandidaterna så AI:n kan fråga.
+ * Slå upp en uppgift via koden eleven skrev på pappret ("MA3-14"). Koder är
+ * unika per skapare, så en kompis MA3 kan ha samma kod som mitt eget. Finns
+ * uppgiften i flera områden returneras kandidaterna (AI:n jämför med fotot och
+ * frågar) — det egna vinner aldrig tyst, för då rättas fel uppgift mot fel facit.
+ * `ownOnly` = bara egna områden (för att ändra innehåll).
  */
-async function findItemByCode(userId, code) {
+async function findItemByCode(userId, code, { ownOnly = false } = {}) {
   const parsed = parseStudyCode(code);
   if (!parsed || parsed.number === null) return { error: 'invalid_code' };
-  const units = await StudyUnit.find({ code: parsed.unitCode, ...readableFilter(userId) }).populate('user', 'username');
+  const scope = ownOnly ? { user: oid(userId) } : readableFilter(userId);
+  const units = await StudyUnit.find({ code: parsed.unitCode, ...scope });
   if (!units.length) return { error: 'not_found' };
-  const own = units.filter((u) => String(u.user._id) === String(userId));
-  const pick = own.length === 1 ? own[0] : (units.length === 1 ? units[0] : null);
-  if (!pick) {
+  const items = await StudyItem.find({ unit: { $in: units.map((u) => u._id) }, number: parsed.number });
+  if (!items.length) return { error: 'not_found' };
+  const unitById = new Map(units.map((u) => [String(u._id), u]));
+  if (items.length > 1) {
+    const owners = new Map((await User.find({ _id: { $in: units.map((u) => u.user) } }, 'username').lean())
+      .map((o) => [String(o._id), o.username]));
     return {
       error: 'ambiguous',
-      candidates: units.map((u) => ({ unit_id: String(u._id), title: u.title, owner: u.user.username }))
+      candidates: items.map((i) => {
+        const u = unitById.get(String(i.unit));
+        const own = String(u.user) === String(userId);
+        return {
+          item_id: String(i._id),
+          unit_id: String(u._id),
+          unit_title: u.title,
+          is_owner: own,
+          ...(own ? {} : { shared_by: owners.get(String(u.user)) || null }),
+          prompt_excerpt: String(i.prompt || '').slice(0, 160)
+        };
+      })
     };
   }
-  const item = await StudyItem.findOne({ unit: pick._id, number: parsed.number });
-  if (!item) return { error: 'not_found' };
-  const unit = await StudyUnit.findById(pick._id);
-  return { item, unit, isOwner: String(unit.user) === String(userId) };
+  const unit = unitById.get(String(items[0].unit));
+  return { item: items[0], unit, isOwner: String(unit.user) === String(userId) };
 }
 
 function itemCode(unit, item) {

@@ -75,6 +75,13 @@ describe('gradeNumber', () => {
     expect(gradeNumber('1/3', { value: 0.3333, tolerance: 0.001 }).result).toBe('correct');
   });
 
+  test('the tolerance edge holds for large numbers too (audit)', () => {
+    // 123456,75 − 123456,7 = 0,05000000000291 i flyttal.
+    expect(gradeNumber('123456,75', { value: 123456.7, tolerance: 0.05 }).result).toBe('correct');
+    expect(gradeNumber('123456,76', { value: 123456.7, tolerance: 0.05 }).result).toBe('wrong');
+    expect(gradeNumber('1000000,1', { value: 1000000 }).result).toBe('wrong');
+  });
+
   test('units: a missing unit is forgiven with a reminder, a wrong unit is wrong', () => {
     const spec = { value: 12, unit: 'cm' };
     expect(gradeNumber('12 cm', spec)).toMatchObject({ result: 'correct', expected: '12 cm' });
@@ -96,6 +103,13 @@ describe('gradeChoice', () => {
     expect(gradeChoice('0', spec)).toEqual({ result: 'wrong', expected: '4' });
     expect(gradeChoice(7, spec).invalid).toBe(true);
     expect(gradeChoice('x', spec).invalid).toBe(true);
+  });
+
+  test('a blank answer is not the first choice (audit)', () => {
+    expect(gradeChoice('', spec).invalid).toBe(true);
+    expect(gradeChoice('  ', spec).invalid).toBe(true);
+    expect(gradeChoice(undefined, spec).invalid).toBe(true);
+    expect(gradeChoice(null, spec).invalid).toBe(true);
   });
 });
 
@@ -121,6 +135,18 @@ describe('gradeText', () => {
     expect(gradeText('ÖSTERSJÖN', { accepted: ['Östersjön'] }).result).toBe('correct');
   });
 
+  test('no typo slack below 8 letters, for Roman numerals or when exact (audit)', () => {
+    expect(gradeText('metanol', { accepted: ['etanol'] }).result).toBe('wrong');
+    expect(gradeText('propen', { accepted: ['propan'] }).result).toBe('wrong');
+    expect(gradeText('Karl XI', { accepted: ['Karl XII'] }).result).toBe('wrong');
+    expect(gradeText('Gustav II Adolf', { accepted: ['Gustav III Adolf'] }).result).toBe('wrong');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('correct');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'], exact: true }).result).toBe('wrong');
+    // Två stavfel först från 12 tecken.
+    expect(gradeText('fotosyntesne', { accepted: ['fotosyntesen'] }).result).toBe('correct');
+    expect(gradeText('fotosyntzz', { accepted: ['fotosyntes'] }).result).toBe('wrong');
+  });
+
   test('empty answer is invalid', () => {
     expect(gradeText('   ', spec).invalid).toBe(true);
   });
@@ -144,4 +170,67 @@ test('levenshtein', () => {
   expect(levenshtein('kitten', 'sitting')).toBe(3);
   expect(levenshtein('', 'abc')).toBe(3);
   expect(levenshtein('same', 'same')).toBe(0);
+});
+
+describe('several right (multi)', () => {
+  const spec = { type: 'multi', choices: ['21', '23', '27', '29'], correctIndices: [1, 3] };
+  const { gradeMulti } = require('./grading');
+
+  test('all the right ones and nothing else', () => {
+    expect(gradeMulti([3, 1], spec)).toMatchObject({ result: 'correct', expected: '23, 29' });
+  });
+
+  test('only right ones but one missing is nearly; a wrong pick is wrong', () => {
+    expect(gradeMulti([1], spec)).toMatchObject({ result: 'partial' });
+    expect(gradeMulti([1, 2, 3], spec)).toMatchObject({ result: 'wrong' });
+  });
+
+  test('nothing picked or nonsense is not counted', () => {
+    expect(gradeMulti([], spec).invalid).toBe(true);
+    expect(gradeMulti([9], spec).invalid).toBe(true);
+    expect(gradeMulti([1, 1], spec).invalid).toBe(true);
+    expect(gradeMulti('1', spec).invalid).toBe(true);
+  });
+});
+
+describe('order', () => {
+  const { gradeOrder } = require('./grading');
+  const spec = { type: 'order', choices: ['0,05', '0,5', '5'] };
+
+  test('right order is right, anything else wrong', () => {
+    expect(gradeOrder(['0,05', '0,5', '5'], spec)).toMatchObject({ result: 'correct', expected: '0,05 → 0,5 → 5' });
+    expect(gradeOrder(['0,5', '0,05', '5'], spec)).toMatchObject({ result: 'wrong' });
+  });
+
+  test('missing or foreign items are not counted', () => {
+    expect(gradeOrder(['0,05', '0,5'], spec).invalid).toBe(true);
+    expect(gradeOrder(['0,05', '0,5', '50'], spec).invalid).toBe(true);
+  });
+});
+
+describe('factors', () => {
+  const { parseFactors, gradeFactors, describeAnswer } = require('./grading');
+  const spec = { type: 'factors', factors: [2, 3, 3, 5] };
+
+  test('written the way students write them', () => {
+    for (const s of ['2·3·3·5', '3*2*5*3', '2·3²·5', '2 · 3^2 · 5', '90 = 2·3·3·5', '2 3 3 5', '2x3x3x5', '2 × 3 × 3 × 5']) {
+      expect([s, [...parseFactors(s)].sort((a, b) => a - b)]).toEqual([s, [2, 3, 3, 5]]);
+    }
+    expect(parseFactors('två gånger tre')).toBeNull();
+    expect(parseFactors('1·90')).toBeNull();
+  });
+
+  test('any order is right; the right product with other factors is nearly', () => {
+    expect(gradeFactors('5·3·2·3', spec)).toMatchObject({ result: 'correct', expected: '2 · 3 · 3 · 5' });
+    expect(gradeFactors('2·45', spec)).toMatchObject({ result: 'partial' });
+    expect(gradeFactors('2·3·5', spec)).toMatchObject({ result: 'wrong' });
+    expect(gradeFactors('nittio', spec).invalid).toBe(true);
+  });
+
+  test('the answer as text for the history', () => {
+    const multi = { answer: { type: 'multi', choices: ['21', '23', '27', '29'] } };
+    expect(describeAnswer(multi, [1, 3])).toBe('23, 29');
+    expect(describeAnswer({ answer: { type: 'order' } }, ['a', 'b'])).toBe('a → b');
+    expect(describeAnswer({ answer: { type: 'choice', choices: ['x', 'y'] } }, 1)).toBe('y');
+  });
 });

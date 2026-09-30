@@ -49,7 +49,13 @@ restic restore "$SNAPSHOT" --target "$DEST"
 ARCHIVE="$(find "$DEST" -name "$MONGO_DB.archive.gz" | head -1)"
 [ -n "$ARCHIVE" ] || { echo "[restore] mongo archive not found in snapshot" >&2; exit 1; }
 
-echo "[restore] restoring MongoDB (drop + reload)…"
+# mongorestore --drop släpper bara collections som finns i arkivet. Collections
+# som är nyare än backupen (t.ex. från en senare release) skulle annars ligga
+# kvar och peka på data som inte längre finns — släpp hela databasen först.
+echo "[restore] dropping the '$MONGO_DB' database…"
+docker exec "$MONGO_CONTAINER" mongosh --quiet "$MONGO_DB" --eval 'db.dropDatabase()'
+
+echo "[restore] restoring MongoDB…"
 docker exec -i "$MONGO_CONTAINER" mongorestore --archive --gzip --drop < "$ARCHIVE"
 
 echo "[restore] done. Restart the backend so it reconnects cleanly:"

@@ -14,8 +14,10 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { assertLocalBase } from './lib/e2e.mjs';
 
-const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/+$/, '');
+const BASE = (process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'http://localhost:8080').replace(/\/+$/, '');
+assertLocalBase(BASE);
 const CALLBACK = 'https://example.test/callback';
 let step = 0;
 const ok = (msg) => console.log(`  ✓ ${String(++step).padStart(2)} ${msg}`);
@@ -113,7 +115,10 @@ async function main() {
     const page = await fetch(full.consentUrl);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /<div id="root">/);
-    ok('OAuth: register → authorize → consent page (SPA) → approve → token');
+    assert.equal(full.consentUrl.searchParams.get('client_name'), null, 'the name is never taken from the URL');
+    const info = await json(await fetch(`${BASE}/api/mcp/oauth/client?${new URLSearchParams({ client_id: full.client_id, redirect_uri: CALLBACK })}`));
+    assert.deepEqual(info, { client_name: 'E2E', redirect_host: 'example.test', trust: 'unknown' });
+    ok('OAuth: register → authorize → consent page (SPA, app info from the server: unknown host) → approve → token');
 
     // ── Verktyg ──────────────────────────────────────────────────────────────
     const client = await mcpClient(full.access_token);

@@ -5,11 +5,13 @@ const StudyPage = require('../../models/StudyPage');
 const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
+const StudyItemDeletion = require('../../models/StudyItemDeletion');
 const User = require('../../models/User');
 const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm, termLabel } = require('../../utils/term');
 const { readableFilter, oid, loadUnit } = require('./access');
 const { publicItem } = require('./practice');
+const { testsForUnit } = require('./tests');
 const { issuer } = require('../mcpOAuth');
 
 const MASTERED_BOX = 3;
@@ -44,7 +46,9 @@ async function unitProgress(userId, unitIds) {
     p.total += r.n;
     if (r._id.kind === 'card') p.cards += r.n;
     else p.exercises += r.n;
-    if (r._id.level && p.levels[r._id.level] !== undefined) p.levels[r._id.level] += r.n;
+    // Nivåfördelningen gäller övningarna ("80 övningar (49 E, …)") — kort med
+    // nivå räknades tidigare med, så summan blev större än antalet övningar.
+    if (r._id.kind === 'exercise' && r._id.level && p.levels[r._id.level] !== undefined) p.levels[r._id.level] += r.n;
   }
   for (const r of stateRows) {
     const p = out.get(String(r._id));
@@ -57,6 +61,14 @@ async function unitProgress(userId, unitIds) {
 
 function unitUrl(unit) {
   return `${issuer()}/plugga/omrade/${unit._id}`;
+}
+
+function folderUrl(folderId) {
+  return `${issuer()}/plugga/mapp/${folderId}`;
+}
+
+function testUrl(testId) {
+  return `${issuer()}/plugga/prov/${testId}`;
 }
 
 function unitSummary(u, userId, progress, ownerName) {
@@ -77,15 +89,21 @@ function unitSummary(u, userId, progress, ownerName) {
     source: u.source || {},
     isOwner,
     sharedBy: isOwner ? null : ownerName || null,
+    // Hur många skaparen delat med — bara skaparen får veta det.
+    sharedCount: isOwner ? (u.sharedWith || []).length : null,
     progress,
     url: unitUrl(u),
+    archived: Boolean(u.archivedAt),
     updatedAt: u.updatedAt
   };
 }
 
-/** Områden användaren kan läsa, filtrerade på ämne/grupp/termin. */
-async function listUnits(userId, { subject, group, term, allTerms } = {}) {
-  const filter = { ...readableFilter(userId), archivedAt: null };
+/**
+ * Områden användaren kan läsa, filtrerade på ämne/grupp/termin.
+ * `includeArchived` tar med egna arkiverade (delade arkiverade syns aldrig).
+ */
+async function listUnits(userId, { subject, group, term, allTerms, includeArchived = false } = {}) {
+  const filter = { ...readableFilter(userId), ...(includeArchived ? {} : { archivedAt: null }) };
   if (SUBJECT_KEYS.includes(subject)) filter.subject = subject;
   else if (group === 'no' || group === 'so') filter.subject = { $in: subjectsInGroup(group) };
   if (isValidTerm(term) && !allTerms) filter.term = term;
@@ -108,21 +126,33 @@ async function unitDetail(userId, unitId) {
     User.findById(unit.user, 'username').lean()
   ]);
   const itemIds = items.map((i) => i._id);
-  const [states, papers, progress] = await Promise.all([
+  const [states, papers, progress, tests, deletedCount] = await Promise.all([
     StudyItemState.find({ user: userId, item: { $in: itemIds } }).lean(),
     StudyAttempt.aggregate([
       { $match: { user: oid(userId), unit: unit._id, source: 'paper' } },
       { $sort: { createdAt: -1 } },
       { $group: { _id: '$item', result: { $first: '$result' }, feedback: { $first: '$feedback' }, at: { $first: '$createdAt' } } }
     ]),
-    unitProgress(userId, [unit._id])
+    unitProgress(userId, [unit._id]),
+    testsForUnit(userId, unit),
+    access.isOwner ? StudyItemDeletion.countDocuments({ unit: unit._id, restoredAt: null }) : 0
   ]);
   const stateBy = new Map(states.map((s) => [String(s.item), s]));
   const paperBy = new Map(papers.map((p) => [String(p._id), p]));
+  // Nivåstegen: hur mycket som sitter per nivå (övningar med nivå).
+  const levelProgress = { E: { total: 0, mastered: 0 }, C: { total: 0, mastered: 0 }, A: { total: 0, mastered: 0 } };
+  for (const i of items) {
+    if (i.kind !== 'exercise' || !levelProgress[i.level]) continue;
+    levelProgress[i.level].total += 1;
+    if ((stateBy.get(String(i._id))?.box || 0) >= MASTERED_BOX) levelProgress[i.level].mastered += 1;
+  }
   const u = unit.toObject();
   return {
     unit: unitSummary(u, userId, progress.get(String(unit._id)), owner?.username),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
+    tests,
+    levelProgress,
+    deletedCount,
     items: items.map((i) => {
       const s = stateBy.get(String(i._id));
       const paper = paperBy.get(String(i._id));
@@ -135,5 +165,5 @@ async function unitDetail(userId, unitId) {
   };
 }
 
-module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, MASTERED_BOX };
+module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, folderUrl, testUrl, MASTERED_BOX };
 

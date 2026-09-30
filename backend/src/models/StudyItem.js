@@ -18,18 +18,27 @@ const mongoose = require('mongoose');
  *   self    — öppen fråga ("förklara…", "visa hur…"): eleven jämför med
  *             modellsvaret — eller fotar sin lösning och låter sin egen AI
  *             rätta via MCP. Glosan anropar aldrig någon AI själv.
+ *   multi   — flerval med flera rätta ("Vilka av talen är primtal?")
+ *   order   — ordna alternativen (`choices` i RÄTT ordning; appen blandar dem)
+ *   factors — faktorer i valfri ordning ("Primtalsfaktorisera 90" → 2·3·3·5)
  */
-const ANSWER_TYPES = ['number', 'choice', 'text', 'self'];
+const ANSWER_TYPES = ['number', 'choice', 'text', 'self', 'multi', 'order', 'factors'];
 const LEVELS = ['E', 'C', 'A'];
 
 const answerSchema = new mongoose.Schema({
   type: { type: String, enum: ANSWER_TYPES, required: true },
   value: { type: Number },
+  // Mallövning: svaret räknas fram per instans (services/study/templates.js).
+  expr: { type: String, trim: true, maxlength: 200, default: undefined },
   tolerance: { type: Number, min: 0, default: 0 },
   unit: { type: String, trim: true, maxlength: 20, default: '' },
   choices: { type: [{ type: String, trim: true, maxlength: 300 }], default: undefined },
   correctIndex: { type: Number },
+  correctIndices: { type: [Number], default: undefined },
+  factors: { type: [Number], default: undefined },
   accepted: { type: [{ type: String, trim: true, maxlength: 200 }], default: undefined },
+  // Textsvar: inget stavfel godtas (etanol/metanol, Karl XI/XII).
+  exact: { type: Boolean, default: undefined },
   // Modellsvar — krävs för `self`, valfritt för övriga (visas efter svar).
   modelAnswer: { type: String, maxlength: 4000, default: '' }
 }, { _id: false });
@@ -54,6 +63,9 @@ const studyItemSchema = new mongoose.Schema({
   skill: { type: String, trim: true, maxlength: 80, default: '' },
   // Bokens uppgift som förebild, t.ex. "uppg 3.14" — så eleven hittar den.
   sourceRef: { type: String, trim: true, maxlength: 60, default: '' },
+  // Mall: nya tal varje gång ({ vars: [...], where: [...] }) — se
+  // services/study/templates.js. Kontrolleras när AI:n skapar övningen.
+  template: { type: mongoose.Schema.Types.Mixed, default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -72,8 +84,8 @@ studyItemSchema.pre('validate', function (next) {
     this.invalidate('answer', 'an exercise needs an answer');
     return next();
   }
-  if (a.type === 'number' && !Number.isFinite(a.value)) {
-    this.invalidate('answer.value', 'a number answer needs a finite value');
+  if (a.type === 'number' && !Number.isFinite(a.value) && !(a.expr && this.template)) {
+    this.invalidate('answer.value', 'a number answer needs a finite value (or, in a template, an expr)');
   }
   if (a.type === 'choice') {
     const n = Array.isArray(a.choices) ? a.choices.length : 0;
@@ -87,6 +99,25 @@ studyItemSchema.pre('validate', function (next) {
   }
   if (a.type === 'self' && !(a.modelAnswer && a.modelAnswer.trim())) {
     this.invalidate('answer.modelAnswer', 'an open question needs a model answer');
+  }
+  if (a.type === 'multi') {
+    const n = Array.isArray(a.choices) ? a.choices.length : 0;
+    const idx = Array.isArray(a.correctIndices) ? a.correctIndices : [];
+    if (n < 2 || n > 8) this.invalidate('answer.choices', 'a multi-answer question needs 2–8 choices');
+    else if (!idx.length || new Set(idx).size !== idx.length || idx.some((i) => !Number.isInteger(i) || i < 0 || i >= n)) {
+      this.invalidate('answer.correctIndices', 'correctIndices must list the correct choices, each once');
+    }
+  }
+  if (a.type === 'order') {
+    const items = Array.isArray(a.choices) ? a.choices.map((c) => String(c).trim().toLowerCase()) : [];
+    if (items.length < 3 || items.length > 8) this.invalidate('answer.choices', 'an order question needs 3–8 items');
+    else if (new Set(items).size !== items.length) this.invalidate('answer.choices', 'the items to order must all be different');
+  }
+  if (a.type === 'factors') {
+    const f = Array.isArray(a.factors) ? a.factors : [];
+    if (!f.length || f.length > 30 || f.some((x) => !Number.isInteger(x) || x < 2 || x > 1e9)) {
+      this.invalidate('answer.factors', 'factors must be 1–30 whole numbers of at least 2');
+    }
   }
   next();
 });

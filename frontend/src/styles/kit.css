@@ -322,6 +322,11 @@ textarea.inp { resize: vertical; min-height: 100px; font-family: var(--font-body
 .pop-in { animation: gl-pop-in 320ms var(--ease-snap); }
 @keyframes gl-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 .shake-once { animation: gl-shake 220ms ease-in-out; }
+/* Den som bett om mindre rörelse får inga svävande eller skakande saker. */
+@media (prefers-reduced-motion: reduce) {
+  .float, .pop-in, .shake-once { animation: none !important; }
+  html { scroll-behavior: auto !important; }
+}
 
 /* Konfetti — fixed overlay som regnar färgade bitar uppifrån.
    Triggas av <ConfettiBurst trigger={n} /> där n höjs varje burst. */

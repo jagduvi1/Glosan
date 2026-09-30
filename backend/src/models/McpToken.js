@@ -14,8 +14,8 @@ const crypto = require('crypto');
  *   räcker, bcrypt skulle kosta ~250 ms per MCP-anrop.
  * - Tokens gäller BARA /api/mcp (middleware/mcpAuth.js) — de når aldrig
  *   REST-API:t, oavsett scope.
- * - Återkallning är en mjuk flagga (revokedAt) så Profil kan visa den; alla
- *   rader raderas vid kontoradering.
+ * - Återkallning är en mjuk flagga (revokedAt); raden raderas 30 dagar senare
+ *   (TTL) och alla rader vid kontoradering.
  */
 const TOKEN_PREFIX = 'glo_';
 const TOKEN_SCOPES = ['read', 'write'];
@@ -39,9 +39,14 @@ const mcpTokenSchema = new mongoose.Schema({
   // SHA-256 av nuvarande refresh-token (roteras vid varje refresh, OAuth 2.1
   // §4.3.1).
   refreshTokenHash: { type: String, default: null },
-  // SHA-256 av FÖRRA refresh-token. Dyker den upp igen är det en replay av en
-  // förbrukad token = läckt → hela anslutningen återkallas (BCP §4.14.2).
+  // SHA-256 av de senaste förbrukade refresh-tokens (äldst först, högst 10).
+  // Dyker en upp igen är det en replay av en förbrukad token = läckt → hela
+  // anslutningen återkallas (BCP §4.14.2) — utom strax efter en rotation
+  // (samtidiga refresh:ar, tappat svar), se routes/mcpOAuth.js.
+  prevRefreshTokenHashes: { type: [String], default: undefined },
+  // Äldre rader (före historiken): bara den förra hashen.
   prevRefreshTokenHash: { type: String, default: null },
+  rotatedAt: { type: Date, default: null },
   oauthClientId: { type: String, required: true },
   // RFC 8707-audience (MCP-endpointens URL).
   resource: { type: String, default: null },
@@ -52,6 +57,10 @@ const mcpTokenSchema = new mongoose.Schema({
 });
 
 mcpTokenSchema.index({ refreshTokenHash: 1 }, { sparse: true });
+mcpTokenSchema.index({ prevRefreshTokenHashes: 1 }, { sparse: true });
+mcpTokenSchema.index({ prevRefreshTokenHash: 1 }, { sparse: true });
+// Återkallade anslutningar raderas 30 dagar efter återkallningen.
+mcpTokenSchema.index({ revokedAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 mcpTokenSchema.statics.hashToken = function (raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');

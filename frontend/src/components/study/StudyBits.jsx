@@ -37,7 +37,8 @@ const MODES = [
   { key: 'cards', label: 'Kort' },
   { key: 'exercises', label: 'Övningar' },
   { key: 'due', label: 'Repetera' },
-  { key: 'wrong', label: 'Bara fel' }
+  { key: 'wrong', label: 'Bara fel' },
+  { key: 'ladder', label: '🪜 Nivåstege', title: 'Börja på din nivå — 3 rätt i rad tar dig upp, 2 fel i rad ner' }
 ];
 
 /**
@@ -49,7 +50,7 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
   const [levels, setLevels] = useState([]);
   const [count, setCount] = useState(15);
   const toggleLevel = (l) => setLevels((cur) => (cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]));
-  const levelsApply = mode !== 'cards';
+  const levelsApply = mode !== 'cards' && mode !== 'ladder';
 
   return (
     <div className="stack" style={{ gap: 12 }}>
@@ -60,7 +61,8 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
             type="button"
             className="chip"
             aria-pressed={mode === m.key}
-            disabled={busy || (m.key === 'cards' && !hasCards) || (m.key === 'exercises' && !hasExercises)}
+            title={m.title}
+            disabled={busy || (m.key === 'cards' && !hasCards) || ((m.key === 'exercises' || m.key === 'ladder') && !hasExercises)}
             onClick={() => setMode(m.key)}
           >
             {m.label}
@@ -94,18 +96,37 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
 }
 
 /** Bygg /plugga/ova-URL:en av ett omfång + valen i PracticePicker. */
-export function practiceUrl(scope, { mode, levels, count }) {
+export function practiceUrl(scope, { mode, levels, count, skill }) {
   const q = new URLSearchParams();
   if (scope.unitIds?.length) q.set('units', scope.unitIds.join(','));
+  if (scope.folderId) q.set('folder', scope.folderId);
   if (scope.subject) q.set('subject', scope.subject);
   if (scope.group) q.set('group', scope.group);
   if (scope.term) q.set('term', scope.term);
   if (scope.allTerms) q.set('allTerms', '1');
   if (mode) q.set('mode', mode);
   if (levels?.length) q.set('levels', levels.join(','));
+  if (skill) q.set('skill', skill);
   if (count) q.set('count', String(count));
   if (scope.back) q.set('back', scope.back);
   return `/plugga/ova?${q}`;
+}
+
+/** Nivåstegen E → C → A med aktuell nivå markerad. */
+export function LadderSteps({ levels = ['E', 'C', 'A'], level, reached }) {
+  const order = ['E', 'C', 'A'];
+  return (
+    <div className="ladder-steps" aria-label={`Nivåstege: du är på ${LEVEL_LABEL[level] || level}`}>
+      {order.filter((l) => levels.includes(l)).map((l, i) => (
+        <span key={l} className="row" style={{ gap: 6, alignItems: 'center' }}>
+          {i > 0 && <span aria-hidden="true" className="muted">→</span>}
+          <span className={`ladder-step level-${l} ${l === level ? 'is-current' : ''} ${order.indexOf(l) <= order.indexOf(reached) ? 'is-reached' : ''}`}>
+            {LEVEL_LABEL[l]} · {l}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function formatDuration(sec) {
@@ -114,6 +135,16 @@ export function formatDuration(sec) {
   if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} min`;
   if (m > 0) return `${m} min${s % 60 ? ` ${s % 60} s` : ''}`;
   return `${s} s`;
+}
+
+/** Pluggtid avrundad till minuter: "25 min", "1 h 5 min", "< 1 min". */
+export function formatMinutes(sec) {
+  const s = Math.round(sec || 0);
+  if (s <= 0) return '0 min';
+  const m = Math.round(s / 60);
+  if (m < 1) return '< 1 min';
+  if (m >= 60) return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  return `${m} min`;
 }
 
 export function daysUntil(dateStr) {

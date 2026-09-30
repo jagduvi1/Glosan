@@ -22,7 +22,31 @@ const studySessionSchema = new mongoose.Schema({
   endedAt: { type: Date, default: null },
   activeSeconds: { type: Number, min: 0, default: 0 },
   answered: { type: Number, min: 0, default: 0 },
-  correct: { type: Number, min: 0, default: 0 }
+  correct: { type: Number, min: 0, default: 0 },
+  // Uppgifterna passet delade ut och de som besvarats: ett svar räknas bara
+  // på en utdelad uppgift, och bara en gång (annars gick XP att farma).
+  // Nivåstegen delar ut via ladder.served.
+  served: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }], default: undefined },
+  answeredItems: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }], default: undefined },
+  // Nivåstegen (services/study/ladder.js): aktuell nivå, rätt/fel i rad,
+  // högsta nivå hittills, hur många svar passet har, uppgifterna per nivå i
+  // turordning och vilka som redan visats. Saknas för vanliga pass.
+  ladder: {
+    type: new mongoose.Schema({
+      level: { type: String, enum: ['E', 'C', 'A'], required: true },
+      up: { type: Number, min: 0, default: 0 },
+      down: { type: Number, min: 0, default: 0 },
+      reached: { type: String, enum: ['E', 'C', 'A'], required: true },
+      count: { type: Number, min: 1, max: 50, default: 15 },
+      pools: {
+        E: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }],
+        C: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }],
+        A: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }]
+      },
+      served: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyItem' }]
+    }, { _id: false }),
+    default: undefined
+  }
 });
 
 studySessionSchema.index({ user: 1, startedAt: -1 });

@@ -51,9 +51,12 @@ describe('tool invariants', () => {
     }
   });
 
-  test('the permanent deletions are flagged destructive', () => {
+  test('deletions — and overwrites of study content others may share — are flagged destructive', () => {
     const destructive = allTools().filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort();
-    expect(destructive).toEqual(['delete_list', 'delete_study_items', 'delete_study_unit', 'delete_words']);
+    expect(destructive).toEqual([
+      'delete_list', 'delete_practice_test', 'delete_study_items', 'delete_study_page', 'delete_study_unit', 'delete_words',
+      'update_study_item', 'update_study_page', 'update_study_unit'
+    ]);
   });
 
   test('every tool has a description the model can choose by', () => {

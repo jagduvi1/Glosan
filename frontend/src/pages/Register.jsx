@@ -31,6 +31,10 @@ export default function Register() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inviteCode = params.get('invite');
+  // Delningslänk till ett Plugga-område (/p/<kod>) — bara giltiga koder, så
+  // parametern aldrig kan styra om till något annat än /p/.
+  const studyInvite = /^[A-Z0-9]{4,16}$/.test(params.get('studyInvite') || '') ? params.get('studyInvite') : null;
+  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : null;
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +50,7 @@ export default function Register() {
     const result = await register(username, email, password, ageConsent);
     setBusy(false);
     if (result.success) {
-      navigate(inviteCode ? `/j/${inviteCode}` : '/lists');
+      navigate(afterLogin || '/lists');
     } else {
       setError(result.error);
     }
@@ -110,7 +114,7 @@ export default function Register() {
           <h2 style={{ marginBottom: 4 }}>Hoppa in</h2>
           <p className="t-hand muted" style={{ fontSize: 17, margin: '0 0 22px' }}>tre fält. Inget mer.</p>
 
-          <GoogleLoginButton redirectTo={inviteCode ? `/j/${inviteCode}` : undefined} />
+          <GoogleLoginButton redirectTo={afterLogin || undefined} />
 
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="field-label">Användarnamn</span>

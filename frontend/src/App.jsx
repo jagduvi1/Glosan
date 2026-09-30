@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { GamificationProvider } from './contexts/GamificationContext';
 import Layout from './components/Layout';
@@ -31,15 +31,29 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
+const JoinStudyUnit = lazy(() => import('./pages/JoinStudyUnit'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
 const Plugga = lazy(() => import('./pages/Plugga'));
 const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
 const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
 const PluggaPractice = lazy(() => import('./pages/PluggaPractice'));
+const PluggaFolder = lazy(() => import('./pages/PluggaFolder'));
+const PluggaActivity = lazy(() => import('./pages/PluggaActivity'));
+const PluggaTest = lazy(() => import('./pages/PluggaTest'));
+const PluggaTestPaper = lazy(() => import('./pages/PluggaTestPaper'));
+const PluggaTestResult = lazy(() => import('./pages/PluggaTestResult'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
 const LiveDuel   = lazy(() => import('./pages/LiveDuel'));
 const NotFound   = lazy(() => import('./pages/NotFound'));
+
+// Ett nytt pass för varje navigering ("Öva igen", tillbaka-knappen): sidan
+// monteras om, så inget ligger kvar från förra passet — och det gamla passet
+// avslutas (XP, streak) när det lämnas.
+function PracticeRoute() {
+  const location = useLocation();
+  return <PluggaPractice key={location.key} />;
+}
 
 // Sidor bakom en funktionsflagga: för den som saknar flaggan finns sidan
 // inte (NotFound) — samma "dold"-beteende som backend (404).
@@ -80,6 +94,9 @@ function AppRoutes() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
         <Route path="/j/:code" element={<JoinList />} />
+        {/* Delat Plugga-område (QR-kod). Publik och INTE bakom flaggan — den som
+            går med får Plugga påslaget. */}
+        <Route path="/p/:code" element={<JoinStudyUnit />} />
         {/* OAuth-samtycket för MCP-connectorn — hanterar utloggat läge själv
             så att OAuth-parametrarna ligger kvar i URL:en. */}
         <Route path="/connect-ai/authorize" element={<ConnectAiAuthorize />} />
@@ -151,10 +168,50 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/plugga/prov/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTest /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/prov/:id/papper"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTestPaper /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/prov/:id/resultat/:attemptId"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaTestResult /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/min-plugg"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaActivity /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/mapp/:id"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaFolder /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
           path="/plugga/ova"
           element={
             <FeatureRoute feature="study">
-              <Layout><PluggaPractice /></Layout>
+              <Layout><PracticeRoute /></Layout>
             </FeatureRoute>
           }
         />

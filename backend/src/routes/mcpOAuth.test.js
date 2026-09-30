@@ -28,6 +28,7 @@ function mockMakeModel(prefix, statics = {}) {
   const matches = (doc, q) => Object.entries(q).every(([k, v]) => {
     if (k === '$or') return v.some((sub) => matches(doc, sub));
     const actual = doc[k];
+    if (Array.isArray(actual) && !isOp(v)) return actual.map(String).includes(String(v));
     if (isOp(v) && '$gt' in v) return actual != null && actual > v.$gt;
     if (isOp(v) && '$ne' in v) return String(actual) !== String(v.$ne);
     if (v === null) return actual == null;
@@ -36,6 +37,10 @@ function mockMakeModel(prefix, statics = {}) {
   const apply = (doc, upd) => {
     Object.assign(doc, upd.$set || {});
     for (const k of Object.keys(upd.$unset || {})) delete doc[k];
+    for (const [k, p] of Object.entries(upd.$push || {})) {
+      const next = [...(doc[k] || []), ...(p.$each || [p])];
+      doc[k] = p.$slice !== undefined ? next.slice(p.$slice) : next;
+    }
   };
   const store = (d) => {
     const doc = { _id: `${prefix}${String(++seq).padStart(24 - prefix.length, '0')}`, createdAt: new Date(), ...d };
@@ -104,13 +109,17 @@ jest.mock('../models/McpToken', () => {
   });
 });
 
-jest.mock('../models/User', () => ({
-  findById: (id) => ({
-    select: () => ({
-      lean: async () => (String(id) === 'deleted-user' ? null : { _id: id, roles: ['user'] })
+const mockCredentialsChangedAt = new Map();
+jest.mock('../models/User', () => {
+  const doc = (id) => (String(id) === 'deleted-user' ? null
+    : { _id: id, roles: ['user'], credentialsChangedAt: mockCredentialsChangedAt.get(String(id)) || null });
+  return {
+    findById: (id) => ({
+      select: () => ({ lean: async () => doc(id) }),
+      lean: async () => doc(id)
     })
-  })
-}));
+  };
+});
 
 // /api/mcp-routen ska här bara testa auth-lagret — själva MCP-servern (som
 // laddar ESM-SDK:t) ersätts av en stub som visar vilken ctx den fick.
@@ -185,6 +194,7 @@ beforeEach(() => {
   OAuthClient._reset();
   OAuthAuthCode._reset();
   McpToken._reset();
+  mockCredentialsChangedAt.clear();
 });
 
 describe('POST /register', () => {
@@ -255,7 +265,29 @@ describe('GET /authorize', () => {
     expect(loc.searchParams.get('client_id')).toBe(client.client_id);
     expect(loc.searchParams.get('code_challenge')).toBe(challenge);
     expect(loc.searchParams.get('state')).toBe('xyz');
-    expect(loc.searchParams.get('client_name')).toBe('Claude');
+    expect(loc.searchParams.get('client_name')).toBeNull();
+  });
+
+  test('errors never redirect to a host we do not know — no open redirect (audit)', async () => {
+    const client = await registerClient({ redirect_uris: ['https://evil.example/cb'] });
+    const res = await request(app).get('/api/mcp/oauth/authorize').query({
+      client_id: client.client_id, redirect_uri: 'https://evil.example/cb', response_type: 'token', state: 'abc'
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.location).toBeUndefined();
+  });
+
+  test('a malformed code_challenge or an overlong state is refused (audit)', async () => {
+    const client = await registerClient();
+    const shortChallenge = await request(app).get('/api/mcp/oauth/authorize').query({
+      client_id: client.client_id, redirect_uri: CALLBACK, response_type: 'code', code_challenge: 'abc', code_challenge_method: 'S256'
+    });
+    expect(new URL(shortChallenge.headers.location).searchParams.get('error')).toBe('invalid_request');
+    const { challenge } = pkcePair();
+    const longState = await request(app).get('/api/mcp/oauth/authorize').query({
+      client_id: client.client_id, redirect_uri: CALLBACK, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state: 'x'.repeat(513)
+    });
+    expect(longState.status).toBe(400);
   });
 
   test('a foreign resource indicator is refused', async () => {
@@ -266,6 +298,22 @@ describe('GET /authorize', () => {
       code_challenge: challenge, code_challenge_method: 'S256', resource: 'https://other.example/api/mcp'
     });
     expect(new URL(res.headers.location).searchParams.get('error')).toBe('invalid_target');
+  });
+});
+
+describe('GET /client', () => {
+  test('tells the consent page who is asking, and whether we know the host (audit)', async () => {
+    const known = await registerClient();
+    const k = await request(app).get('/api/mcp/oauth/client').query({ client_id: known.client_id, redirect_uri: CALLBACK });
+    expect(k.body).toEqual({ client_name: 'Claude', redirect_host: 'claude.ai', trust: 'known' });
+    const fake = await registerClient({ client_name: 'Claude', redirect_uris: ['https://claude-ai.example/cb'] });
+    const f = await request(app).get('/api/mcp/oauth/client').query({ client_id: fake.client_id, redirect_uri: 'https://claude-ai.example/cb' });
+    expect(f.body.trust).toBe('unknown');
+    const local = await registerClient({ redirect_uris: ['http://127.0.0.1:33418/callback'] });
+    const l = await request(app).get('/api/mcp/oauth/client').query({ client_id: local.client_id, redirect_uri: 'http://127.0.0.1:33418/callback' });
+    expect(l.body.trust).toBe('local');
+    const wrong = await request(app).get('/api/mcp/oauth/client').query({ client_id: known.client_id, redirect_uri: 'https://evil.example/cb' });
+    expect(wrong.status).toBe(404);
   });
 });
 
@@ -310,6 +358,26 @@ describe('POST /approve', () => {
     expect(OAuthAuthCode._docs[0].scopes).toEqual(['read']);
     // Den lagrade koden är en hash, aldrig klartexten i redirecten.
     expect(OAuthAuthCode._docs[0].codeHash).not.toBe(codeFrom(narrowed.body.redirect));
+  });
+
+  test('a client asking only for write gets read too (audit)', async () => {
+    const client = await registerClient();
+    const { challenge } = pkcePair();
+    expect((await approve(client.client_id, challenge, { scope: 'write' })).status).toBe(200);
+    expect(OAuthAuthCode._docs[0].scopes).toEqual(['read', 'write']);
+  });
+
+  test('a login from before a password reset cannot connect an AI (audit)', async () => {
+    const client = await registerClient();
+    const { challenge } = pkcePair();
+    const oldJwt = jwt.sign({ id: USER_ID, roles: ['user'], iat: Math.floor(Date.now() / 1000) - 60 }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '15m' });
+    mockCredentialsChangedAt.set(USER_ID, new Date(Date.now() - 10 * 1000));
+    const res = await request(app).post('/api/mcp/oauth/approve').set('Authorization', `Bearer ${oldJwt}`).send({
+      client_id: client.client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: 'S256', approved: true
+    });
+    expect(res.status).toBe(401);
+    // En ny inloggning efter bytet går bra.
+    expect((await approve(client.client_id, challenge)).status).toBe(200);
   });
 });
 
@@ -356,6 +424,17 @@ describe('POST /token — authorization_code', () => {
     expect(res.body.error).toBe('invalid_grant');
   });
 
+  test('a code minted before a password reset is dead (audit)', async () => {
+    const client = await registerClient();
+    const { verifier, challenge } = pkcePair();
+    const code = codeFrom((await approve(client.client_id, challenge)).body.redirect);
+    OAuthAuthCode._docs[0].createdAt = new Date(Date.now() - 60 * 1000);
+    mockCredentialsChangedAt.set(USER_ID, new Date(Date.now() - 1000));
+    const res = await exchange(client.client_id, code, verifier);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_grant');
+  });
+
   test('an expired code is rejected', async () => {
     const client = await registerClient();
     const { verifier, challenge } = pkcePair();
@@ -390,6 +469,8 @@ describe('POST /token — refresh_token', () => {
   test('replaying a spent refresh token revokes the whole connection (reuse detection)', async () => {
     const { client, tokens } = await connect();
     const rotated = await refresh(client.client_id, tokens.refresh_token);
+    // Efter nådfönstret (två samtidiga refresh:ar / ett tappat svar) = stöld.
+    McpToken._docs[0].rotatedAt = new Date(Date.now() - 10 * 60 * 1000);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const replay = await refresh(client.client_id, tokens.refresh_token);
     warn.mockRestore();
@@ -399,10 +480,49 @@ describe('POST /token — refresh_token', () => {
     expect((await refresh(client.client_id, rotated.body.refresh_token)).status).toBe(400);
   });
 
+  test('right after a rotation the old token is refused without killing the connection (audit)', async () => {
+    const { client, tokens } = await connect();
+    const rotated = await refresh(client.client_id, tokens.refresh_token);
+    const again = await refresh(client.client_id, tokens.refresh_token);
+    expect(again.status).toBe(400);
+    expect(McpToken._docs[0].revokedAt).toBeFalsy();
+    expect((await refresh(client.client_id, rotated.body.refresh_token)).status).toBe(200);
+  });
+
+  test('a token from several rotations back is recognised as reuse (audit)', async () => {
+    const { client, tokens } = await connect();
+    let current = tokens.refresh_token;
+    for (let i = 0; i < 3; i++) current = (await refresh(client.client_id, current)).body.refresh_token;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const replay = await refresh(client.client_id, tokens.refresh_token);
+    warn.mockRestore();
+    expect(replay.status).toBe(400);
+    expect(McpToken._docs[0].revokedAt).toBeInstanceOf(Date);
+  });
+
+  test('a connection unused for 90 days has fallen asleep (audit)', async () => {
+    const { client, tokens } = await connect();
+    const longAgo = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+    Object.assign(McpToken._docs[0], { createdAt: longAgo, lastUsedAt: longAgo, rotatedAt: null });
+    const res = await refresh(client.client_id, tokens.refresh_token);
+    expect(res.status).toBe(400);
+    expect(McpToken._docs[0].revokedAt).toBeInstanceOf(Date);
+  });
+
   test('another client cannot use the refresh token', async () => {
     const { tokens } = await connect();
     const other = await registerClient();
     expect((await refresh(other.client_id, tokens.refresh_token)).status).toBe(400);
+  });
+});
+
+describe('POST /api/mcp', () => {
+  test('JSON-RPC batches are refused (audit)', async () => {
+    const { tokens } = await connect();
+    const res = await request(app).post('/api/mcp').set('Authorization', `Bearer ${tokens.access_token}`)
+      .send([{ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' }]);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(-32600);
   });
 });
 

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const User = require('../models/User');
 const { PLANS, PLAN_IDS, isValidPlanId, effectivePlan, monthKey } = require('../config/plans');
-const { FEATURES, FEATURE_KEYS, featuresForAll } = require('../config/features');
+const { FEATURES, FEATURE_KEYS, featuresForAll, featuresDisabled } = require('../config/features');
 
 const router = express.Router();
 
@@ -32,6 +32,8 @@ function shapeUserForAdmin(user) {
     hasUsedTrial: !!user.hasUsedTrial,
     // Flaggor admin slagit på för just det här kontot (inte FEATURES_FOR_ALL).
     features: Array.isArray(user.features) ? user.features : [],
+    // Flaggor som är AVSTÄNGDA för kontot — vinner över "på för alla" och inbjudningar.
+    featureBlocks: Array.isArray(user.featureBlocks) ? user.featureBlocks : [],
     aiUsage: {
       used: usedThisMonth,
       limit: plan.aiCallsPerMonth,
@@ -58,8 +60,9 @@ router.get('/plans', (req, res) => {
 // admin-UI:t kan rita en växel per flagga utan att hårdkoda dem.
 router.get('/features', (req, res) => {
   const forAll = featuresForAll();
+  const disabled = featuresDisabled();
   res.json({
-    features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key) }))
+    features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key), disabled: disabled.includes(key) }))
   });
 });
 
@@ -78,7 +81,10 @@ router.patch('/users/:id/features', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       id,
-      enabled ? { $addToSet: { features: feature } } : { $pull: { features: feature } },
+      // Av = blockerad: varken FEATURES_FOR_ALL eller en delning slår på den igen.
+      enabled
+        ? { $addToSet: { features: feature }, $pull: { featureBlocks: feature } }
+        : { $pull: { features: feature }, $addToSet: { featureBlocks: feature } },
       { new: true }
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });

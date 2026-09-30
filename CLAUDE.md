@@ -8,7 +8,7 @@ with quiz mode, and can let Claude generate words / example sentences /
 translations.
 
 - **GitHub repo:** https://github.com/jagduvi1/Glosan
-- **Production:** https://glosan.jeklund.dev
+- **Production:** https://glosan.app (canonical — also the MCP OAuth issuer; the legacy https://glosan.jeklund.dev still serves the app)
 
 ---
 
@@ -63,19 +63,19 @@ Glosan/
 │       ├── app.js
 │       ├── config/db.js
 │       ├── middleware/auth.js
-│       ├── models/{User,GlosList,Glos}.js
-│       ├── routes/{health,auth,oauth,lists,glosor,ai}.js
+│       ├── models/{User,GlosList,Glos,McpToken,OAuthClient,OAuthAuthCode,Study*}.js
+│       ├── routes/{health,auth,oauth,lists,glosor,ai,mcp,mcpOAuth,wellKnownOAuth,study,studyInvites,admin,me,friends}.js
 │       ├── config/{plans,features,subjects}.js
 │       ├── services/{anthropic,authTokens,oauthStateStore,email,mcpOAuth,studyData}.js
 │       └── mcp/{server,registry,toolUtil,instructions,prompts}.js + mcp/tools/*.js
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, vite.config.js, index.html
 │   └── src/
-│       ├── App.js, main.jsx, index.css
-│       ├── contexts/AuthContext.js
+│       ├── App.jsx, main.jsx, index.css
+│       ├── contexts/AuthContext.jsx
 │       ├── utils/apiFetch.js
-│       ├── components/{Layout,ProtectedRoute,Analytics}.js
-│       └── pages/{Login,Register,Lists,ListDetail,Quiz}.js
+│       ├── components/{Layout,ProtectedRoute,Analytics,StudyMarkdown}.jsx + components/study/
+│       └── pages/{Login,Register,Lists,ListDetail,Quiz,Plugga*,ConnectAiAuthorize}.jsx
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -89,7 +89,7 @@ Glosan/
 | `User` | Auth & profile, roles: `user` / `admin`. Refresh-token hash stored. |
 | `GlosList` | A named vocabulary list owned by one user. `{ user, title, description, sourceLang, targetLang }` |
 | `Glos` | One word pair in a list. `{ list, source, target, notes, exampleSentence, stats: { correct, wrong, lastReviewedAt } }` |
-| `Study*` | Plugga (school subjects, behind the `study` flag): `StudyUnit` (område), `StudyPage` (genomgång), `StudyItem` (card/exercise), per-user `StudyItemState`/`StudyAttempt`/`StudySession`, `StudyFolder`. See [docs/plugga.md](docs/plugga.md). |
+| `Study*` | Plugga (school subjects, behind the `study` flag): `StudyUnit` (område), `StudyPage` (genomgång), `StudyItem` (card/exercise), per-user `StudyItemState`/`StudyAttempt`/`StudySession`, `StudyFolder` (Mapp), `StudyTest`/`StudyTestAttempt` (övningsprov), `StudyShareLink` (QR), `StudyItemDeletion` (bin log), `StudyFlag`. See [docs/plugga.md](docs/plugga.md). |
 
 ---
 
@@ -105,6 +105,9 @@ Copy `.env.example` → `.env` and set:
 | `PORT` | No | `5000` |
 | `FRONTEND_URL` | No | `http://localhost` (first entry is also the MCP OAuth issuer) |
 | `FEATURES_FOR_ALL` | No | — (comma-separated feature flags on for everyone, e.g. `study`) |
+| `FEATURES_DISABLED` | No | — (emergency brake: flags OFF for everyone, wins over everything) |
+| `MCP_KNOWN_REDIRECT_HOSTS` | No | — (more AI services the MCP consent page recognises) |
+| `RESEND_API_KEY` / `EMAIL_FROM` | No (required for verify/reset email) | — |
 | `ANTHROPIC_API_KEY` | No (required for AI routes) | — |
 | `GOOGLE_CLIENT_ID` | No (required for Google login) | — |
 | `GOOGLE_CLIENT_SECRET` | No (required for Google login) | — |
@@ -135,8 +138,9 @@ cd backend && npm test
 # MCP end-to-end against a running stack (see docs/mcp.md)
 FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
-# Plugga end-to-end (needs FEATURES_FOR_ALL=study on the stack)
+# Plugga end-to-end (with or without FEATURES_FOR_ALL=study)
 cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
+cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 # Frontend tests not configured yet — add Vitest when you write the first test.
 ```
 
@@ -152,9 +156,10 @@ cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
 - **Image import:** `POST /api/ai/parse-image` takes a base64 image and returns the *same* shape as `/parse-list`, so [ImportModal](frontend/src/components/ImportModal.jsx) reuses the whole review-and-save step. The client downscales to 1600px JPEG first ([utils/image.js](frontend/src/utils/image.js)) — a phone photo is 2–12 MB raw, ~300 kB scaled. The image is never stored. Body limits are raised **only** for that one route (app.js + nginx.conf); the rest of the API stays at 64 kB.
 - **MCP server:** `POST /api/mcp` lets claude.ai & co. read and edit a user's lists (photo → `create_list` is the headline flow — Claude reads the image, Glosan never sees it). Ported from Cellarion but stateless-only. Connectors authorize through Glosan's own OAuth 2.1 server ([routes/mcpOAuth.js](backend/src/routes/mcpOAuth.js), consent page `/connect-ai/authorize`) and get `glo_` tokens that **only** [middleware/mcpAuth.js](backend/src/middleware/mcpAuth.js) accepts. Tools are declared with `registerTool` in [backend/src/mcp/tools/](backend/src/mcp/tools); scope filtering is structural (a read-only connection never gets write tools registered). The MCP routes must stay mounted **before** the routers on `/api` in app.js — `glosor.js` runs `requireAuth` on the whole prefix. Full guide: [docs/mcp.md](docs/mcp.md).
 - **Feature flags:** hidden modules are gated per account (`User.features`, switched on the admin page) or for everyone (`FEATURES_FOR_ALL`); catalogue in [config/features.js](backend/src/config/features.js). Backend routes use `requireFeature(key)` (404 when off), the frontend `hasFeature(user, key)`, and MCP tools/prompts/instructions declare `feature: '<key>'` so they're only registered for flagged users.
-- **Plugga (school subjects):** behind the `study` flag. Content is created **only via MCP** by the user's own AI, and **Glosan never calls an AI API in Plugga** — don't import `services/anthropic.js` there. Progress is per user (`StudyItemState`), never on the item, because units can be shared. Use `services/studyData.js` for deleting units/accounts and the export. Design + phases: [docs/plugga.md](docs/plugga.md).
+- **Plugga (school subjects):** behind the `study` flag. Content is created **only via MCP** by the user's own AI, and **Glosan never calls an AI API in Plugga** — don't import `services/anthropic.js` there. Progress is per user (`StudyItemState`), never on the item, because units can be shared. Use `services/studyData.js` for deleting units/accounts and the export, and `services/study/itemDeletion.js` for deleting items (it logs them). Template exercises are graded against the seed the client sends back (`services/study/templates.js` — a hand-written expression parser, never `eval`); ```svg figures render only as `<img>`. Design + phases: [docs/plugga.md](docs/plugga.md).
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
-- **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.js` for the pattern.
+- **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.jsx` for the pattern.
+- **CI:** `.github/workflows/ci.yml` runs jest, the frontend build and all three e2e scripts (against a Docker stack) on every PR and push to main; `release.yml` builds images only after it passes and stamps the release tag into the backend (`APP_VERSION` → `/api/health`). The e2e scripts refuse non-localhost URLs unless given `--allow-remote`.
 
 ---
 

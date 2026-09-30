@@ -161,6 +161,8 @@ router.get('/list-invite/:code', async (req, res) => {
 // Kopierar listan + glosor till requestern + skapar friendship med creator.
 router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
   try {
+    // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökkompisar.
+    if (!(await User.exists({ _id: req.user.id }))) return res.status(401).json({ error: 'Logga in igen.' });
     const invite = await ListInvite.findOne({ code: req.params.code });
     if (!invite || !invite.isActive()) {
       return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });

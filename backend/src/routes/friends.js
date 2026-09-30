@@ -54,7 +54,8 @@ router.get('/friends', async (req, res) => {
       .sort({ addedAt: -1 })
       .lean();
     res.json({
-      friends: rows.map((r) => ({
+      // Ett raderat konto kan lämna en vänrad efter sig — hoppa över den.
+      friends: rows.filter((r) => r.friend).map((r) => ({
         _id: r.friend._id,
         username: r.friend.username,
         avatar: r.friend.avatar || { kind: 'initial', value: '' },
@@ -83,6 +84,8 @@ router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
     return res.status(400).json({ error: `Kompis-koder är ${INVITE_CODE_LENGTH} tecken långa.` });
   }
   try {
+    // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökkompisar.
+    if (!(await User.exists({ _id: req.user.id }))) return res.status(401).json({ error: 'Logga in igen.' });
     const invite = await InviteCode.findOne({ code });
     if (!invite) {
       return res.status(404).json({ error: 'Ingen sådan kod finns.' });

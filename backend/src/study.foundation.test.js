@@ -10,6 +10,7 @@ const { SUBJECTS, subjectByCode, subjectsInGroup } = require('./config/subjects'
 const StudyItem = require('./models/StudyItem');
 const StudyUnit = require('./models/StudyUnit');
 const StudySession = require('./models/StudySession');
+const StudyShareLink = require('./models/StudyShareLink');
 const User = require('./models/User');
 
 const OID = '64b000000000000000000001';
@@ -170,5 +171,30 @@ describe('StudySession active time', () => {
     expect(StudySession.activeIncrement(t0, new Date('2026-09-29T15:45:00Z'))).toBe(StudySession.ACTIVE_GAP_CAP_SEC);
     expect(StudySession.activeIncrement(t0, t0)).toBe(0);
     expect(StudySession.activeIncrement(t0, new Date('2026-09-29T14:00:00Z'))).toBe(0);
+  });
+});
+
+describe('StudyShareLink (QR / link to a unit)', () => {
+  const base = () => new StudyShareLink({
+    unit: '64b000000000000000000001', creator: '64b000000000000000000002', code: 'ABCD2345',
+    expiresAt: new Date(Date.now() + 86400000), maxUses: 2
+  });
+
+  test('active until it expires, is used up or revoked', () => {
+    const l = base();
+    expect(l.isActive()).toBe(true);
+    l.usedBy.push('64b000000000000000000003', '64b000000000000000000004');
+    expect(l.isActive()).toBe(false);
+    const expired = base();
+    expect(expired.isActive(new Date(Date.now() + 2 * 86400000))).toBe(false);
+    const revoked = base();
+    revoked.revokedAt = new Date();
+    expect(revoked.isActive()).toBe(false);
+  });
+
+  test('at most 300 uses per link', () => {
+    const l = base();
+    l.maxUses = 1000;
+    expect(l.validateSync().errors.maxUses).toBeDefined();
   });
 });

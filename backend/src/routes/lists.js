@@ -40,6 +40,9 @@ router.post('/', async (req, res) => {
   try {
     const { title, description, sourceLang, targetLang, categoryId } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
+    if (await GlosList.countDocuments({ user: req.user.id }) >= GlosList.MAX_LISTS_PER_USER) {
+      return res.status(409).json({ error: `Du har redan ${GlosList.MAX_LISTS_PER_USER} listor — radera några gamla först.` });
+    }
 
     const list = await GlosList.create({
       user: req.user.id,

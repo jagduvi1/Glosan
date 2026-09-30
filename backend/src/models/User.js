@@ -67,11 +67,18 @@ const userSchema = new mongoose.Schema({
     }
   },
   refreshTokenHash: { type: String, default: null },
+  // Förra hemligheten och när den byttes: två refresh:ar samtidigt (två
+  // flikar, parallella anrop) ska inte tolkas som en stulen token.
+  prevRefreshTokenHash: { type: String, default: null },
+  refreshRotatedAt: { type: Date, default: null },
   // Familje-ID för refresh-token. Lagras separat så vi kan slå upp användaren
   // utan att exponera tokenens hemliga del. Vid en presentation av (familyId,
   // secret) där familjet hittas men hashen inte matchar → någon kör replay
   // av en stulen historisk token; hela familjen revokeras (force re-login).
   refreshTokenFamily: { type: String, default: null, index: true, sparse: true },
+  // När lösenordet senast återställdes. Inloggningar (JWT) och AI-auth-koder
+  // från före dess godtas inte för att koppla en AI (routes/mcpOAuth.js).
+  credentialsChangedAt: { type: Date, default: null },
   // 6-char shareable identity code for the friends feature. Lazy-generated on
   // first /api/me/friend-code request. Unique across all users. INGEN default
   // — sparse-index på MongoDB inkluderar `null`-värden i indexet vilket gör
@@ -86,6 +93,13 @@ const userSchema = new mongoose.Schema({
   // 'study' = Plugga medan modulen är dold). Katalog + "på för alla" i
   // config/features.js — läs alltid via effectiveFeatures(), inte direkt.
   features: {
+    type: [{ type: String, enum: FEATURE_KEYS }],
+    default: []
+  },
+  // Flaggor admin uttryckligen slagit AV för kontot. Vinner över
+  // FEATURES_FOR_ALL och över inbjudningar (grantStudyFeature slår aldrig på
+  // en blockerad flagga igen).
+  featureBlocks: {
     type: [{ type: String, enum: FEATURE_KEYS }],
     default: []
   },
@@ -173,10 +187,13 @@ userSchema.methods.toJSON = function () {
   // De EFFEKTIVA flaggorna (egna + FEATURES_FOR_ALL), så frontend kan visa
   // dolda moduler utan att känna till env-variabeln.
   obj.features = effectiveFeatures(obj);
+  delete obj.featureBlocks;
   delete obj.studyCodeCounters;
   delete obj.authProviders;
   delete obj.password;
   delete obj.refreshTokenHash;
+  delete obj.prevRefreshTokenHash;
+  delete obj.refreshRotatedAt;
   delete obj.refreshTokenFamily;
   return obj;
 };

@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { hasFeature } = require('../config/features');
+const { hasFeature, FEATURE_FIELDS } = require('../config/features');
 
 /**
  * Släpp bara igenom användare som har funktionsflaggan `key` (efter
@@ -12,7 +12,7 @@ const { hasFeature } = require('../config/features');
 function requireFeature(key) {
   return async (req, res, next) => {
     try {
-      const user = await User.findById(req.user.id).select('features').lean();
+      const user = await User.findById(req.user.id).select(FEATURE_FIELDS).lean();
       if (!user || !hasFeature(user, key)) {
         return res.status(404).json({ error: 'Route not found' });
       }
