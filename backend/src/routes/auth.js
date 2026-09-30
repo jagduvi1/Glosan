@@ -29,7 +29,7 @@ const {
   loginLimiter, authFloodLimiter, registerLimiter, tokenLimiter,
   refreshLimiter, refreshFloodLimiter, mailLimiter, mailFloodLimiter, resendLimiter
 } = require('../middleware/authLimits');
-const { validateRegistration } = require('../middleware/validateRegistration');
+const { validateRegistration, TAKEN } = require('../middleware/validateRegistration');
 
 // Email-token-helpers: råa token-strängen visas bara i email-länken,
 // DB-en innehåller endast SHA-256-hash så en kompromiss av Token-
@@ -163,16 +163,8 @@ async function sendMagicLinkEmail(user) {
 // konto räknas mot klassens kvot (middleware/validateRegistration.js).
 router.post('/register', authFloodLimiter, validateRegistration, registerLimiter, async (req, res) => {
   try {
+    // Formuläret och upptagna namn är redan kontrollerade (validateRegistration).
     const user = req.newUser;
-    // Modellen gör e-post och användarnamn gemena (lowercase: true).
-    const existingUser = await User.findOne({
-      $or: [{ email: user.email }, { username: user.username }]
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'Registration failed. Please check your details and try again.' });
-    }
-
     const accessToken = await issueTokens(user, res);
 
     // Skicka verify-email best-effort — om Resend krånglar ska register
@@ -187,6 +179,8 @@ router.post('/register', authFloodLimiter, validateRegistration, registerLimiter
       const messages = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
+    // Två registreringar med samma namn samtidigt: det unika indexet tar den andra.
+    if (error.code === 11000) return res.status(400).json({ error: TAKEN });
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }

@@ -14,6 +14,7 @@ const { clientIp } = require('../utils/clientIp');
 const { userOrIpKey } = require('./rateKeys');
 const { loginLimiter, authFloodLimiter, refreshLimiter, registerLimiter } = require('./authLimits');
 const { validateRegistration } = require('./validateRegistration');
+const User = require('../models/User');
 
 function makeApp() {
   const app = express();
@@ -27,8 +28,8 @@ function makeApp() {
   app.post('/login', authFloodLimiter, loginLimiter, (req, res) => res.status(401).json({ error: 'wrong password' }));
   app.post('/refresh', refreshLimiter, (req, res) => res.json({ ok: true }));
   // Som i routes/auth.js; här misslyckas varje registrering som når fram
-  // (t.ex. upptaget namn) — den ska ändå räknas.
-  app.post('/register', authFloodLimiter, validateRegistration, registerLimiter, (req, res) => res.status(400).json({ error: 'taken' }));
+  // (t.ex. ett fel när kontot sparas) — den ska ändå räknas.
+  app.post('/register', authFloodLimiter, validateRegistration, registerLimiter, (req, res) => res.status(400).json({ error: 'save failed' }));
   const api = rateLimit({ windowMs: 60000, max: 3, keyGenerator: userOrIpKey, standardHeaders: true, legacyHeaders: false });
   app.get('/api/thing', api, (req, res) => res.json({ ip: req.ip }));
   return app;
@@ -82,6 +83,11 @@ test('an access token that just expired still counts for its account, not the sc
 
 test('forms with mistakes do not use up the sign-up quota; every real attempt counts (review of #119)', async () => {
   const app = makeApp();
+  // Ingen Mongo i sviten: "elevNN" med NN under 100 är upptagna, resten lediga.
+  const exists = jest.spyOn(User, 'exists').mockImplementation(async (q) => {
+    const name = q.$or[1].username;
+    return /^elev\d{1,2}$/.test(name) ? { _id: 'x' } : null;
+  });
   const form = (i, password) => ({ username: `elev${i}`, email: `elev${i}@skola.test`, password, ageConsent: true });
   // 70 för korta lösenord från samma skola: fel i formuläret, aldrig 429.
   for (let i = 0; i < 70; i++) {
@@ -89,12 +95,19 @@ test('forms with mistakes do not use up the sign-up quota; every real attempt co
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/at least 10 characters/);
   }
+  // 70 upptagna namn: också fel i formuläret, aldrig 429.
+  for (let i = 0; i < 70; i++) {
+    const r = await request(app).post('/register').set(SCHOOL).send(form(i, 'Hemligt123abc'));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Registration failed/);
+  }
   // Formulär som kunde bli konton räknas, även när registreringen sedan
   // misslyckas: 60 ryms, nummer 61 stoppas.
   for (let i = 0; i < 60; i++) {
-    expect((await request(app).post('/register').set(SCHOOL).send(form(100 + i, 'Hemligt123abc'))).body.error).toBe('taken');
+    expect((await request(app).post('/register').set(SCHOOL).send(form(100 + i, 'Hemligt123abc'))).body.error).toBe('save failed');
   }
   expect((await request(app).post('/register').set(SCHOOL).send(form(999, 'Hemligt123abc'))).status).toBe(429);
+  exists.mockRestore();
 });
 
 test('refresh counts per session, not per school', async () => {

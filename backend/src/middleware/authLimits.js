@@ -40,8 +40,9 @@ const authFloodLimiter = limiter({
 
 /**
  * Nya konton per adress: en klass (30) med marginal, inte en spam-fabrik.
- * Formulär med fel stoppas före den här (middleware/validateRegistration.js),
- * så elever som skriver om lösenordet äter inte upp klassens kvot. Allt som
+ * Formulär med fel och upptagna namn stoppas före den här
+ * (middleware/validateRegistration.js), så elever som skriver om lösenordet
+ * eller provar ett nytt namn äter inte upp klassens kvot. Allt som
  * når hit räknas — skipFailedRequests skulle också släppa igenom den som
  * lägger på innan svaret, fast kontot skapas.
  */
