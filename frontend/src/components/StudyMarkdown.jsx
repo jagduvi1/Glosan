@@ -108,13 +108,29 @@ const inlineComponents = { ...baseComponents, p: ({ children }) => <span classNa
 // rad. All HTML hoppas annars över (skipHtml), och då klistrades orden ihop
 // ("Rad ettRad två"). Ett ensamt <br> utan attribut blir en vanlig radbrytning;
 // allt annat, även <br> med attribut, hoppas fortfarande över.
+// Står <br> intill en radbrytning ("steg 1<br>⏎steg 2" — remark-breaks har
+// redan gjort ⏎ till en) eller i styckets kant behövs det inte: då blev det en
+// tom rad. Måste därför köras efter remarkBreaks.
 const BR_TAG = /^<br\s*\/?>$/i;
 const PHRASING = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'linkReference']);
+const isBlank = (n) => n.type === 'text' && !n.value.trim();
 function remarkBrTags() {
   const walk = (node) => {
     if (!node.children) return;
     if (PHRASING.has(node.type)) {
-      node.children = node.children.map((c) => (c.type === 'html' && BR_TAG.test(c.value.trim()) ? { type: 'break' } : c));
+      const all = node.children;
+      // Närmaste granne åt ett håll, förbi text som bara är blanksteg.
+      const near = (i, step) => {
+        let j = i + step;
+        while (all[j] && isBlank(all[j])) j += step;
+        return all[j];
+      };
+      node.children = all.flatMap((c, i) => {
+        if (c.type !== 'html' || !BR_TAG.test(c.value.trim())) return [c];
+        const prev = near(i, -1);
+        const next = near(i, 1);
+        return prev && next && prev.type !== 'break' && next.type !== 'break' ? [{ type: 'break' }] : [];
+      });
     }
     node.children.forEach(walk);
   };
