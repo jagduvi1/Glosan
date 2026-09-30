@@ -2,12 +2,16 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import '../styles/study.css';
 
 // Renderar AI-skrivet Plugga-innehåll: Markdown med formler i LaTeX ($…$ och
-// $$…$$). Texten kommer från en AI och ska aldrig kunna bli körbar kod:
+// $$…$$). En enkel radbrytning blir en radbrytning (remark-breaks) — i vanlig
+// Markdown blir den ett mellanslag, och korttexter med en rad per sak flöt ihop
+// till en enda rad. Formler, kod och figurer påverkas inte.
+// Texten kommer från en AI och ska aldrig kunna bli körbar kod:
 // - ingen rå HTML (skipHtml),
 // - KaTeX utan `trust` (inga \href / \url / \htmlClass),
 // - inga externa bilder (CSP:n blockerar dem ändå) — alt-texten visas i stället,
@@ -96,8 +100,42 @@ const baseComponents = {
   }
 };
 
-// Inline: för flervalsalternativ och korta etiketter — inga block-stycken.
-const inlineComponents = { ...baseComponents, p: ({ children }) => <span>{children}</span> };
+// Inline: för flervalsalternativ och korta etiketter — inga block-stycken (ett
+// nytt stycke börjar på ny rad via .md-p i study.css).
+const inlineComponents = { ...baseComponents, p: ({ children }) => <span className="md-p">{children}</span> };
+
+// AI:n skriver ibland <br> — i en tabellcell är det enda sättet att bryta en
+// rad. All HTML hoppas annars över (skipHtml), och då klistrades orden ihop
+// ("Rad ettRad två"). Ett ensamt <br> utan attribut blir en vanlig radbrytning;
+// allt annat, även <br> med attribut, hoppas fortfarande över.
+// Står <br> intill en radbrytning ("steg 1<br>⏎steg 2" — remark-breaks har
+// redan gjort ⏎ till en) eller i styckets kant behövs det inte: då blev det en
+// tom rad. Måste därför köras efter remarkBreaks.
+const BR_TAG = /^<br\s*\/?>$/i;
+const PHRASING = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'linkReference']);
+const isBlank = (n) => n.type === 'text' && !n.value.trim();
+function remarkBrTags() {
+  const walk = (node) => {
+    if (!node.children) return;
+    if (PHRASING.has(node.type)) {
+      const all = node.children;
+      // Närmaste granne åt ett håll, förbi text som bara är blanksteg.
+      const near = (i, step) => {
+        let j = i + step;
+        while (all[j] && isBlank(all[j])) j += step;
+        return all[j];
+      };
+      node.children = all.flatMap((c, i) => {
+        if (c.type !== 'html' || !BR_TAG.test(c.value.trim())) return [c];
+        const prev = near(i, -1);
+        const next = near(i, 1);
+        return prev && next && prev.type !== 'break' && next.type !== 'break' ? [{ type: 'break' }] : [];
+      });
+    }
+    node.children.forEach(walk);
+  };
+  return walk;
+}
 
 // memo: en provsida har många frågor, och klockan/varje tangenttryck ska inte
 // tolka om all Markdown och alla formler.
@@ -106,7 +144,7 @@ function StudyMarkdown({ children, inline = false }) {
   return (
     <Tag className={`study-md${inline ? ' study-md-inline' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkBrTags]}
         rehypePlugins={[KATEX]}
         skipHtml
         components={inline ? inlineComponents : baseComponents}

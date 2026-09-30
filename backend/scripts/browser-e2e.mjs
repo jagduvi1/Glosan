@@ -65,9 +65,13 @@ async function main() {
     const B = await signUp('brb');
     grantFeatureInLocalDb(A.name, 'study');
     const claude = await connectMcp(A.token);
+    const unitIds = [];
     for (const [subject, title] of [['matematik', 'Procent'], ['matematik', 'Förändringsfaktor'], ['historia', 'Industriella revolutionen']]) {
       const u = await call(claude, 'create_study_unit', { subject, grade_year: 8, title });
-      await call(claude, 'add_flashcards', { unit_id: u.data.unit_id, cards: [{ front: 'Fråga', back: 'Svar' }] });
+      unitIds.push(u.data.unit_id);
+      // Första kortets baksida har en enkel radbrytning (se kortsteget nedan).
+      const back = unitIds.length === 1 ? 'Rad ett\nRad två' : 'Svar';
+      await call(claude, 'add_flashcards', { unit_id: u.data.unit_id, cards: [{ front: 'Fråga', back }] });
     }
     await claude.close();
     const code = (await api('/api/me/invite-codes', A.token, { method: 'POST' })).body.inviteCode.code;
@@ -147,6 +151,14 @@ async function main() {
     await page.waitForSelector('#share-study-title');
     await page.keyboard.press('Escape');
     ok('the subject page has its own Dela button');
+
+    // ── kortets baksida: en enkel radbrytning ska synas (inte flyta ihop) ────
+    await page.goto(`${BASE}/plugga/ova?units=${unitIds[0]}`, { waitUntil: 'networkidle0' });
+    await clickText(page, 'button', 'Vänd kortet');
+    await page.waitForFunction(() => [...document.querySelectorAll('.study-md')].some((el) => el.textContent.includes('Rad två')));
+    const backHtml = await page.$$eval('.study-md', (els) => els.map((el) => el.innerHTML).find((h) => h.includes('Rad två')));
+    assert.match(backHtml, /Rad ett<br\s*\/?>\s*Rad två/, `a single line break on a card back is kept: ${backHtml}`);
+    ok('a single line break on a Plugga card back shows as a line break');
 
     // ── glos-quiz: ärlig återkoppling ───────────────────────────────────────
     for (const [answer, expected] of [['dog', 'Inte riktigt — rätt svar: häst'], ['hast', 'Nära! Det stavas häst']]) {
