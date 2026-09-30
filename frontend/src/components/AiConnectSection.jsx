@@ -115,6 +115,12 @@ export default function AiConnectSection() {
                   Får {c.scopes.map((s) => SCOPE_LABEL[s] || s).join(' och ')} · ansluten {formatDate(c.createdAt)}
                   {c.lastUsedAt ? ` · senast använd ${formatDate(c.lastUsedAt)}` : ''}
                 </div>
+                {c.missingModules?.length > 0 && (
+                  <div className="t-hand" style={{ fontSize: 14, color: 'var(--berry-deep)', marginTop: 2 }}>
+                    Når inte {c.missingModules.map((m) => m.label).join(' och ')} — det slogs på efter att du anslöt.
+                    Koppla bort och anslut igen från din AI om den ska få det.
+                  </div>
+                )}
               </div>
               <button
                 className="btn btn-sm"

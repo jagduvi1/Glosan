@@ -118,9 +118,22 @@ async function main() {
     for (const k of ['gradeYear', 'description', 'book']) assert.equal(preview.body.unit[k], undefined, `the public preview has no ${k}`);
     assert.equal((await api(`/api/study-invite/${code}/accept`, null, { method: 'POST' })).status, 401);
     if (!forAll) assert.equal(await hasPlugga(C), false);
+    // En AI som C kopplade innan Plugga slogs på får inte Plugga av sig själv.
+    const hasStudyTools = async (client) => (await client.listTools()).tools.some((t) => t.name === 'create_study_unit');
+    const cEarly = forAll ? null : await connectMcp(C.token);
+    if (cEarly) assert.equal(await hasStudyTools(cEarly), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
     assert.deepEqual(joined.body, { unitId, joined: true });
     assert.ok(await hasPlugga(C), 'the classmate gets Plugga');
+    if (cEarly) {
+      assert.equal(await hasStudyTools(cEarly), false, 'an old connection does not widen by itself');
+      const cConns = await api('/api/mcp/connections', C.token);
+      assert.deepEqual(cConns.body.connections[0].missingModules, [{ key: 'study', label: 'Plugga' }]);
+      const cLater = await connectMcp(C.token);
+      assert.equal(await hasStudyTools(cLater), true, 'a new connection gets Plugga');
+      await cEarly.close();
+      await cLater.close();
+    }
     const again = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
     assert.equal(again.body.joined, false);
     const own = await api(`/api/study-invite/${code}/accept`, A.token, { method: 'POST' });
@@ -135,7 +148,7 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}/leave`, C.token, { method: 'POST' })).status, 200);
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
-    ok('QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares');
+    ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
 
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });

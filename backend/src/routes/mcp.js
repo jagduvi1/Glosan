@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const McpToken = require('../models/McpToken');
+const User = require('../models/User');
+const { FEATURES, FEATURE_FIELDS, effectiveFeatures } = require('../config/features');
 const { requireAuth } = require('../middleware/auth');
 const { requireMcpAuth } = require('../middleware/mcpAuth');
 const { handleMcpRequest } = require('../mcp/server');
@@ -81,11 +83,15 @@ router.delete('/', ...guard, (req, res) => {
 // Bara JWT (requireAuth tar aldrig glo_-tokens): en ansluten AI kan inte lista
 // eller koppla bort anslutningar — det gör användaren själv i webbappen.
 
-function toConnection(t) {
+function toConnection(t, current = []) {
+  // Moduler kontot har men som anslutningen inte godkändes för (t.ex. Plugga
+  // som slagits på efteråt) — profilsidan föreslår att ansluta igen.
+  const missing = Array.isArray(t.modules) ? current.filter((k) => !t.modules.includes(k)) : [];
   return {
     id: String(t._id),
     name: t.name,
     scopes: t.scopes,
+    missingModules: missing.map((k) => ({ key: k, label: FEATURES[k]?.label || k })),
     createdAt: t.createdAt,
     lastUsedAt: t.lastUsedAt,
     revokedAt: t.revokedAt
@@ -95,8 +101,12 @@ function toConnection(t) {
 // GET /api/mcp/connections — aktiva anslutningar, nyast först.
 router.get('/connections', requireAuth, async (req, res, next) => {
   try {
-    const tokens = await McpToken.find({ user: req.user.id, revokedAt: null }).sort({ createdAt: -1 }).lean();
-    res.json({ connections: tokens.map(toConnection), endpoint: `${issuer()}/api/mcp` });
+    const [tokens, user] = await Promise.all([
+      McpToken.find({ user: req.user.id, revokedAt: null }).sort({ createdAt: -1 }).lean(),
+      User.findById(req.user.id, FEATURE_FIELDS).lean()
+    ]);
+    const current = effectiveFeatures(user);
+    res.json({ connections: tokens.map((t) => toConnection(t, current)), endpoint: `${issuer()}/api/mcp` });
   } catch (err) {
     next(err);
   }

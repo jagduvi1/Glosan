@@ -31,6 +31,7 @@ function mockMakeModel(prefix, statics = {}) {
     if (Array.isArray(actual) && !isOp(v)) return actual.map(String).includes(String(v));
     if (isOp(v) && '$gt' in v) return actual != null && actual > v.$gt;
     if (isOp(v) && '$ne' in v) return String(actual) !== String(v.$ne);
+    if (isOp(v) && '$exists' in v) return v.$exists ? actual !== undefined : actual === undefined;
     if (v === null) return actual == null;
     return String(actual) === String(v);
   });
@@ -110,9 +111,10 @@ jest.mock('../models/McpToken', () => {
 });
 
 const mockCredentialsChangedAt = new Map();
+const mockFeatures = new Map();
 jest.mock('../models/User', () => {
   const doc = (id) => (String(id) === 'deleted-user' ? null
-    : { _id: id, roles: ['user'], credentialsChangedAt: mockCredentialsChangedAt.get(String(id)) || null });
+    : { _id: id, roles: ['user'], credentialsChangedAt: mockCredentialsChangedAt.get(String(id)) || null, features: mockFeatures.get(String(id)) || [] });
   return {
     findById: (id) => ({
       select: () => ({ lean: async () => doc(id) }),
@@ -124,7 +126,7 @@ jest.mock('../models/User', () => {
 // /api/mcp-routen ska här bara testa auth-lagret — själva MCP-servern (som
 // laddar ESM-SDK:t) ersätts av en stub som visar vilken ctx den fick.
 jest.mock('../mcp/server', () => ({
-  handleMcpRequest: async (req, res, ctx) => res.json({ reached: true, userId: ctx.user.id, scopes: ctx.scopes })
+  handleMcpRequest: async (req, res, ctx) => res.json({ reached: true, userId: ctx.user.id, scopes: ctx.scopes, features: ctx.features })
 }));
 
 const OAuthClient = require('../models/OAuthClient');
@@ -195,6 +197,7 @@ beforeEach(() => {
   OAuthAuthCode._reset();
   McpToken._reset();
   mockCredentialsChangedAt.clear();
+  mockFeatures.clear();
 });
 
 describe('POST /register', () => {
@@ -526,6 +529,40 @@ describe('POST /api/mcp', () => {
   });
 });
 
+describe('modules (audit: a connection never widens by itself)', () => {
+  const mcpCall = (token) => request(app).post('/api/mcp').set('Authorization', `Bearer ${token}`)
+    .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+
+  test('a module switched on after connecting stays out until the user connects again', async () => {
+    const first = await connect();
+    expect(McpToken._docs[0].modules).toEqual([]);
+    mockFeatures.set(USER_ID, ['study']);
+    expect((await mcpCall(first.tokens.access_token)).body.features).toEqual([]);
+    const list = await request(app).get('/api/mcp/connections').set('Authorization', `Bearer ${jwtFor()}`);
+    expect(list.body.connections[0].missingModules).toEqual([{ key: 'study', label: 'Plugga' }]);
+
+    const second = await connect();
+    expect((await mcpCall(second.tokens.access_token)).body.features).toEqual(['study']);
+    // Och en modul som slås AV når inte heller anslutningen som godkände den.
+    mockFeatures.set(USER_ID, []);
+    expect((await mcpCall(second.tokens.access_token)).body.features).toEqual([]);
+  });
+
+  test('a connection from before the field is frozen to what it reaches on first use', async () => {
+    const { tokens } = await connect();
+    delete McpToken._docs[0].modules;
+    mockFeatures.set(USER_ID, ['study']);
+    expect((await mcpCall(tokens.access_token)).body.features).toEqual(['study']);
+    await new Promise((r) => setImmediate(r));
+    expect(McpToken._docs[0].modules).toEqual(['study']);
+  });
+
+  test("the user's own JWT (MCP Inspector) gets every module the account has", async () => {
+    mockFeatures.set(USER_ID, ['study']);
+    expect((await mcpCall(jwtFor())).body.features).toEqual(['study']);
+  });
+});
+
 describe('POST /revoke', () => {
   test('revokes the connection; unknown tokens are still 200 (RFC 7009)', async () => {
     const { client, tokens } = await connect();
@@ -551,7 +588,7 @@ describe('/api/mcp auth', () => {
     const { tokens } = await connect(['read']);
     const res = await request(app).post('/api/mcp').set('Authorization', `Bearer ${tokens.access_token}`).send({});
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ reached: true, userId: USER_ID, scopes: ['read'] });
+    expect(res.body).toEqual({ reached: true, userId: USER_ID, scopes: ['read'], features: [] });
   });
 
   test('an expired access token → 401 so the client refreshes', async () => {
