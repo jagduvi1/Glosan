@@ -121,7 +121,7 @@ registerTool({
 registerTool({
   name: 'get_list_sharing',
   title: 'Who a list is shared with',
-  description: 'For a list the user owns: who it is shared with, whether they can edit, and its active share links (expiry, how many have used them). Only links you made come with their url; links made in the app make joiners the user\'s friend, so their address stays in the app — close any link with its link_id.',
+  description: 'For a list the user owns: who it is shared with, whether they can edit, and its active share links (expiry, how many have used them). A link the user set to make joiners their friend is listed without its address — it stays in the app; close any link with its link_id.',
   scope: 'read',
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: { list_id: objectId.describe('List id from list_lists') },
@@ -134,11 +134,11 @@ registerTool({
       list_id: String(list._id),
       can_edit: list.shareMode === 'edit',
       shared_with: shares.map(personOut),
-      // En länk som gör den som går med till kompis (appens) lämnas aldrig ut
-      // till AI:n: en manipulerad AI skulle annars kunna sprida den.
+      // En länk som gör den som går med till kompis lämnas aldrig ut till
+      // AI:n: en manipulerad AI skulle annars kunna sprida den.
       links: invites.filter(isActive).map((i) => ({
         link_id: String(i._id),
-        ...(i.befriend ? { made_in: 'app' } : { code: i.code, url: listLinkUrl(i.code) }),
+        ...(i.befriend ? { befriends: true } : { code: i.code, url: listLinkUrl(i.code) }),
         expires_at: i.expiresAt,
         used: i.usedCount,
         max_uses: i.maxUses
@@ -177,7 +177,7 @@ registerTool({
 registerTool({
   name: 'create_list_link',
   title: 'Create a share link for a list',
-  description: 'Makes a link to one of the user\'s lists (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list; unlike links made in the app, a link you make does NOT make them the user\'s friend. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
+  description: 'Makes a link to one of the user\'s lists (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list; a link you make never makes them the user\'s friend. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   inputSchema: { list_id: objectId.describe('List id from list_lists'), days: daysInput, max_uses: usesInput },

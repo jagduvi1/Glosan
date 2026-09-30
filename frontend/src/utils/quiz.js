@@ -62,6 +62,20 @@ export function isVoiceMatch(transcript, expectedWord) {
   return false;
 }
 
+// Was a wrong typed answer close to an accepted one (a slip, a missing dot)?
+// Only decides how the feedback sounds — "Nära! Det stavas …" vs "Inte
+// riktigt — rätt svar: …". Text mode still grades exactly.
+export function isNearMiss(given, expectedWord) {
+  if (!given || !expectedWord) return false;
+  const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const g = fold(given);
+  return answerVariants(expectedWord).some((v) => {
+    const f = fold(v);
+    const threshold = f.length >= 7 ? 2 : f.length >= 3 ? 1 : 0;
+    return levenshtein(g, f) <= threshold;
+  });
+}
+
 // Pick 3 distractor strings from `pool` for choice mode, excluding the current
 // glos and any others whose `expectedField` matches it (so duplicates aren't shown).
 export function buildDistractors(currentGlos, pool, expectedField) {

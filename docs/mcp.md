@@ -77,9 +77,10 @@ chapter) and `stop_sharing_study`.
 **Sharing** works like the app's Dela, through the same services
 (`services/listSharing.js`, `services/study/sharing.js`): directly with
 confirmed friends, or with a link anyone can use — also people without an
-account, who sign up through it. A list link gives the joiner a copy — links made in the app also make them
-the user's friend (the classroom QR flow), links made by the AI never do
-(`ListInvite.befriend`), so a manipulated AI can't bring strangers into a
+account, who sign up through it. A list link gives the joiner a copy. It also makes them the user's friend
+only when the user ticked that box in the app (off by default); links made
+by the AI never do (`ListInvite.befriend`), and the AI never sees the
+address of one that does — so a manipulated AI can't bring strangers into a
 child's friend list. A unit link gives access without friendship. The tools return the url for the user to pass on.
 
 Deliberately **not** exposed: blocking, duels, account settings, plans,
@@ -227,8 +228,9 @@ cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
 discovery, OAuth, every tool, a read-only connection, refresh rotation and
 disconnecting. It creates a throwaway user and deletes it afterwards. The e2e
 scripts refuse any base URL that isn't localhost (pass `--allow-remote` if you
-really mean it), and CI (`.github/workflows/ci.yml`) runs all three against a
-Docker stack on every PR and before every release.
+really mean it), and CI (`.github/workflows/ci.yml`) runs all of them — the
+three API suites and `browser-e2e.mjs`, which drives the pages in headless
+Chrome — against a Docker stack on every PR and before every release.
 
 claude.ai cannot reach `localhost`; to try the real Claude against a local
 build you need a public HTTPS tunnel with `FRONTEND_URL` set to its URL.

@@ -27,6 +27,10 @@ setup runs for Cellarion on the other VM.
 - **A minimum-size guard** in `backup.sh`. `mongodump` of an empty database
   exits 0 and writes a tiny archive; without the guard, a broken database would
   produce valid-looking snapshots that rotate the good ones away within a week.
+- **`forget --group-by host,tags`.** Each run stages the dump in a fresh temp
+  dir, and restic groups snapshots by host *and path* by default — so every
+  snapshot was a group of its own and retention never removed anything. Until
+  2026-09-30 it didn't: the restore drill that day found 34 snapshots, all kept.
 
 ## First-time setup on the VM
 
@@ -100,9 +104,32 @@ It asks for confirmation, drops the whole `glosan` database, then runs
 collections that are in the archive, so collections added by a later release
 (e.g. `studytests`) would otherwise survive and point at data that is gone.
 
-**Run a restore drill periodically.** An untested backup is not a backup — the
-failure modes (wrong database name, a password nobody wrote down, an
-`authorized_keys` entry that was rotated away) only surface when you try.
+### Restore drill
+
+An untested backup is not a backup — the failure modes (wrong database name, a
+password nobody wrote down, an `authorized_keys` entry that was rotated away)
+only surface when you try. `drill.sh` tries without touching production:
+
+```bash
+cd ~/apps/glosan/scripts/backup
+./drill.sh              # latest snapshot (or pass an id)
+```
+
+It restores the snapshot into a throwaway `mongo` container (same image, no
+network, 512 MB cap), lists every collection's documents/indexes next to the
+live database's (read-only), fails if the backup has no users, and removes
+everything it created — including the container's volumes, which hold a full
+copy of the database (the image declares `VOLUME /data/db`, so `docker rm`
+needs `-v`). Differences are expected — they are what changed after
+the snapshot was taken, including collections and indexes from later releases.
+Run it monthly and after any change to the backup setup.
+
+## The copy on the VM
+
+The VM runs its own copy of these scripts in `~/apps/glosan/scripts/backup` —
+that directory is not a git checkout. After changing a script here, copy it
+there (`scp scripts/backup/<file> johan@<vm>:apps/glosan/scripts/backup/`)
+and `chmod +x` it.
 
 ## Monitoring
 

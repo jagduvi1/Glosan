@@ -1,8 +1,8 @@
-export async function createListInvite(apiFetch, listId, { ttlDays, maxUses }) {
+export async function createListInvite(apiFetch, listId, { ttlDays, maxUses, befriend = false }) {
   const res = await apiFetch(`/api/lists/${listId}/share-link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ttlDays, maxUses })
+    body: JSON.stringify({ ttlDays, maxUses, befriend })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Kunde inte skapa länk');

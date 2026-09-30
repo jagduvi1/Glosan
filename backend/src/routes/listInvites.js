@@ -26,11 +26,15 @@ const createLimiter = rateLimit({
 });
 
 // POST /api/lists/:id/share-link — kräver ägarskap
-// Body: { ttlDays: 1|7|30, maxUses: number }
+// Body: { ttlDays: 1|7|30, maxUses: number, befriend?: boolean }
 router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList(), async (req, res) => {
   try {
-    // Appens länkar gör den som går med till kompis (klassrummets QR-flöde).
-    const result = await createListInvite(req.user.id, req.list, { ttlDays: req.body?.ttlDays, maxUses: req.body?.maxUses });
+    // Den som går med blir kompis bara om skaparen kryssat i det (av som standard).
+    const result = await createListInvite(req.user.id, req.list, {
+      ttlDays: req.body?.ttlDays,
+      maxUses: req.body?.maxUses,
+      befriend: req.body?.befriend === true
+    });
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.status(201).json({ invite: result.invite });
   } catch (err) {
@@ -101,7 +105,8 @@ router.get('/list-invite/:code', async (req, res) => {
 });
 
 // POST /api/list-invite/:code/accept — kräver auth
-// Kopierar listan + glosor till requestern + skapar friendship med creator.
+// Kopierar listan + glosor till requestern, och gör dem till kompisar med
+// skaparen om länken säger det (befriend).
 router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
   try {
     // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökkompisar.
@@ -164,7 +169,9 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
       );
     }
 
-    // Lägg till båda som vänner (upsert) — inte för länkar som en AI skapat.
+    // Lägg till båda som vänner (upsert) — bara om skaparen kryssat i det. Länkar
+    // från innan kryssrutan fanns (true, eller helt utan fältet från före
+    // v0.1.31) fortsätter som de lovade; länkar som AI:n gjort har alltid false.
     if (invite.befriend !== false) {
       const now = new Date();
       await Friendship.updateOne(

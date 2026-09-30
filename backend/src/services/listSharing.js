@@ -1,7 +1,8 @@
 // Dela glos-listor — med kompisar (de får tillgång till originalet, att läsa
-// eller redigera) eller via en länk (den som går med får en KOPIA av listan och
-// blir kompis med skaparen — klassrummets QR-flöde). Samma regler för appen
-// (routes/lists.js, routes/listInvites.js) och användarens AI (mcp/tools/sharing.js).
+// eller redigera) eller via en länk (den som går med får en KOPIA av listan, och
+// blir kompis med skaparen bara om skaparen kryssat i det i appen). Samma regler
+// för appen (routes/lists.js, routes/listInvites.js) och användarens AI
+// (mcp/tools/sharing.js).
 const mongoose = require('mongoose');
 const ListInvite = require('../models/ListInvite');
 const Friendship = require('../models/Friendship');
@@ -70,11 +71,11 @@ function inviteOut(i) {
 
 /**
  * Skapa en länk (/j/<kod>) till en egen lista: 1–30 dagar, 1–1000
- * användningar, högst 3 aktiva per lista. `befriend: false` = den som går
- * med blir inte kompis med skaparen (länkar från AI:n). Returnerar { invite }
- * eller { error, status }.
+ * användningar, högst 3 aktiva per lista. `befriend: true` = den som går med
+ * blir kompis med skaparen (bara när skaparen kryssat i det i appen).
+ * Returnerar { invite } eller { error, status }.
  */
-async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = true } = {}) {
+async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = false } = {}) {
   const ttl = Math.min(Math.max(Number(ttlDays) || 7, 1), 30);
   const uses = Math.min(Math.max(Number(maxUses) || 30, 1), 1000);
   const active = await ListInvite.countDocuments({ list: list._id, revokedAt: null, expiresAt: { $gt: new Date() } });
@@ -87,7 +88,7 @@ async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = tr
     code: await uniqueInviteCode(),
     expiresAt: new Date(Date.now() + ttl * DAY_MS),
     maxUses: uses,
-    befriend: befriend !== false
+    befriend: befriend === true
   });
   return { invite: inviteOut(invite) };
 }

@@ -8,7 +8,7 @@ import { postQuizComplete } from '../api/me';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
-import { shuffle, answerVariants, isVoiceMatch } from '../utils/quiz';
+import { shuffle, answerVariants, isVoiceMatch, isNearMiss } from '../utils/quiz';
 import { LANG_TO_FLAG } from '../utils/lang';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
@@ -115,7 +115,8 @@ export default function CategoryQuiz() {
   const recordAnswer = async (isCorrect, given, expectedWord) => {
     stopSpeaking();
     setListening(false);
-    setFeedback({ isCorrect, expected: expectedWord, given });
+    // "Nära!" bara när svaret faktiskt var nära (ett stavfel).
+    setFeedback({ isCorrect, expected: expectedWord, given, near: !isCorrect && isNearMiss(given, expectedWord) });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     const newStreak = isCorrect ? streak + 1 : 0;
     setStreak(newStreak);
@@ -430,7 +431,11 @@ export default function CategoryQuiz() {
               <GloAvatar mood={feedback.isCorrect ? 'wink' : 'sad'} size={56} />
               <div className="grow">
                 <h3 style={{ margin: 0 }}>
-                  {feedback.isCorrect ? 'Snyggt! Glo tappar hakan.' : `Nära! Det stavas ${feedback.expected}.`}
+                  {feedback.isCorrect
+                    ? 'Snyggt! Glo tappar hakan.'
+                    : feedback.near
+                      ? `Nära! Det stavas ${feedback.expected}.`
+                      : `Inte riktigt — rätt svar: ${feedback.expected}.`}
                 </h3>
                 {feedback.isCorrect && streak >= 2 && (
                   <p style={{ margin: '4px 0 0', fontFamily: 'var(--font-headline)', fontSize: 22, color: 'var(--coral-deep)' }}>

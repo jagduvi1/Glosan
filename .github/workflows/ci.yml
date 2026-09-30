@@ -3,7 +3,7 @@ name: CI
 # Körs på varje PR och push till main, och som första steg i release.yml —
 # inga images byggs förrän allt här är grönt. Jest kan inte ladda MCP-SDK:t
 # (ESM), så MCP-transporten och verktygen testas i e2e-jobbet mot en riktig
-# stack i Docker.
+# stack i Docker. Samma jobb kör sidorna i en headless Chrome (browser-e2e.mjs).
 
 on:
   pull_request:
@@ -83,6 +83,18 @@ jobs:
       - name: Plugga e2e (fas 2)
         working-directory: backend
         run: node scripts/plugga-fas2-e2e.mjs http://localhost:8080
+      # Sidorna i mobilstorlek, i runnerns egen Chrome (/usr/bin/google-chrome).
+      - name: Browser e2e
+        working-directory: backend
+        run: node scripts/browser-e2e.mjs http://localhost:8080
+      - name: Browser screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-shots
+          path: backend/browser-shots/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Backend logs on failure
         if: failure()
         run: docker compose logs backend
