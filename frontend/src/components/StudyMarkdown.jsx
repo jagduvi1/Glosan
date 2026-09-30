@@ -100,8 +100,9 @@ const baseComponents = {
   }
 };
 
-// Inline: för flervalsalternativ och korta etiketter — inga block-stycken.
-const inlineComponents = { ...baseComponents, p: ({ children }) => <span>{children}</span> };
+// Inline: för flervalsalternativ och korta etiketter — inga block-stycken (ett
+// nytt stycke börjar på ny rad via .md-p i study.css).
+const inlineComponents = { ...baseComponents, p: ({ children }) => <span className="md-p">{children}</span> };
 
 // memo: en provsida har många frågor, och klockan/varje tangenttryck ska inte
 // tolka om all Markdown och alla formler.
