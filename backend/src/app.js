@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { clientIp } = require('./utils/clientIp');
-const { userOrIpKey } = require('./middleware/rateKeys');
+const { userOrIpKey, ipKey } = require('./middleware/rateKeys');
 
 const healthRoute = require('./routes/health');
 const authRoute = require('./routes/auth');
@@ -113,12 +113,20 @@ app.use(cors({
 // - Plugga (/api/study): en skolklass delar ofta en IP-adress, och pass och
 //   prov skickar ett anrop per svar. Begränsas per inloggad användare i
 //   routes/study.js.
-// Bara OAuth-endpointsen som finns — en okänd sökväg under /api/mcp/oauth/
-// ska inte slippa undan alla limitrar.
+// - Inloggning, registrering, refresh och mail (routes/auth.js): per konto,
+//   session eller mottagare, med högre tak per adress (middleware/authLimits.js).
+//   Refresh skickar aldrig en JWT, så här skulle en hel skola annars dela 100
+//   skrivanrop per kvart — och ett 429 på refresh loggar ut eleven.
+// Bara sökvägar som finns — en okänd sökväg under /api/mcp/oauth/ eller
+// /api/auth/ ska inte slippa undan alla limitrar.
 const MCP_OAUTH_PATHS = new Set(['register', 'authorize', 'client', 'approve', 'token', 'revoke'].map((p) => `/api/mcp/oauth/${p}`));
+const AUTH_OWN_PATHS = new Set([
+  'register', 'login', 'refresh', 'logout', 'verify-email', 'reset-password', 'forgot-password',
+  'magic-link', 'magic-link/consume', 'resend-verification'
+].map((p) => `/api/auth/${p}`));
 const hasOwnLimiter = (req) => {
   const p = (req.baseUrl || '') + (req.path || '');
-  return p === '/api/mcp' || p === '/api/mcp/' || MCP_OAUTH_PATHS.has(p)
+  return p === '/api/mcp' || p === '/api/mcp/' || MCP_OAUTH_PATHS.has(p) || AUTH_OWN_PATHS.has(p)
     || p === '/api/study' || p.startsWith('/api/study/');
 };
 

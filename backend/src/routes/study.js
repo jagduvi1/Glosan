@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
+const { ipKey } = require('../middleware/rateKeys');
 const { requireAuth } = require('../middleware/auth');
 const { requireFeature } = require('../middleware/feature');
 const StudyUnit = require('../models/StudyUnit');
@@ -52,6 +53,7 @@ const studyLimiter = rateLimit({
 const studyFloodLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 1000,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'För många anrop just nu — vänta en minut.' })

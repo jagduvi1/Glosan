@@ -6,6 +6,7 @@ const User = require('../models/User');
 const { FEATURES, FEATURE_FIELDS, effectiveFeatures } = require('../config/features');
 const { requireAuth } = require('../middleware/auth');
 const { requireMcpAuth } = require('../middleware/mcpAuth');
+const { ipKey } = require('../middleware/rateKeys');
 const { handleMcpRequest } = require('../mcp/server');
 const { issuer } = require('../services/mcpOAuth');
 
@@ -23,6 +24,7 @@ const router = express.Router();
 const mcpIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3000,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'Too many MCP requests from this network — try again in a few minutes.' })

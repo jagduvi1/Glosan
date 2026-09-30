@@ -16,10 +16,12 @@ const INVITE_CODE_LENGTH = 8;
 const MAX_ACTIVE_INVITES_PER_LIST = 3;
 
 // Skapande är dyrt (DB-write + collision-check) så vi begränsar — en
-// person ska inte kunna spamma fram tusentals invites.
+// person ska inte kunna spamma fram tusentals invites. Per konto (körs efter
+// requireAuth), inte per skol-IP.
 const createLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
+  keyGenerator: (req) => `u:${req.user.id}`,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'För många nya invites — vänta lite.' })

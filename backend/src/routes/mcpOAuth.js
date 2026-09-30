@@ -6,6 +6,7 @@ const OAuthClient = require('../models/OAuthClient');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
+const { ipKey } = require('../middleware/rateKeys');
 const { effectiveFeatures, FEATURE_FIELDS } = require('../config/features');
 const {
   issuer, resourceUrl, verifyPkce, grantedScopes, redirectUriRegistered,
@@ -38,6 +39,7 @@ const router = express.Router();
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 60,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'invalid_request', error_description: 'Too many client registrations from this address; try again later.' }
@@ -49,6 +51,7 @@ const registerLimiter = rateLimit({
 const oauthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 600,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   // RFC 6749 §5.2-formad body — en OAuth-klient som får en naken

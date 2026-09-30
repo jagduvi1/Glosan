@@ -48,6 +48,18 @@ test('20 wrong logins for one student do not lock out the next student on the sa
   expect((await request(app).post('/login').set(SCHOOL).send({ username: 'Bert', password: 'x' })).status).toBe(401);
 });
 
+test('an IPv6 host cannot dodge the login limit by rotating through its /64 (review of #119)', async () => {
+  const app = makeApp();
+  const from = (host) => ({ 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': `2001:db8:1:2::${host.toString(16)}` });
+  for (let i = 1; i <= 20; i++) {
+    expect((await request(app).post('/login').set(from(i)).send({ username: 'anna', password: 'x' })).status).toBe(401);
+  }
+  expect((await request(app).post('/login').set(from(999)).send({ username: 'anna', password: 'x' })).status).toBe(429);
+  // Ett annat /64-nät är en annan uppkoppling.
+  const other = { 'X-Forwarded-For': '104.22.100.135, 172.19.0.5', 'CF-Connecting-IP': '2001:db8:1:3::1' };
+  expect((await request(app).post('/login').set(other).send({ username: 'anna', password: 'x' })).status).toBe(401);
+});
+
 test('refresh counts per session, not per school', async () => {
   const app = makeApp();
   const cookie = (fam) => `refreshToken=${fam.padEnd(32, '0')}.${'a'.repeat(64)}`;

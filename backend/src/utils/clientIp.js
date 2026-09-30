@@ -92,6 +92,20 @@ function inCloudflare(ip) {
 }
 
 /**
+ * Nyckeln för per-adress-limitrar: IPv4-adressen, eller IPv6-adressens /64.
+ * En IPv6-uppkoppling får normalt ett helt /64-nät och kan byta adress inom
+ * det för varje anrop — nycklat på hela adressen vore gränsen ingen gräns.
+ */
+function ipBucket(ip) {
+  const s = normalize(ip);
+  if (parseV4(s) !== null) return s;
+  const v6 = parseV6(s);
+  if (v6 === null) return s;
+  const prefix = v6 >> 64n;
+  return `${[48n, 32n, 16n, 0n].map((sh) => ((prefix >> sh) & 0xffffn).toString(16)).join(':')}::/64`;
+}
+
+/**
  * Klientens adress för ett anrop: CF-Connecting-IP när anropet kom via en
  * Cloudflare-kant, annars req.ip (t.ex. lokalt, eller den som når ursprunget
  * direkt — då är req.ip redan deras egen adress).
@@ -104,4 +118,4 @@ function clientIp(req) {
   return edge;
 }
 
-module.exports = { clientIp, inCloudflare, isIp, normalize, parseV4, parseV6 };
+module.exports = { clientIp, ipBucket, inCloudflare, isIp, normalize, parseV4, parseV6 };

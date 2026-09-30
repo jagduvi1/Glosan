@@ -9,9 +9,11 @@ const Glos = require('../models/Glos');
 
 const router = express.Router();
 
+// Per konto (körs efter requireAuth) — en klass bakom en skol-IP delar inte.
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
+  keyGenerator: (req) => `u:${req.user.id}`,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ error: 'AI rate limit exceeded — please slow down' })

@@ -5,9 +5,12 @@
 // (20 per kvart) stängde då ute elev 21–30. Därför nycklas varje gräns på det
 // den skyddar — ett konto, en session, en mottagaradress — med ett högt tak per
 // adress som bara stoppar den som hamrar på många konton.
-// (req.ip är klientens riktiga adress bakom Cloudflare — utils/clientIp.js.)
+// Adressen = klientens riktiga adress bakom Cloudflare, IPv6 som /64
+// (ipKey, middleware/rateKeys.js). De globala limitrarna i app.js hoppar över
+// de här routerna — annars delade en skola ändå på 100 skrivanrop per kvart.
 const rateLimit = require('express-rate-limit');
 const { parseRefreshToken } = require('../services/authTokens');
+const { ipKey } = require('./rateKeys');
 
 const MIN15 = 15 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -25,21 +28,26 @@ const lower = (v) => String(v ?? '').trim().toLowerCase().slice(0, 200);
 const loginLimiter = limiter({
   windowMs: MIN15,
   max: 20,
-  keyGenerator: (req) => `login:${req.ip}:${lower(req.body?.username)}`
+  keyGenerator: (req) => `login:${ipKey(req)}:${lower(req.body?.username)}`
 }, 'Too many attempts, please try again later');
 
 /** Tak per adress för alla anonyma auth-anrop (många konton från en adress). */
 const authFloodLimiter = limiter({
   windowMs: MIN15,
   max: 300,
-  keyGenerator: (req) => `authflood:${req.ip}`
+  keyGenerator: (req) => `authflood:${ipKey(req)}`
 }, 'Too many attempts, please try again later');
 
-/** Nya konton per adress: en klass (30) med marginal, inte en spam-fabrik. */
+/**
+ * Nya konton per adress: en klass (30) med marginal, inte en spam-fabrik.
+ * Bara lyckade registreringar räknas — elever som får skriva om lösenordet
+ * ska inte äta upp klassens kvot (authFloodLimiter räknar alla försök).
+ */
 const registerLimiter = limiter({
   windowMs: MIN15,
   max: 60,
-  keyGenerator: (req) => `register:${req.ip}`
+  skipFailedRequests: true,
+  keyGenerator: (req) => `register:${ipKey(req)}`
 }, 'Too many attempts, please try again later');
 
 /**
@@ -49,7 +57,7 @@ const registerLimiter = limiter({
 const tokenLimiter = limiter({
   windowMs: MIN15,
   max: 100,
-  keyGenerator: (req) => `token:${req.ip}`
+  keyGenerator: (req) => `token:${ipKey(req)}`
 }, 'Too many attempts, please try again later');
 
 /** Refresh och utloggning per session (refresh-cookiens familj), annars per adress. */
@@ -58,7 +66,7 @@ const refreshLimiter = limiter({
   max: 60,
   keyGenerator: (req) => {
     const parsed = parseRefreshToken(req.cookies?.refreshToken);
-    return parsed ? `refresh:${parsed.family}` : `refreship:${req.ip}`;
+    return parsed ? `refresh:${parsed.family}` : `refreship:${ipKey(req)}`;
   }
 }, 'Too many refresh attempts, please try again later');
 
@@ -66,7 +74,7 @@ const refreshLimiter = limiter({
 const refreshFloodLimiter = limiter({
   windowMs: MIN15,
   max: 1000,
-  keyGenerator: (req) => `refreshflood:${req.ip}`
+  keyGenerator: (req) => `refreshflood:${ipKey(req)}`
 }, 'Too many refresh attempts, please try again later');
 
 // Mail kostar pengar (Resend) och kan trakassera en mottagare: per
@@ -82,14 +90,14 @@ const mailLimiter = limiter({
 const mailFloodLimiter = limiter({
   windowMs: HOUR,
   max: 30,
-  keyGenerator: (req) => `mailflood:${req.ip}`
+  keyGenerator: (req) => `mailflood:${ipKey(req)}`
 }, MAIL_MESSAGE);
 
 /** Nytt verifieringsmail — kräver inloggning, så per konto. */
 const resendLimiter = limiter({
   windowMs: HOUR,
   max: 5,
-  keyGenerator: (req) => `resend:${req.user?.id || req.ip}`
+  keyGenerator: (req) => `resend:${req.user?.id || ipKey(req)}`
 }, MAIL_MESSAGE);
 
 module.exports = {

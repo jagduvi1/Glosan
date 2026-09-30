@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
+const { ipKey } = require('../middleware/rateKeys');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const InviteCode = require('../models/InviteCode');
@@ -34,15 +35,25 @@ const router = express.Router();
 // Strikt limiter på "lägg till med kod" — alfabetet är 32 tecken över 6
 // positioner (~1G koder), men en angripare som kan testa 1000 per timme
 // hittar en giltig kod inom hanterbar tid om vi inte begränsar. 20/timme
-// per IP är gott och väl för en legitim användare.
+// per KONTO är gott och väl för en elev — en klass bakom samma skol-IP ska
+// kunna lägga till bänkkompisen samtidigt. Taket per adress stoppar den som
+// gissar från många konton.
+const BY_CODE_MESSAGE = 'För många försök att lägga till kompis. Försök igen om en stund.';
 const byCodeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
+  keyGenerator: (req) => `u:${req.user.id}`,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => res.status(429).json({
-    error: 'För många försök att lägga till kompis. Försök igen om en stund.'
-  })
+  handler: (req, res) => res.status(429).json({ error: BY_CODE_MESSAGE })
+});
+const byCodeFloodLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 200,
+  keyGenerator: (req) => `bycode:${ipKey(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: BY_CODE_MESSAGE })
 });
 
 router.use(requireAuth);
@@ -79,7 +90,7 @@ router.get('/friends', async (req, res) => {
 // someone already in the friend list is a no-op.
 // Letar BARA i InviteCode (engångs). Permanenta koder är borta — om
 // någon skickar in en gammal 6-teckens kod får de "ingen användare".
-router.post('/friends/by-code', byCodeLimiter, async (req, res) => {
+router.post('/friends/by-code', byCodeFloodLimiter, byCodeLimiter, async (req, res) => {
   const code = (req.body.code || '').trim().toUpperCase();
   if (!code || code.length !== INVITE_CODE_LENGTH) {
     return res.status(400).json({ error: `Kompis-koder är ${INVITE_CODE_LENGTH} tecken långa.` });

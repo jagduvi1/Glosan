@@ -1,4 +1,4 @@
-const { clientIp, inCloudflare, isIp, parseV4, parseV6 } = require('./clientIp');
+const { clientIp, ipBucket, inCloudflare, isIp, parseV4, parseV6 } = require('./clientIp');
 
 const req = (ip, cf) => ({ ip, headers: cf === undefined ? {} : { 'cf-connecting-ip': cf } });
 
@@ -26,6 +26,15 @@ describe('clientIp', () => {
     expect(inCloudflare('2a06:98c7::1')).toBe(true); // /29
     expect(inCloudflare('2a06:98c8::1')).toBe(false);
     expect(inCloudflare('fe80::1')).toBe(false);
+  });
+
+  test('rate limits count an IPv6 connection as its /64 (review of #119)', () => {
+    expect(ipBucket('2001:db8:1:2::a')).toBe('2001:db8:1:2::/64');
+    expect(ipBucket('2001:db8:1:2:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:2::/64');
+    expect(ipBucket('2001:db8:1:3::1')).toBe('2001:db8:1:3::/64');
+    expect(ipBucket('81.227.40.12')).toBe('81.227.40.12');
+    expect(ipBucket('::ffff:81.227.40.12')).toBe('81.227.40.12');
+    expect(ipBucket('')).toBe('');
   });
 
   test('address parsing', () => {

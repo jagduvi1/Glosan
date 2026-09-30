@@ -3,6 +3,16 @@
 // Cloudflare-kanten. Inloggade nycklas per konto (en skolklass bakom en
 // IP-adress ska inte dela en hink), anonyma per adress.
 const jwt = require('jsonwebtoken');
+const { ipBucket } = require('../utils/clientIp');
+
+/**
+ * Adressnyckeln för alla per-adress-limitrar: IPv4-adressen eller IPv6-nätets
+ * /64 (utils/clientIp.js). Varje limiter som nycklar på adress ska använda den
+ * här — express-rate-limits standardnyckel är hela req.ip.
+ */
+function ipKey(req) {
+  return ipBucket(req.ip);
+}
 
 /**
  * Kontots id från en GILTIG JWT i Authorization-headern, annars null. JWT:n
@@ -27,7 +37,7 @@ function verifiedUserId(req) {
 /** Per konto för inloggade, annars per adress. */
 function userOrIpKey(req) {
   const id = verifiedUserId(req);
-  return id ? `u:${id}` : `ip:${req.ip}`;
+  return id ? `u:${id}` : `ip:${ipKey(req)}`;
 }
 
-module.exports = { verifiedUserId, userOrIpKey };
+module.exports = { ipKey, verifiedUserId, userOrIpKey };
