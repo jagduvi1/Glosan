@@ -36,7 +36,16 @@ async function deleteStudyUnitsCascade(unitIds, opts = {}) {
   await StudyItem.deleteMany({ unit: inUnits }, opts);
   await StudyItemState.deleteMany({ unit: inUnits }, opts);
   await StudyFlag.deleteMany({ unit: inUnits }, opts);
-  await StudyShareLink.deleteMany({ unit: inUnits }, opts);
+  // Länkar till ETT område försvinner med det. En länk till flera (ett
+  // kapitel på väggen) lever vidare för resten: plocka bort de raderade och
+  // flytta `unit` till det första som finns kvar; tom länk → borta.
+  await StudyShareLink.deleteMany({ unit: inUnits, units: { $exists: false } }, opts);
+  await StudyShareLink.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
+  const moved = await StudyShareLink.find({ unit: inUnits, units: { $exists: true } }, 'units', opts).lean();
+  for (const l of moved) {
+    if (l.units.length) await StudyShareLink.updateOne({ _id: l._id }, { $set: { unit: l.units[0] } }, opts);
+  }
+  await StudyShareLink.deleteMany({ units: { $size: 0 } }, opts);
   await StudyTest.deleteMany({ unit: inUnits }, opts);
   await StudyItemDeletion.deleteMany({ unit: inUnits }, opts);
   await StudyFolder.updateMany({ units: inUnits }, { $pull: { units: inUnits } }, opts);
@@ -112,7 +121,8 @@ async function exportStudyData(userId) {
     reportedErrors: flags,
     // Vilka som använt länken är andras data — bara antalet exporteras.
     shareLinks: links.map((l) => ({
-      unit: l.unit, code: l.code, expiresAt: l.expiresAt, maxUses: l.maxUses,
+      unit: l.unit, ...(l.units ? { units: l.units } : {}), ...(l.title ? { title: l.title } : {}),
+      code: l.code, expiresAt: l.expiresAt, maxUses: l.maxUses,
       usedCount: (l.usedBy || []).length, revokedAt: l.revokedAt, createdAt: l.createdAt
     }))
   };

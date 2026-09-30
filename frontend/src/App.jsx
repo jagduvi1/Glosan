@@ -57,10 +57,17 @@ function PracticeRoute() {
 
 // Sidor bakom en funktionsflagga: för den som saknar flaggan finns sidan
 // inte (NotFound) — samma "dold"-beteende som backend (404).
+// Utloggad (sessionen gick ut): till /login och tillbaka hit efteråt — samma
+// som ProtectedRoute, så Plugga- och admin-sidorna inte landar på listorna.
+function LoginFirst() {
+  const location = useLocation();
+  return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+}
+
 function FeatureRoute({ feature, children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="container"><p>Laddar…</p></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <LoginFirst />;
   if (!hasFeature(user, feature)) return <Layout><NotFound /></Layout>;
   return children;
 }
@@ -68,7 +75,7 @@ function FeatureRoute({ feature, children }) {
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="container"><p>Laddar…</p></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <LoginFirst />;
   if (!user.roles?.includes('admin')) return <Navigate to="/lists" replace />;
   return children;
 }

@@ -123,7 +123,7 @@ async function main() {
     const cEarly = forAll ? null : await connectMcp(C.token);
     if (cEarly) assert.equal(await hasStudyTools(cEarly), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
-    assert.deepEqual(joined.body, { unitId, joined: true });
+    assert.deepEqual(joined.body, { unitId, unitIds: [unitId], joined: true });
     assert.ok(await hasPlugga(C), 'the classmate gets Plugga');
     if (cEarly) {
       assert.equal(await hasStudyTools(cEarly), false, 'an old connection does not widen by itself');
@@ -149,6 +149,57 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
     ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
+
+    // ── Dela flera på en gång (Plugga-sidornas Dela: ett kapitel, en mapp) ──
+    const histId = hist.data.unit_id;
+    const multi = await api('/api/study/share-links', A.token, { method: 'POST', body: { unitIds: [unitId, histId], ttlDays: 7, maxUses: 30, title: 'Allt inför provet' } });
+    assert.equal(multi.status, 201);
+    assert.equal(multi.body.link.unitCount, 2);
+    const multiPreview = await api(`/api/study-invite/${multi.body.link.code}`);
+    assert.equal(multiPreview.body.title, 'Allt inför provet');
+    assert.deepEqual(multiPreview.body.units.map((u) => u.title), ['Kapitel 4 — Procent', 'Industriella revolutionen']);
+    const D = await signUp('p2class');
+    const dJoin = await api(`/api/study-invite/${multi.body.link.code}/accept`, D.token, { method: 'POST' });
+    assert.equal(dJoin.body.joined, true);
+    assert.deepEqual(dJoin.body.unitIds, [unitId, histId]);
+    for (const id of [unitId, histId]) assert.equal((await api(`/api/study/units/${id}`, D.token)).status, 200);
+    const mine = await api('/api/study/share-links', A.token);
+    assert.ok(mine.body.links.some((l) => l.code === multi.body.link.code && l.units.length === 2));
+    // Dela ett urval med en kompis på en gång; någon annans område går inte.
+    const both = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId], friendIds: [B.id] } });
+    assert.equal(both.status, 200);
+    assert.equal(both.body.units, 2);
+    assert.equal((await api(`/api/study/units/${histId}`, B.token)).status, 200);
+    assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } })).status, 404);
+    assert.equal((await api(`/api/study/share-links/${multi.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
+    // Raderas länkens FÖRSTA område lever länken vidare för resten.
+    const tmpUnit = await call(claude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'Tillfälligt område' });
+    const chain = await api('/api/study/share-links', A.token, { method: 'POST', body: { unitIds: [tmpUnit.data.unit_id, histId], ttlDays: 1, maxUses: 10 } });
+    assert.equal(chain.status, 201);
+    assert.equal((await call(claude, 'delete_study_unit', { unit_id: tmpUnit.data.unit_id })).isError, false);
+    const survived = await api(`/api/study-invite/${chain.body.link.code}`);
+    assert.equal(survived.status, 200, 'the link still works for the unit that is left');
+    assert.deepEqual(survived.body.units.map((u) => u.title), ['Industriella revolutionen']);
+    await api(`/api/study/share-links/${chain.body.link.code}`, A.token, { method: 'DELETE' });
+    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units; deleting the first unit keeps the link');
+
+    // ── Dela via AI:n ───────────────────────────────────────────────────────
+    const aiShare = await call(claude, 'share_study_units', { units: [unitId, histId], friends: [B.name] });
+    assert.equal(aiShare.isError, false, JSON.stringify(aiShare));
+    const aiNotFriend = await call(claude, 'share_study_units', { units: [unitId], friends: [C.name] });
+    assert.deepEqual(aiNotFriend.error.not_friends, [C.name], 'a classmate who joined by link is not a friend');
+    const aiLink = await call(claude, 'create_study_link', { units: [unitId, histId], title: 'Från AI:n', days: 1, max_uses: 10 });
+    assert.match(aiLink.data.url, /\/p\/[A-Z0-9]+$/);
+    const aiPreview = await api(`/api/study-invite/${aiLink.data.code}`);
+    assert.equal(aiPreview.body.title, 'Från AI:n');
+    assert.equal(aiPreview.body.units.length, 2);
+    assert.ok((await call(claude, 'get_study_sharing', {})).data.links.some((l) => l.code === aiLink.data.code && l.unit_count === 2));
+    assert.ok((await call(claude, 'get_study_sharing', { unit: unitId })).data.shared_with.some((p) => p.username === B.name));
+    assert.equal((await call(claude, 'share_study_units', { units: ['64b000000000000000000009'], friends: [B.name] })).error.code, 'not_found');
+    assert.equal((await call(claude, 'stop_sharing_study', { link_code: aiLink.data.code })).isError, false);
+    assert.equal((await api(`/api/study-invite/${aiLink.data.code}`)).status, 404);
+    ok('the AI shares units: share_study_units (friends only), create_study_link (one link, title, preview), get_study_sharing, stop_sharing_study');
 
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });
@@ -459,6 +510,34 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     await claude.close();
     ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
+
+    // ── Blockera ────────────────────────────────────────────────────────────
+    const codeFor = async (u) => (await api('/api/me/invite-codes', u.token, { method: 'POST' })).body.inviteCode.code;
+    assert.ok((await api('/api/me/friends/by-code', C.token, { method: 'POST', body: { code: await codeFor(A) } })).status < 300);
+    assert.equal((await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } })).status, 200);
+    const aList = await api('/api/lists', A.token, { method: 'POST', body: { title: 'Blockera-test', sourceLang: 'sv', targetLang: 'en' } });
+    const listId = aList.body.list?._id || aList.body._id;
+    assert.equal((await api(`/api/lists/${listId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } })).status, 200);
+    const blockRes = await api('/api/me/blocks', A.token, { method: 'POST', body: { userId: C.id } });
+    assert.equal(blockRes.status, 200);
+    assert.deepEqual(blockRes.body.blocked.map((b) => b.username), [C.name]);
+    // Allt mellan dem är borta.
+    assert.ok(!(await api('/api/me/friends', A.token)).body.friends.some((f) => f.username === C.name), 'no longer friends');
+    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
+    assert.equal((await api(`/api/lists/${listId}`, C.token)).status, 404);
+    // Den blockerade kommer inte tillbaka: ingen kod, ingen länk — och får inte veta varför.
+    const cTry = await api('/api/me/friends/by-code', C.token, { method: 'POST', body: { code: await codeFor(A) } });
+    assert.equal(cTry.status, 404);
+    assert.doesNotMatch(cTry.body.error, /block/i);
+    assert.equal((await api('/api/me/friends/by-code', A.token, { method: 'POST', body: { code: await codeFor(C) } })).status, 409);
+    const aLink = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/study-invite/${aLink.body.link.code}/accept`, C.token, { method: 'POST' })).status, 404);
+    const listLink = await api(`/api/lists/${listId}/share-link`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/list-invite/${listLink.body.invite.code}/accept`, C.token, { method: 'POST' })).status, 404);
+    // Häv blockeringen: länken fungerar igen.
+    assert.deepEqual((await api(`/api/me/blocks/${C.id}`, A.token, { method: 'DELETE' })).body.blocked, []);
+    assert.equal((await api(`/api/study-invite/${aLink.body.link.code}/accept`, C.token, { method: 'POST' })).status, 200);
+    ok('block: friendship, unit and list shares go both ways; no way back by code or link (and no hint why); unblock restores links');
 
     // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);

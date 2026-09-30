@@ -5,6 +5,7 @@ import { fetchStudyUnits, fetchStudyOverview } from '../api/study';
 import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
 import UnitCard from '../components/study/UnitCard';
 import FolderPicker from '../components/study/FolderPicker';
+import ShareStudyDialog from '../components/study/ShareStudyDialog';
 import { groupByChapter } from '../components/study/chapters';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import '../styles/study.css';
@@ -51,6 +52,7 @@ export default function PluggaSubject() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState([]);
   const [picking, setPicking] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const term = params.get('term');
 
   useEffect(() => {
@@ -107,11 +109,18 @@ export default function PluggaSubject() {
 
   return (
     <div className="stack" style={{ gap: 22 }}>
-      <div>
-        <Link to={`/plugga${term ? `?term=${term}` : ''}`} className="t-hand" style={{ fontSize: 15 }}>← Plugga</Link>
-        <h1 style={{ fontSize: 38, margin: '6px 0 0' }}>
-          <span aria-hidden="true">{subjectInfo.emoji}</span> {subjectInfo.label}
-        </h1>
+      <div className="row between" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div>
+          <Link to={`/plugga${term ? `?term=${term}` : ''}`} className="t-hand" style={{ fontSize: 15 }}>← Plugga</Link>
+          <h1 style={{ fontSize: 38, margin: '6px 0 0' }}>
+            <span aria-hidden="true">{subjectInfo.emoji}</span> {subjectInfo.label}
+          </h1>
+        </div>
+        {units.some((u) => u.isOwner) && (
+          <button type="button" className="btn" onClick={() => setSharing(true)} title="Dela områden med kompisar eller med en QR-kod">
+            👥 Dela
+          </button>
+        )}
       </div>
 
       {units.length === 0 ? (
@@ -129,7 +138,12 @@ export default function PluggaSubject() {
               <div className="row between" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 10 }}>
                 <h2 style={{ margin: 0, fontSize: 21 }}>Öva på {practiceTarget}</h2>
                 {selected.length > 0 && (
-                  <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Lägg i mapp</button>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Lägg i mapp</button>
+                    {units.some((u) => u.isOwner && selected.includes(u.id)) && (
+                      <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>👥 Dela</button>
+                    )}
+                  </div>
                 )}
               </div>
               <PracticePicker onStart={start} />
@@ -152,6 +166,14 @@ export default function PluggaSubject() {
         </>
       )}
       {picking && <FolderPicker unitIds={selected} onClose={() => setPicking(false)} />}
+      {sharing && (
+        <ShareStudyDialog
+          units={units}
+          initialSelected={selected}
+          title={selectedChapter ? `${subjectInfo.label} — ${selectedChapter.label}` : subjectInfo.label}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   );
 }

@@ -57,8 +57,8 @@ Claude ──POST /api/mcp (Bearer glo_…) ────────────
 | Scope | Tools |
 |---|---|
 | public | `get_source_info` |
-| read | `list_lists`, `get_list`, `list_hard_words`, `list_categories`, `get_profile` |
-| write | `create_list` (with up to 300 words; at most 1000 lists per account), `add_words`, `update_word`, `delete_words`, `update_list`, `swap_list_direction`, `delete_list`, `create_category` |
+| read | `list_lists`, `get_list`, `list_hard_words`, `list_categories`, `get_profile`, `list_friends`, `get_list_sharing` |
+| write | `create_list` (with up to 300 words; at most 1000 lists per account), `add_words`, `update_word`, `delete_words`, `update_list`, `swap_list_direction`, `delete_list`, `create_category`, `share_list`, `create_list_link`, `stop_sharing_list` |
 
 A write connection can always read too (`write` implies `read`).
 
@@ -70,10 +70,20 @@ Accounts with the `study` feature flag also get the 25 **Plugga** tools
 and figures, practice tests, the paper flow, Mappar, "Min plugg") and the
 prompts `study_from_photos`, `check_my_solution`, `prepare_for_test` and
 `check_my_test`. For everyone else they are not registered at all. See
-[plugga.md](plugga.md).
+[plugga.md](plugga.md). That includes sharing units: `get_study_sharing`,
+`share_study_units` and `create_study_link` (one link for many units, e.g. a
+chapter) and `stop_sharing_study`.
 
-Deliberately **not** exposed: sharing with friends, duels, account settings,
-plans, deleting the account, disconnecting AIs. The instructions tell the AI to
+**Sharing** works like the app's Dela, through the same services
+(`services/listSharing.js`, `services/study/sharing.js`): directly with
+confirmed friends, or with a link anyone can use — also people without an
+account, who sign up through it. A list link gives the joiner a copy — links made in the app also make them
+the user's friend (the classroom QR flow), links made by the AI never do
+(`ListInvite.befriend`), so a manipulated AI can't bring strangers into a
+child's friend list. A unit link gives access without friendship. The tools return the url for the user to pass on.
+
+Deliberately **not** exposed: blocking, duels, account settings, plans,
+deleting the account, disconnecting AIs. The instructions tell the AI to
 point the user at the web app for those.
 
 ## Security model
@@ -112,6 +122,12 @@ point the user at the web app for those.
   exchanged (`User.credentialsChangedAt`).
 - **One JSON-RPC message per request** — batches are refused, so the HTTP
   limiters count what they should.
+- **Sharing only on request.** The share tools and the instructions tell the
+  AI to share only when the user asks in the chat — never because stored text
+  says so — and to confirm first. Direct shares reach confirmed friends only;
+  links are capped (3 active per list or unit, 30 study links per user; 1, 7
+  or 30 days; 10, 30 or 100 uses) and blocked users can't use them. The tools
+  carry `openWorldHint: true`, so clients know they reach other people.
 - **Other people's text is data.** Shared lists and units, titles, notes and
   error reports reach the AI labelled (`written_by_someone_else`,
   `reporter_note_untrusted`), never in a `summary` or error message, and the

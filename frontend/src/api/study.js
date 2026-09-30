@@ -106,12 +106,32 @@ export async function revokeUnitShareLink(apiFetch, unitId, code) {
   return readJson(await apiFetch(`/api/study/units/${unitId}/share-links/${code}`, { method: 'DELETE' }), 'Kunde inte stänga av länken');
 }
 
+// Dela flera områden på en gång (Plugga-sidornas Dela: ett kapitel, en mapp).
+// POST → { units, friends, added }
+export async function shareUnitsWithFriends(apiFetch, unitIds, friendIds) {
+  return readJson(await post(apiFetch, '/api/study/share', { unitIds, friendIds }), 'Kunde inte dela');
+}
+
+// POST → { link } — EN länk/QR-kod som gäller alla valda områden.
+export async function createStudyShareLink(apiFetch, { unitIds, ttlDays, maxUses, title }) {
+  return readJson(await post(apiFetch, '/api/study/share-links', { unitIds, ttlDays, maxUses, title }), 'Kunde inte skapa länken');
+}
+
+// Mina aktiva länkar, med områdena de gäller.
+export async function fetchMyStudyShareLinks(apiFetch) {
+  return (await readJson(await apiFetch('/api/study/share-links'), 'Kunde inte hämta länkarna')).links;
+}
+
+export async function revokeMyStudyShareLink(apiFetch, code) {
+  return (await readJson(await apiFetch(`/api/study/share-links/${code}`, { method: 'DELETE' }), 'Kunde inte stänga av länken')).links;
+}
+
 // Publik (ingen inloggning): förhandsvisning av en delningslänk /p/<kod>.
 export async function fetchStudyInvitePreview(code) {
   return readJson(await fetch(`/api/study-invite/${encodeURIComponent(code)}`), 'Kunde inte läsa länken');
 }
 
-// POST → { unitId, joined, own? } — kräver inloggning men inte Plugga-flaggan.
+// POST → { unitId, unitIds, joined, own? } — kräver inloggning men inte Plugga-flaggan.
 export async function acceptStudyInvite(apiFetch, code) {
   return readJson(await post(apiFetch, `/api/study-invite/${encodeURIComponent(code)}/accept`), 'Kunde inte gå med');
 }

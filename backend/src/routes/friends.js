@@ -8,6 +8,7 @@ const Friendship = require('../models/Friendship');
 const InviteCode = require('../models/InviteCode');
 const { randomCode } = require('../utils/friendCode');
 const { unshareBetween } = require('../services/study/sharing');
+const { isBlockedBetween, hasBlocked, listBlocked, blockUser, unblockUser } = require('../services/blocks');
 
 const INVITE_TTL_DAYS = 7;
 const INVITE_CODE_LENGTH = 8;
@@ -115,6 +116,14 @@ router.post('/friends/by-code', byCodeFloodLimiter, byCodeLimiter, async (req, r
     if (target._id.toString() === req.user.id) {
       return res.status(400).json({ error: 'Det där är din egen kod 🙂' });
     }
+    // Blockerad åt något håll: den som blockerat får veta varför; den
+    // blockerade ser bara en kod som inte finns (och koden bränns inte).
+    if (await isBlockedBetween(req.user.id, target._id)) {
+      if (await hasBlocked(req.user.id, target._id)) {
+        return res.status(409).json({ error: `Du har blockerat ${target.username} — häv blockeringen under Kompisar först.` });
+      }
+      return res.status(404).json({ error: 'Ingen sådan kod finns.' });
+    }
 
     // Insert both rows. Use upsert so duplicates don't 11000-error out.
     const now = new Date();
@@ -189,6 +198,44 @@ router.delete('/friends/:friendId', async (req, res) => {
   } catch (err) {
     console.error('Remove friend error:', err);
     res.status(500).json({ error: 'Failed to remove friend' });
+  }
+});
+
+// ── Blockera ─────────────────────────────────────────────────────────────────
+// Tar bort vänskap, delningar (listor och Plugga) och pågående utmaningar åt
+// båda hållen, och stoppar nya — se services/blocks.js.
+
+// GET /api/me/blocks → { blocked: [{ _id, username, avatar }] }
+router.get('/blocks', async (req, res) => {
+  try {
+    res.json({ blocked: await listBlocked(req.user.id) });
+  } catch (err) {
+    console.error('Blocks list error:', err);
+    res.status(500).json({ error: 'Kunde inte hämta blockeringarna.' });
+  }
+});
+
+// POST /api/me/blocks — body { userId }
+router.post('/blocks', async (req, res) => {
+  try {
+    const userId = req.body?.userId;
+    if (typeof userId !== 'string') return res.status(400).json({ error: 'userId saknas.' });
+    const result = await blockUser(req.user.id, userId);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    console.error('Block error:', err);
+    res.status(500).json({ error: 'Kunde inte blockera.' });
+  }
+});
+
+// DELETE /api/me/blocks/:userId — häv en blockering
+router.delete('/blocks/:userId', async (req, res) => {
+  try {
+    res.json(await unblockUser(req.user.id, req.params.userId));
+  } catch (err) {
+    console.error('Unblock error:', err);
+    res.status(500).json({ error: 'Kunde inte häva blockeringen.' });
   }
 });
 

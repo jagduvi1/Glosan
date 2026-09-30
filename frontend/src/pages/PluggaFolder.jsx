@@ -7,6 +7,7 @@ import UnitCard from '../components/study/UnitCard';
 import { ColorChoice } from '../components/study/FolderPicker';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ShareStudyDialog from '../components/study/ShareStudyDialog';
 import '../styles/study.css';
 
 // En mapp i Plugga: elevens eget urval av områden (tvärs över ämnen och
@@ -23,6 +24,7 @@ export default function PluggaFolder() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +91,9 @@ export default function PluggaFolder() {
           {!editing && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setName(folder.name); setEditing(true); }}>Byt namn</button>
           )}
+          {units.some((u) => u.isOwner) && (
+            <button type="button" className="btn btn-sm" onClick={() => setSharing(true)} title="Dela mappens områden med kompisar eller med en QR-kod">👥 Dela mappen</button>
+          )}
           <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} onClick={() => setConfirmDelete(true)}>Ta bort mappen</button>
         </div>
         {error && <p className="error">{error}</p>}
@@ -123,6 +128,15 @@ export default function PluggaFolder() {
             ))}
           </div>
         </>
+      )}
+      {sharing && (
+        <ShareStudyDialog
+          units={units}
+          initialSelected={units.filter((u) => u.isOwner).map((u) => u.id)}
+          title={folder.name}
+          linkTitle=""
+          onClose={() => setSharing(false)}
+        />
       )}
       {confirmDelete && (
         <ConfirmDialog

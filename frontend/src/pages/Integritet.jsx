@@ -50,6 +50,7 @@ export default function Integritet() {
           <li><strong>XP-event­logg</strong> (<em>XpEvent</em>): varje XP-utdelning med språk och tidpunkt — driver "månadens XP".</li>
           <li><strong>Engångskoder</strong> (<em>InviteCode</em>): 8 tecken, går ut efter 7 dagar och kan användas en gång. Vi lagrar vem som löste in koden tills den går ut.</li>
           <li><strong>Kompis­relationer</strong> (<em>Friendship</em>): vilka konton som lagt till varandra. Inga meddelanden eller chattar.</li>
+          <li><strong>Blockeringar:</strong> vilka konton du har blockerat. Det syns bara för dig — den du blockerat får inget besked.</li>
           <li><strong>Co-op-streaks</strong> (<em>CoopStreak</em>): gemensam streak per kompis-par och senaste dagen ni båda var aktiva.</li>
           <li><strong>Utmaningar</strong> (<em>Duel</em>): async-, mål- eller live-duells du deltagit i, inklusive snapshot av frågorna och varje deltagares resultat (rätt/total/tid). Live-duells visar tillfälligt din avatar och dina svar för motspelaren i realtid över WebSocket.</li>
           <li><strong>AI-anslutningar</strong> (<em>McpToken</em>): om du kopplar din egen AI (till exempel Claude) till Glosan sparar vi anslutningens namn, behörighet (läsa, eller läsa och skapa), när den användes senast och en hashad nyckel. Du kopplar bort den på profilsidan.</li>
@@ -131,7 +132,7 @@ export default function Integritet() {
         <p>
           När du raderar ditt konto tas följande bort omedelbart: kontouppgifter, dina egna listor + glosor, kompis­
           relationer, co-op-streaks, utmaningar du deltagit i, XP- och quiz-runda-historik, aktiva engångskoder,
-          dina AI-anslutningar, Plugga-områden du skapat (med allas progress på dem) och din plugghistorik.
+          dina AI-anslutningar, dina blockeringar, Plugga-områden du skapat (med allas progress på dem) och din plugghistorik.
           Du tas också automatiskt bort från andras &quot;delade med dig&quot;-sektion. I andras plugghistorik från dina områden
           ersätts områdets namn och frågornas text med &quot;Raderat område&quot; — deras egna resultat finns kvar.
         </p>

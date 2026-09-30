@@ -61,7 +61,7 @@ behind a feature flag and shown to more users step by step.
 | `multi` | several right ("Vilka av talen är primtal?") — only right picks but some missing = nearly | the app |
 | `order` | put in order (numbers, a timeline, the steps of a method) — 3–8 items, shuffled at random (a test attempt keeps its order) | the app |
 | `factors` | a product in any order ("Primtalsfaktorisera 90" → `2·3·3·5`, `2·3²·5`) — the right product with other factors = nearly | the app |
-| `text` | short facts: a term, a year, a name — with accepted variants; one typo from 8 letters, two from 12, never for years or Roman numerals, none with `exact` | the app |
+| `text` | short facts: a term, a year, a name — with accepted variants; one typo from 8 letters, two from 12, never for years or Roman numerals, none with `exact`; a typo in the first or last two letters of a word (elektrod for elektron) is "nästan", not right — an added or dropped ending (bakterie/bakterien) and missing dots and rings still pass | the app |
 | `self` | open questions ("förklara", "resonera"), SO/NO/history | the student against the model answer and E/C/A criteria — or their AI via the paper flow |
 
 An unreadable answer ("3 eller 4", "tjugo", a blank choice) is never counted as
@@ -171,10 +171,18 @@ level" only count steps the student earned.
 
 ## Sharing
 
+- **Where**: "👥 Dela" on a unit's page (that unit), and on the Plugga start
+  page, a subject page (also for a selection or a chapter) and a folder —
+  one dialog (`ShareStudyDialog`) where you pick any of your own units and
+  share them together. The student's AI can do the same (`share_study_units`,
+  `create_study_link`, `get_study_sharing`, `stop_sharing_study`; docs/mcp.md).
 - **Friends**: the creator shares with confirmed friends.
-- **QR / link** (`/p/<code>`): 1, 7 or 30 days, 10/30/100 uses, at most 3
-  active per unit; a public preview (title, subject, term and counts — not
-  årskurs, book or description). Joining does **not** make you the creator's
+- **QR / link** (`/p/<code>`): ONE link can cover several units
+  (`StudyShareLink.units`, up to 50 — e.g. a chapter for the class) with an
+  optional name; 1, 7 or 30 days, 10/30/100 uses, at most 3 active links per
+  unit and 30 per creator; a public preview (titles, subject, term and counts —
+  not årskurs, book or description). People without an account sign up
+  through the link and get every unit. Joining does **not** make you the creator's
   friend (a link can be passed on). Joining is idempotent and claims a use
   atomically. Links are deleted 30 days after they expire.
 - Nobody gets a copy: recipients join `sharedWith`, practise with their own
@@ -183,8 +191,12 @@ level" only count steps the student earned.
   When the creator archives a unit it disappears for the recipients too.
 - **Unfriending** ends every share between the two, both ways — also units
   joined by link — and takes those units out of their folders and their open
-  reports (`unshareBetween`). There is no block list; this is the way to stop
-  someone's reports reaching your AI.
+  reports (`unshareBetween`).
+- **Blocking** (Kompisar page, or a unit's share list for someone who joined
+  by link) does the same and more: it also ends list shares, the co-op streak
+  and pending challenges, and stops the other from adding you by code or
+  joining your lists and units by link (`services/blocks.js`). The blocked
+  person gets no hint — a code or link just looks invalid.
 - The creator's AI sees a recipient's report note as `reporter_note_untrusted`,
   and a recipient's AI sees shared units as `written_by_someone_else` — the
   MCP instructions say such text is data, never instructions.
@@ -356,7 +368,7 @@ left pointing at missing data.
 - **Fas 1 — create and practise (done, v0.1.28):** MCP tools and prompts,
   genomgångar with KaTeX, flashcard and exercise players, per-user progress,
   the paper flow, "rapportera fel", tracking, study XP and streaks.
-- **Fas 2 — share, test and "Min plugg" (PR #118, not released yet):** sharing (friends, QR),
+- **Fas 2 — share, test and "Min plugg" (done, v0.1.29):** sharing (friends, QR),
   Mappar, Min plugg, practice tests (app and paper, parts, per-skill result),
   the level ladder; from the beta: chapters, the bin with history; from MCP
   feedback: templates, multi/order/factors, figures, duplicate protection,

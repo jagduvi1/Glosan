@@ -13,7 +13,8 @@ const { readableFilter, loadUnit, loadItem } = require('../services/study/access
 const { listUnits, unitDetail } = require('../services/study/views');
 const { startSession, answerInSession, pingSession, finishSession, MODES, LEVELS } = require('../services/study/practice');
 const {
-  listRecipients, shareWithFriends, removeRecipient, createShareLink, listShareLinks, revokeShareLink
+  listRecipients, shareWithFriends, removeRecipient, createShareLink, listShareLinks, revokeShareLink,
+  loadOwnedUnits, shareUnitsWithFriends, listMyShareLinks, revokeMyShareLink, MAX_UNITS_PER_SHARE, MAX_UNITS_PER_LINK
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
@@ -529,6 +530,64 @@ router.post('/units/:id/share-links', shareLinkLimiter, async (req, res, next) =
     const result = await createShareLink(req.user.id, unit, req.body || {});
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Dela flera områden på en gång (Plugga-sidornas Dela: ett kapitel, en mapp) ──
+
+const idArray = (v, max) => Array.isArray(v) && v.length > 0 && v.length <= max && v.every((x) => typeof x === 'string');
+const NOT_OWN = 'Du kan bara dela dina egna områden (inte arkiverade).';
+
+// POST /api/study/share — Body: { unitIds: [id], friendIds: [id] } → { units, friends, added }
+router.post('/share', async (req, res, next) => {
+  try {
+    const { unitIds, friendIds } = req.body || {};
+    if (!idArray(unitIds, MAX_UNITS_PER_SHARE)) return bad(res, `unitIds must be 1–${MAX_UNITS_PER_SHARE} ids`);
+    if (!idArray(friendIds, 100)) return bad(res, 'friendIds must be a non-empty array of ids');
+    const units = await loadOwnedUnits(req.user.id, unitIds);
+    if (!units) return res.status(404).json({ error: NOT_OWN });
+    const result = await shareUnitsWithFriends(req.user.id, units, friendIds);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/share-links → { links } — mina aktiva länkar, med områdena de gäller
+router.get('/share-links', async (req, res, next) => {
+  try {
+    res.json({ links: await listMyShareLinks(req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/study/share-links — Body: { unitIds: [id], ttlDays, maxUses, title? } → EN länk för alla
+router.post('/share-links', shareLinkLimiter, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!idArray(b.unitIds, MAX_UNITS_PER_LINK)) return bad(res, `unitIds must be 1–${MAX_UNITS_PER_LINK} ids`);
+    if (b.title !== undefined && b.title !== null && (typeof b.title !== 'string' || b.title.length > 100)) {
+      return bad(res, 'title must be at most 100 characters');
+    }
+    const units = await loadOwnedUnits(req.user.id, b.unitIds);
+    if (!units) return res.status(404).json({ error: NOT_OWN });
+    const result = await createShareLink(req.user.id, units, b);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/study/share-links/:code — stäng av en av mina länkar
+router.delete('/share-links/:code', async (req, res, next) => {
+  try {
+    if (!(await revokeMyShareLink(req.user.id, req.params.code))) return res.status(404).json({ error: 'Länken hittades inte.' });
+    res.json({ links: await listMyShareLinks(req.user.id) });
   } catch (err) {
     next(err);
   }

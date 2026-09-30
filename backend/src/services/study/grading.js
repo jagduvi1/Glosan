@@ -133,11 +133,32 @@ const TYPO_MIN_2 = 12;
 // Romerska siffror ("Karl XII", "Gustav III"): en bokstav fel är en annan kung.
 const ROMAN_RE = /(^|[^A-Za-zÅÄÖåäö])[IVXLCDM]{1,7}(?![A-Za-zÅÄÖåäö])/;
 
+// Ett stavfel i början eller slutet av ett ord gör ofta ett annat ord av det
+// (elektron/elektrod, absorption/adsorption) — det blir "nästan", inte rätt.
+// Mitt i ordet är det nästan alltid en felskrivning. Som vanliga slarvfel
+// räknas också bokstäver som bara lagts till eller fallit bort i slutet
+// (bakterie/bakterien, klorofyll/klorofyl — oftast en böjning) och prickar och
+// ringar (Ostersjön/Östersjön). Med lika många ord jämförs varje ord för sig.
+const TYPO_EDGE = 2;
+const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function edgesHold(given, accepted) {
+  const g = fold(given);
+  const a = fold(accepted);
+  if (g.startsWith(a) || a.startsWith(g)) return true;
+  return g.slice(0, TYPO_EDGE) === a.slice(0, TYPO_EDGE) && g.slice(-TYPO_EDGE) === a.slice(-TYPO_EDGE);
+}
+function sameEdges(given, accepted) {
+  const gw = given.split(' ');
+  const aw = accepted.split(' ');
+  return gw.length === aw.length ? gw.every((w, i) => edgesHold(w, aw[i])) : edgesHold(given, accepted);
+}
+
 /**
  * Textsvar: exakt (normaliserat) mot någon godkänd variant = rätt. Ett litet
- * stavfel i ett längre ord godtas också — men eleven får se rätt stavning.
- * Svar med siffror (årtal, datum) eller romerska siffror måste stämma exakt,
- * liksom allt i en uppgift med `exact`.
+ * stavfel mitt i ett längre ord godtas också — men eleven får se rätt
+ * stavning. Rör stavfelet de två första eller sista bokstäverna blir det
+ * "nästan". Svar med siffror (årtal, datum) eller romerska siffror måste
+ * stämma exakt, liksom allt i en uppgift med `exact`.
  */
 function gradeText(input, spec) {
   const given = normalizeText(input);
@@ -146,12 +167,17 @@ function gradeText(input, spec) {
   const expected = accepted[0]?.raw || '';
   if (accepted.some((a) => a.norm === given)) return { result: 'correct', expected };
   if (spec.exact) return { result: 'wrong', expected };
+  let nearEdge = null;
   for (const a of accepted) {
     if (/\d/.test(a.norm) || ROMAN_RE.test(a.raw) || a.norm.length < TYPO_MIN_1) continue;
     const allowed = a.norm.length >= TYPO_MIN_2 ? 2 : 1;
     if (levenshtein(given, a.norm) <= allowed) {
-      return { result: 'correct', expected, note: `Det stavas "${a.raw}".` };
+      if (sameEdges(given, a.norm)) return { result: 'correct', expected, note: `Det stavas "${a.raw}".` };
+      nearEdge = nearEdge || a;
     }
+  }
+  if (nearEdge) {
+    return { result: 'partial', expected, note: `Nästan — det heter "${nearEdge.raw}". Kolla början och slutet: där kan en bokstav göra det till ett annat ord.` };
   }
   return { result: 'wrong', expected };
 }

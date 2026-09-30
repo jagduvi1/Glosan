@@ -6,5 +6,6 @@ require('./lists');
 require('./words');
 require('./categories');
 require('./study');
+require('./sharing');
 
 module.exports = {};

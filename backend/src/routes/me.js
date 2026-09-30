@@ -380,16 +380,17 @@ router.get('/export', async (req, res) => {
       McpToken.find({ user: userId }).lean()
     ]);
     const study = await exportStudyData(userId);
+    const blockedUsers = await User.find({ _id: { $in: user.blocked || [] } }, 'username').lean();
 
     // Strip secrets — lösenord-hash och refresh-token-hash får aldrig läcka ut
     // ens till användaren själv.
-    const { password, refreshTokenHash, refreshTokenFamily, ...safeUser } = user;
+    const { password, refreshTokenHash, refreshTokenFamily, blocked, ...safeUser } = user;
 
     res.setHeader('Content-Disposition', `attachment; filename="glosan-export-${user.username}-${new Date().toISOString().slice(0, 10)}.json"`);
     res.json({
       exportedAt: new Date().toISOString(),
       schema: 'glosan-export-v2',
-      user: safeUser,
+      user: { ...safeUser, blocked: blockedUsers.map((b) => ({ username: b.username })) },
       lists: {
         owned: ownedLists,
         sharedWithMe: sharedLists.map((l) => ({
@@ -496,6 +497,8 @@ router.delete('/', async (req, res) => {
       opts
     );
     await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] }, opts);
+    // Ur andras blockeringslistor (inga döda referenser).
+    await User.updateMany({ blocked: userId }, { $pull: { blocked: userId } }, opts);
     await CoopStreak.deleteMany({ users: userId }, opts);
     // Duels jag deltagit i raderas i sin helhet — alternativ vore att
     // anonymisera mitt namn men för en hobby-app är hård delete cleaner.

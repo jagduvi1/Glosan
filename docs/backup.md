@@ -117,6 +117,14 @@ the only monitoring watched the front page, which nginx kept serving happily
 without a backend. Whatever watches the backups should also watch
 `/api/health`, not `/`.
 
+`.github/workflows/uptime.yml` does that from the outside: every 15 minutes
+a GitHub-hosted runner fetches `https://glosan.app/api/health` (three tries,
+half a minute apart, so a deploy restart doesn't count) and fails unless it
+says `ok` with MongoDB `connected`. GitHub mails a failed scheduled run to
+whoever last changed the schedule — keep Actions notifications on. GitHub
+pauses schedules in public repos after 60 days without activity; re-enable
+it under Actions if that happens.
+
 The backend watches the disk itself too: once an hour
 `backend/src/services/maintenance.js` reads the host disk (the container's
 root filesystem is the host's) and mails every admin account through Resend

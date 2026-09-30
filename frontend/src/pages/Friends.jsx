@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { fetchFriends, addFriendByCode, removeFriend } from '../api/friends';
+import { fetchFriends, addFriendByCode, removeFriend, fetchBlocked, blockUser, unblockUser } from '../api/friends';
 import { fetchCoopStreaks, startCoopStreak, endCoopStreak } from '../api/coopStreaks';
 import { fetchDuels } from '../api/duels';
 import { fetchInviteCodes, createInviteCode, deleteInviteCode } from '../api/inviteCodes';
@@ -33,20 +33,24 @@ export default function Friends() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [pendingRemove, setPendingRemove] = useState(null);
+  const [pendingBlock, setPendingBlock] = useState(null);
+  const [blocked, setBlocked] = useState([]);
   const [showGoalChallenge, setShowGoalChallenge] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
-      const [fs, coops, ds, invites, xp] = await Promise.all([
+      const [fs, coops, ds, invites, xp, bl] = await Promise.all([
         fetchFriends(apiFetch),
         fetchCoopStreaks(apiFetch),
         fetchDuels(apiFetch),
         fetchInviteCodes(apiFetch),
-        fetchXpLeaderboard(apiFetch, 'month')
+        fetchXpLeaderboard(apiFetch, 'month'),
+        fetchBlocked(apiFetch)
       ]);
       setFriends(fs);
+      setBlocked(bl);
       setCoopStreaks(coops);
       setDuels(ds);
       setInviteCodes(invites);
@@ -153,6 +157,30 @@ export default function Friends() {
     try {
       await removeFriend(apiFetch, f._id);
       setFriends((cur) => cur.filter((x) => x._id !== f._id));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const onBlockConfirmed = async () => {
+    if (!pendingBlock) return;
+    const f = pendingBlock;
+    setPendingBlock(null);
+    try {
+      setBlocked(await blockUser(apiFetch, f._id));
+      setFriends((cur) => cur.filter((x) => x._id !== f._id));
+      setCoopStreaks((cur) => cur.filter((c) => c.other?._id !== f._id));
+      setNotice(`${f.username} är blockerad.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const onUnblock = async (b) => {
+    setError('');
+    try {
+      setBlocked(await unblockUser(apiFetch, b._id));
+      setNotice(`Blockeringen av ${b.username} är hävd. Ni kan lägga till varandra igen med en kod.`);
     } catch (err) {
       setError(err.message);
     }
@@ -585,12 +613,49 @@ export default function Friends() {
                   >
                     Ta bort
                   </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: 'var(--berry-deep)' }}
+                    onClick={() => setPendingBlock(f)}
+                    title="Sluta vara kompisar och stoppa allt från den här personen"
+                  >
+                    Blockera
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {blocked.length > 0 && (
+        <details className="card">
+          <summary style={{ fontWeight: 800, cursor: 'pointer' }}>🚫 Blockerade ({blocked.length})</summary>
+          <p className="t-hand muted" style={{ fontSize: 14, margin: '8px 0 10px' }}>
+            De kan inte lägga till dig, dela med dig eller gå med i det du delar via länk. De får inget besked om det.
+          </p>
+          <div className="stack" style={{ gap: 8 }}>
+            {blocked.map((b) => (
+              <div key={b._id} className="row" style={{ gap: 12, alignItems: 'center', padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10 }}>
+                <AvatarDisplay avatar={b.avatar} username={b.username} size={36} />
+                <span className="grow" style={{ fontWeight: 700 }}>{b.username}</span>
+                <button type="button" className="btn btn-sm" onClick={() => onUnblock(b)}>Häv blockering</button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {pendingBlock && (
+        <ConfirmDialog
+          title={`Blockera ${pendingBlock.username}?`}
+          message={`Ni slutar vara kompisar, och allt ni delat med varandra — listor${hasFeature(user, 'study') ? ' och Plugga-områden' : ''} — tas bort, liksom pågående utmaningar och co-op-streak. ${pendingBlock.username} kan inte lägga till dig igen, dela med dig eller gå med i det du delar via länk, och får inget besked om att du blockerat. Du kan häva blockeringen här senare.`}
+          confirmLabel="Blockera"
+          destructive
+          onConfirm={onBlockConfirmed}
+          onCancel={() => setPendingBlock(null)}
+        />
+      )}
 
       {pendingRemove && (
         <ConfirmDialog

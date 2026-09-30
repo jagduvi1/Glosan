@@ -5,8 +5,8 @@ const { loadOwnedList, loadReadableList } = require('../middleware/ownership');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
-const Friendship = require('../models/Friendship');
 const QuizRunEvent = require('../models/QuizRunEvent');
+const { listShares, shareListWithFriends, removeListRecipient } = require('../services/listSharing');
 const { periodRange } = require('../utils/localTime');
 
 const router = express.Router();
@@ -176,8 +176,7 @@ router.delete('/:id', loadOwnedList(), async (req, res) => {
 // Bara ägaren får se delningar.
 router.get('/:id/shares', loadOwnedList(), async (req, res) => {
   try {
-    const users = await User.find({ _id: { $in: req.list.sharedWith } }, 'username avatar friendCode').lean();
-    res.json({ shares: users });
+    res.json({ shares: await listShares(req.list) });
   } catch (error) {
     console.error('List shares get error:', error);
     res.status(500).json({ error: 'Failed to fetch shares' });
@@ -196,29 +195,10 @@ router.post('/:id/share', loadOwnedList(), async (req, res) => {
   if (mode !== undefined && mode !== 'read' && mode !== 'edit') {
     return res.status(400).json({ error: 'mode måste vara "read" eller "edit"' });
   }
-  const validIds = friendIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
-  if (validIds.length === 0) {
-    return res.status(400).json({ error: 'Inga giltiga ID:n' });
-  }
   try {
-    const friendships = await Friendship.find({
-      user: req.user.id,
-      friend: { $in: validIds }
-    }, 'friend').lean();
-    const confirmedFriends = new Set(friendships.map((f) => f.friend.toString()));
-    const toAdd = validIds.filter((id) => confirmedFriends.has(id));
-    if (toAdd.length === 0) {
-      return res.status(400).json({ error: 'Du måste vara kompis för att kunna dela listan.' });
-    }
-
-    const before = new Set(req.list.sharedWith.map(String));
-    for (const id of toAdd) before.add(id);
-    req.list.sharedWith = Array.from(before);
-    if (mode) req.list.shareMode = mode;
-    await req.list.save();
-
-    const users = await User.find({ _id: { $in: req.list.sharedWith } }, 'username avatar friendCode').lean();
-    res.json({ shares: users, list: req.list });
+    const result = await shareListWithFriends(req.user.id, req.list, friendIds, mode);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json({ shares: result.shares, list: result.list });
   } catch (error) {
     console.error('List share error:', error);
     res.status(500).json({ error: 'Failed to share list' });
@@ -287,8 +267,7 @@ router.delete('/:id/share/:userId', loadOwnedList(), async (req, res) => {
     return res.status(400).json({ error: 'Invalid user id' });
   }
   try {
-    req.list.sharedWith = req.list.sharedWith.filter((id) => id.toString() !== userId);
-    await req.list.save();
+    await removeListRecipient(req.list, userId);
     res.json({ list: req.list });
   } catch (error) {
     console.error('List unshare error:', error);
