@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
 /**
- * StudyShareLink — en delningslänk/QR-kod till ett område i Plugga
- * (`/p/<kod>`). Samma idé som ListInvite för glos-listor, med en viktig
+ * StudyShareLink — en delningslänk/QR-kod till ett eller flera områden i
+ * Plugga (`/p/<kod>`), t.ex. ett helt kapitel till en klass. Samma idé som ListInvite för glos-listor, med en viktig
  * skillnad: den som går med får INGEN kopia. Hen läggs till i områdets
  * `sharedWith`, så skaparens rättningar når alla direkt och var och en övar
  * med sin egen progress (StudyItemState är per användare).
@@ -12,7 +12,13 @@ const mongoose = require('mongoose');
  * usedBy säger vilka som gått med, och det behöver inte sparas för alltid.
  */
 const studyShareLinkSchema = new mongoose.Schema({
+  // Området länken gäller — det första, när länken gäller flera.
   unit: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyUnit', required: true, index: true },
+  // Alla områden, för en länk till flera. Saknas på länkar till ett område
+  // (som alla äldre länkar) — de gäller bara `unit`.
+  units: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'StudyUnit' }], default: undefined, index: true },
+  // Namnet mottagarna ser, t.ex. "Kapitel 4 — Procent" (skaparens text).
+  title: { type: String, trim: true, maxlength: 100, default: '' },
   creator: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   code: { type: String, required: true, unique: true },
   expiresAt: { type: Date, required: true },

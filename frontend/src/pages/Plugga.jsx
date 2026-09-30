@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyOverview, fetchStudyFolders, createStudyFolder } from '../api/study';
 import GloAvatar from '../components/GloAvatar';
+import ShareStudyDialog from '../components/study/ShareStudyDialog';
 import { ColorChoice } from '../components/study/FolderPicker';
 import { formatMinutes } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -129,7 +130,7 @@ function HowToCreate() {
             <li>Claude frågar vilken årskurs du går i, föreslår vad som ska skapas och lägger in allt här.</li>
           </ol>
           <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-            Har en kompis redan gjort ett område? Be om QR-koden under <em>Dela</em> — då behöver du ingen egen AI.
+            Har en kompis redan gjort ett område? Be om QR-koden under <em>👥 Dela</em> — då behöver du ingen egen AI.
           </p>
         </div>
       </div>
@@ -146,6 +147,7 @@ export default function Plugga() {
   const [params] = useSearchParams();
   const [term, setTerm] = useState(params.get('term'));
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -184,14 +186,21 @@ export default function Plugga() {
             Matte, NO, SO och alla andra ämnen — sorterat per termin.
           </p>
         </div>
-        <label className="field" style={{ minWidth: 160 }}>
-          <span className="field-label">Termin</span>
-          <select className="inp" value={data.term} onChange={(e) => setTerm(e.target.value)}>
-            {data.terms.map((t) => (
-              <option key={t.key} value={t.key}>{t.label}{t.key === data.currentTerm ? ' (nu)' : ''}</option>
-            ))}
-          </select>
-        </label>
+        <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          {data.totalUnits > 0 && (
+            <button type="button" className="btn" onClick={() => setSharing(true)} title="Dela områden med kompisar eller med en QR-kod">
+              👥 Dela
+            </button>
+          )}
+          <label className="field" style={{ minWidth: 160 }}>
+            <span className="field-label">Termin</span>
+            <select className="inp" value={data.term} onChange={(e) => setTerm(e.target.value)}>
+              {data.terms.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}{t.key === data.currentTerm ? ' (nu)' : ''}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {data.totalUnits > 0 && (
@@ -245,6 +254,7 @@ export default function Plugga() {
       ))}
 
       {(data.totalUnits > 0 || folders.length > 0) && <FoldersSection folders={folders} onCreate={createFolder} />}
+      {sharing && <ShareStudyDialog onClose={() => setSharing(false)} />}
     </div>
   );
 }

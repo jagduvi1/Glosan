@@ -123,7 +123,7 @@ async function main() {
     const cEarly = forAll ? null : await connectMcp(C.token);
     if (cEarly) assert.equal(await hasStudyTools(cEarly), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
-    assert.deepEqual(joined.body, { unitId, joined: true });
+    assert.deepEqual(joined.body, { unitId, unitIds: [unitId], joined: true });
     assert.ok(await hasPlugga(C), 'the classmate gets Plugga');
     if (cEarly) {
       assert.equal(await hasStudyTools(cEarly), false, 'an old connection does not widen by itself');
@@ -149,6 +149,31 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
     ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
+
+    // ── Dela flera på en gång (Plugga-sidornas Dela: ett kapitel, en mapp) ──
+    const histId = hist.data.unit_id;
+    const multi = await api('/api/study/share-links', A.token, { method: 'POST', body: { unitIds: [unitId, histId], ttlDays: 7, maxUses: 30, title: 'Allt inför provet' } });
+    assert.equal(multi.status, 201);
+    assert.equal(multi.body.link.unitCount, 2);
+    const multiPreview = await api(`/api/study-invite/${multi.body.link.code}`);
+    assert.equal(multiPreview.body.title, 'Allt inför provet');
+    assert.deepEqual(multiPreview.body.units.map((u) => u.title), ['Kapitel 4 — Procent', 'Industriella revolutionen']);
+    const D = await signUp('p2class');
+    const dJoin = await api(`/api/study-invite/${multi.body.link.code}/accept`, D.token, { method: 'POST' });
+    assert.equal(dJoin.body.joined, true);
+    assert.deepEqual(dJoin.body.unitIds, [unitId, histId]);
+    for (const id of [unitId, histId]) assert.equal((await api(`/api/study/units/${id}`, D.token)).status, 200);
+    const mine = await api('/api/study/share-links', A.token);
+    assert.ok(mine.body.links.some((l) => l.code === multi.body.link.code && l.units.length === 2));
+    // Dela ett urval med en kompis på en gång; någon annans område går inte.
+    const both = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId], friendIds: [B.id] } });
+    assert.equal(both.status, 200);
+    assert.equal(both.body.units, 2);
+    assert.equal((await api(`/api/study/units/${histId}`, B.token)).status, 200);
+    assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } })).status, 404);
+    assert.equal((await api(`/api/study/share-links/${multi.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
+    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units');
 
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });
@@ -459,6 +484,7 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     await claude.close();
     ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
+
 
     // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);

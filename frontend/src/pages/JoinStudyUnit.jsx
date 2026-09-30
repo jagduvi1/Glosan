@@ -6,9 +6,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import { fetchStudyInvitePreview, acceptStudyInvite } from '../api/study';
 
-// /p/<kod> — någon delar ett område i Plugga (QR-koden i "Dela"). Publik
-// förhandsvisning; den som går med läggs till i området (ingen kopia) och
-// får Plugga påslaget. Inte inloggad → skapa konto/logga in och kom tillbaka
+// /p/<kod> — någon delar ett eller flera områden i Plugga (QR-koden i "Dela",
+// t.ex. ett helt kapitel). Publik förhandsvisning; den som går med läggs till
+// i områdena (ingen kopia) och får Plugga påslaget. Inte inloggad → skapa konto/logga in och kom tillbaka
 // hit, då går man med automatiskt.
 
 const PENDING_KEY = 'pending-study-invite';
@@ -42,7 +42,8 @@ export default function JoinStudyUnit() {
       const r = await acceptStudyInvite(apiFetch, code);
       await refreshUser(); // Plugga-flaggan kan just ha slagits på
       setStatus('joined');
-      redirectTimer.current = setTimeout(() => navigate(`/plugga/omrade/${r.unitId}`), 1200);
+      const target = r.unitIds && r.unitIds.length > 1 ? '/plugga' : `/plugga/omrade/${r.unitId}`;
+      redirectTimer.current = setTimeout(() => navigate(target), 1200);
     } catch (e) {
       setError(e.message);
       setStatus('error');
@@ -67,7 +68,14 @@ export default function JoinStudyUnit() {
     }
   }, [status, user, code, join]);
 
-  const u = preview?.unit;
+  const units = preview?.units || (preview?.unit ? [preview.unit] : []);
+  const u = units[0];
+  const multi = units.length > 1;
+  const countText = (x) => [
+    x.pages ? `${x.pages} ${x.pages === 1 ? 'genomgång' : 'genomgångar'}` : null,
+    `${x.cards} kort`,
+    `${x.exercises} övningar`
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="paper-texture" style={{ minHeight: '100vh', padding: '0 16px' }}>
@@ -91,7 +99,7 @@ export default function JoinStudyUnit() {
           <div style={{ textAlign: 'center' }}>
             <GloAvatar size={110} float mood="wink" style={{ margin: '0 auto 14px' }} />
             <h1>Klart!</h1>
-            <p className="t-hand muted">Området finns nu i din Plugga. Skickar dig dit…</p>
+            <p className="t-hand muted">{multi ? 'Områdena finns' : 'Området finns'} nu i din Plugga. Skickar dig dit…</p>
           </div>
         )}
 
@@ -101,27 +109,35 @@ export default function JoinStudyUnit() {
               <GloAvatar size={68} float mood="wink" />
               <div>
                 <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-                  <strong>@{preview.creator.username}</strong> delar ett område med dig
+                  <strong>@{preview.creator.username}</strong> delar {multi ? `${units.length} områden` : 'ett område'} med dig
                 </p>
                 <h1 style={{ margin: '4px 0 0', fontSize: 30 }}>
-                  <span aria-hidden="true">{u.emoji}</span> {u.title}
+                  {multi
+                    ? (preview.title || `${units.length} områden`)
+                    : <><span aria-hidden="true">{u.emoji}</span> {preview.title || u.title}</>}
                 </h1>
               </div>
             </div>
 
-            <div className="card" style={{ background: 'var(--paper-deep)', marginBottom: 18 }}>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <span className="pill">{u.subjectLabel}</span>
-                <span className="pill">{u.termLabel}</span>
+            {multi ? (
+              <div className="stack" style={{ gap: 8, marginBottom: 18, maxHeight: 320, overflowY: 'auto' }}>
+                {units.map((x) => (
+                  <div key={x.code} className="card" style={{ background: 'var(--paper-deep)', padding: 12 }}>
+                    <strong><span aria-hidden="true">{x.emoji}</span> {x.code} {x.title}</strong>
+                    <p className="t-hand muted" style={{ margin: '2px 0 0', fontSize: 14 }}>{x.subjectLabel} · {x.termLabel} · {countText(x)}</p>
+                  </div>
+                ))}
               </div>
-              <p className="t-hand" style={{ margin: '10px 0 0', fontSize: 16 }}>
-                {[
-                  u.pages ? `${u.pages} ${u.pages === 1 ? 'genomgång' : 'genomgångar'}` : null,
-                  `${u.cards} kort`,
-                  `${u.exercises} övningar`
-                ].filter(Boolean).join(' · ')}
-              </p>
-            </div>
+            ) : (
+              <div className="card" style={{ background: 'var(--paper-deep)', marginBottom: 18 }}>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <span className="pill">{u.subjectLabel}</span>
+                  <span className="pill">{u.termLabel}</span>
+                </div>
+                {preview.title && preview.title !== u.title && <p style={{ margin: '10px 0 0', fontWeight: 700 }}>{u.title}</p>}
+                <p className="t-hand" style={{ margin: '10px 0 0', fontSize: 16 }}>{countText(u)}</p>
+              </div>
+            )}
 
             {user ? (
               <>
@@ -129,13 +145,13 @@ export default function JoinStudyUnit() {
                   Du övar med din egen statistik. Rättar @{preview.creator.username} något ser du det direkt.
                 </p>
                 <button type="button" className="btn btn-primary btn-lg btn-block" onClick={join} disabled={joining}>
-                  {joining ? 'Lägger till…' : 'Lägg till i min Plugga'}
+                  {joining ? 'Lägger till…' : multi ? `Lägg till alla ${units.length} i min Plugga` : 'Lägg till i min Plugga'}
                 </button>
               </>
             ) : (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  Skapa ett konto (eller logga in) så får du området i Glosan — ingen egen AI behövs.
+                  Skapa ett konto (eller logga in) så får du {multi ? 'områdena' : 'området'} i Glosan — ingen egen AI behövs.
                 </p>
                 <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
                   <Link to={`/register?studyInvite=${code}`} onClick={rememberInvite} className="btn btn-primary" style={{ flex: 1, textAlign: 'center' }}>

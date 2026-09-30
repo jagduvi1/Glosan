@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import QRCode from 'qrcode';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchFriends } from '../../api/friends';
 import {
@@ -7,25 +6,12 @@ import {
 } from '../../api/study';
 import { useModalFocus } from '../../utils/modalFocus';
 import AvatarDisplay from '../AvatarDisplay';
+import { LinkOptions, QrLinkCard, isActiveLink } from './shareBits';
 
 // Dela ett område i Plugga — med kompisar (de ser det direkt) eller med en
 // länk/QR-kod till klasskompisar (de får området, men blir inte kompisar med dig).
 // Ingen får en kopia: alla övar med sin egen statistik, och bara du (och din
 // AI) kan ändra innehållet — rättar du något når det alla.
-
-const TTL = [
-  { value: 1, label: '1 dag' },
-  { value: 7, label: '1 vecka', rec: true },
-  { value: 30, label: '30 dagar' }
-];
-const USES = [
-  { value: 10, label: '10' },
-  { value: 30, label: '30', rec: true },
-  { value: 100, label: '100' }
-];
-
-const isActive = (l) => !l.revoked && new Date(l.expiresAt) > new Date() && l.usedCount < l.maxUses;
-const inviteUrl = (code) => `${window.location.origin}/p/${code}`;
 
 function FriendsTab({ friends, recipients, busy, onShare, onRemove }) {
   const [selected, setSelected] = useState(() => new Set());
@@ -97,44 +83,14 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
   const [ttlDays, setTtlDays] = useState(7);
   const [maxUses, setMaxUses] = useState(30);
   const [shownCode, setShownCode] = useState(null);
-  const [qr, setQr] = useState(null);
-  const [copied, setCopied] = useState(false);
 
-  const active = links.filter(isActive);
+  const active = links.filter(isActiveLink);
   const shown = active.find((l) => l.code === shownCode) || active[0] || null;
-  const qrCode = shown?.code || null;
-
-  useEffect(() => {
-    if (!qrCode) { setQr(null); return undefined; }
-    let alive = true;
-    QRCode.toDataURL(inviteUrl(qrCode), { width: 320, margin: 1, color: { dark: '#1F1B16', light: '#FBF5E6' } })
-      .then((url) => { if (alive) setQr(url); })
-      .catch(() => { if (alive) setQr(null); });
-    return () => { alive = false; };
-  }, [qrCode]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl(shown.code));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* ingen urklippsåtkomst — länken syns ändå */ }
-  };
 
   return (
     <div className="stack" style={{ gap: 14 }}>
       {shown ? (
-        <div className="card" style={{ background: 'var(--paper-deep)', textAlign: 'center' }}>
-          {qr && <img src={qr} alt="QR-kod till området" style={{ width: 220, height: 220, display: 'block', margin: '0 auto 10px' }} />}
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, marginBottom: 6, overflowWrap: 'anywhere' }}>{inviteUrl(shown.code)}</div>
-          <button type="button" className="btn btn-sm" onClick={copy} style={{ marginBottom: 8 }}>{copied ? '✓ Kopierad' : '📋 Kopiera länk'}</button>
-          <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>
-            {shown.usedCount} av {shown.maxUses} har gått med · går ut {new Date(shown.expiresAt).toLocaleDateString('sv-SE')}
-          </p>
-          <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={busy} onClick={() => onRevoke(shown.code)}>
-            Stäng av länken
-          </button>
-        </div>
+        <QrLinkCard link={shown} busy={busy} onRevoke={onRevoke} />
       ) : (
         <p className="t-hand muted" style={{ margin: 0 }}>
           Skapa en QR-kod som klasskompisar kan scanna. De loggar in (eller skapar ett konto) och får området i sin Plugga — ingen AI behövs.
@@ -145,7 +101,7 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
           {active.map((l) => (
             <button key={l.code} type="button" className="chip" aria-pressed={shown?.code === l.code} onClick={() => setShownCode(l.code)}>
-              {l.code} · {l.usedCount}/{l.maxUses}
+              {l.title || l.code} · {l.usedCount}/{l.maxUses}{l.unitCount > 1 ? ` · ${l.unitCount} områden` : ''}
             </button>
           ))}
         </div>
@@ -154,22 +110,7 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
       <details className="card" style={{ background: 'var(--bg-elev)' }} open={!shown}>
         <summary style={{ fontWeight: 800, cursor: 'pointer' }}>+ Ny QR-kod</summary>
         <div className="stack" style={{ gap: 10, marginTop: 12 }}>
-          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Hur länge">
-            <span className="t-hand muted" style={{ fontSize: 14, minWidth: 90 }}>Hur länge?</span>
-            {TTL.map((o) => (
-              <button key={o.value} type="button" className="chip" aria-pressed={ttlDays === o.value} onClick={() => setTtlDays(o.value)}>
-                {o.label}{o.rec ? ' ★' : ''}
-              </button>
-            ))}
-          </div>
-          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Hur många">
-            <span className="t-hand muted" style={{ fontSize: 14, minWidth: 90 }}>Hur många?</span>
-            {USES.map((o) => (
-              <button key={o.value} type="button" className="chip" aria-pressed={maxUses === o.value} onClick={() => setMaxUses(o.value)}>
-                {o.label}{o.rec ? ' ★' : ''}
-              </button>
-            ))}
-          </div>
+          <LinkOptions ttlDays={ttlDays} maxUses={maxUses} onTtl={setTtlDays} onUses={setMaxUses} />
           <button
             type="button"
             className="btn btn-primary btn-block"
