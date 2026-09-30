@@ -133,7 +133,9 @@ export const sheetUrl = (scope, opts) => `/plugga/skriv-ut?${scopeQuery(scope, o
 
 /** Bara en sökväg i appen ("/plugga/…") — aldrig en annan sajt ("https://…", "//…"). */
 export function safeBack(value) {
-  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/plugga';
+  // Inga blanksteg eller bakstreck: webbläsaren stryker tabb och radbrytning ur
+  // en länk, så "/⇥/ond.example" blev "//ond.example" — en annan sajt.
+  return typeof value === 'string' && /^\/(?![/\\])[^\s\\]*$/.test(value) ? value : '/plugga';
 }
 
 /** Omfånget och valen ur /plugga/ova- och /plugga/skriv-ut-URL:en. */
