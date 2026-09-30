@@ -63,6 +63,7 @@ function inviteOut(i) {
     maxUses: i.maxUses,
     usedCount: (i.usedBy || []).length,
     revoked: Boolean(i.revokedAt),
+    befriend: i.befriend !== false,
     createdAt: i.createdAt
   };
 }
@@ -108,6 +109,18 @@ async function revokeListInvite(ownerId, list, code) {
   return true;
 }
 
+/** Stäng av en länk via dess id (för AI:n, som inte får se adressen till appens länkar). */
+async function revokeListInviteById(ownerId, list, id) {
+  if (!mongoose.Types.ObjectId.isValid(String(id))) return false;
+  const invite = await ListInvite.findOne({ _id: id, list: list._id, creator: ownerId });
+  if (!invite) return false;
+  if (!invite.revokedAt) {
+    invite.revokedAt = new Date();
+    await invite.save();
+  }
+  return true;
+}
+
 module.exports = {
   MAX_ACTIVE_INVITES_PER_LIST,
   listShares,
@@ -115,5 +128,6 @@ module.exports = {
   removeListRecipient,
   createListInvite,
   listListInvites,
-  revokeListInvite
+  revokeListInvite,
+  revokeListInviteById
 };

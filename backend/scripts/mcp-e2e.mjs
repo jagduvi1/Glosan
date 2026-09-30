@@ -231,6 +231,16 @@ async function main() {
     }
     assert.equal((await call(client, 'create_list_link', { list_id: listId, days: 2 })).error.code, 'invalid_input');
     assert.deepEqual((await call(client, 'get_list_sharing', { list_id: listId })).data.links.map((l) => l.code), [link.data.code]);
+    // En länk gjord i appen gör den som går med till kompis — AI:n får se att
+    // den finns och kan stänga den, men aldrig adressen.
+    const appLink = await fetch(`${BASE}/api/lists/${listId}/share-link`, {
+      method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttlDays: 1, maxUses: 10 })
+    }).then((r) => r.json());
+    const seen = (await call(client, 'get_list_sharing', { list_id: listId })).data.links.find((l) => l.made_in === 'app');
+    assert.ok(seen && !seen.code && !seen.url, 'the AI never gets the address of an app link');
+    assert.ok(!JSON.stringify(await call(client, 'get_list_sharing', { list_id: listId })).includes(appLink.invite.code));
+    assert.equal((await call(client, 'stop_sharing_list', { list_id: listId, link_id: seen.link_id })).isError, false);
+    assert.equal((await fetch(`${BASE}/api/list-invite/${appLink.invite.code}`)).status, 404, 'closed by id');
     assert.equal((await call(client, 'stop_sharing_list', { list_id: listId, link_code: link.data.code })).isError, false);
     assert.equal((await fetch(`${BASE}/api/list-invite/${link.data.code}`)).status, 404, 'a closed link is dead');
     ok('sharing: list_friends, share_list only with friends, create_list_link (opens for anyone), get_list_sharing, stop_sharing_list');

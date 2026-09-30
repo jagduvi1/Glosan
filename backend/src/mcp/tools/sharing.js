@@ -15,7 +15,7 @@ const { issuer } = require('../../services/mcpOAuth');
 const Friendship = require('../../models/Friendship');
 const StudyUnit = require('../../models/StudyUnit');
 const {
-  listShares, shareListWithFriends, removeListRecipient, createListInvite, listListInvites, revokeListInvite
+  listShares, shareListWithFriends, removeListRecipient, createListInvite, listListInvites, revokeListInvite, revokeListInviteById
 } = require('../../services/listSharing');
 const study = require('../../services/study/sharing');
 
@@ -121,7 +121,7 @@ registerTool({
 registerTool({
   name: 'get_list_sharing',
   title: 'Who a list is shared with',
-  description: 'For a list the user owns: who it is shared with, whether they can edit, and its active share links (url, expiry, how many have used them).',
+  description: 'For a list the user owns: who it is shared with, whether they can edit, and its active share links (expiry, how many have used them). Only links you made come with their url; links made in the app make joiners the user\'s friend, so their address stays in the app — close any link with its link_id.',
   scope: 'read',
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: { list_id: objectId.describe('List id from list_lists') },
@@ -134,7 +134,15 @@ registerTool({
       list_id: String(list._id),
       can_edit: list.shareMode === 'edit',
       shared_with: shares.map(personOut),
-      links: invites.filter(isActive).map((i) => ({ code: i.code, url: listLinkUrl(i.code), expires_at: i.expiresAt, used: i.usedCount, max_uses: i.maxUses }))
+      // En länk som gör den som går med till kompis (appens) lämnas aldrig ut
+      // till AI:n: en manipulerad AI skulle annars kunna sprida den.
+      links: invites.filter(isActive).map((i) => ({
+        link_id: String(i._id),
+        ...(i.befriend ? { made_in: 'app' } : { code: i.code, url: listLinkUrl(i.code) }),
+        expires_at: i.expiresAt,
+        used: i.usedCount,
+        max_uses: i.maxUses
+      }))
     });
   }
 });
@@ -194,24 +202,28 @@ registerTool({
 registerTool({
   name: 'stop_sharing_list',
   title: 'Stop sharing a list',
-  description: 'For a list the user owns: removes one person from it (friend), or closes a share link (link_code — see get_list_sharing). Copies people already made through a link are theirs and stay.',
+  description: 'For a list the user owns: removes one person from it (friend), or closes a share link (link_id from get_list_sharing, or the link_code of a link you made). Copies people already made through a link are theirs and stay.',
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     list_id: objectId.describe('List id from list_lists'),
     friend: friendRef.optional().describe('Username or user_id of someone the list is shared with'),
+    link_id: objectId.optional().describe('A link_id from get_list_sharing'),
     link_code: linkCode.optional()
   },
   handler: async (args, ctx) => {
-    if (!args.friend === !args.link_code) return fail('invalid_input', 'Pass exactly one of friend or link_code.');
+    if ([args.friend, args.link_id, args.link_code].filter(Boolean).length !== 1) {
+      return fail('invalid_input', 'Pass exactly one of friend, link_id or link_code.');
+    }
     const access = await resolveList(ctx.user.id, args.list_id, 'owner');
     if (access.error) return access.error;
     const { list } = access;
-    if (args.link_code) {
-      if (!(await revokeListInvite(ctx.user.id, list, args.link_code.toUpperCase()))) {
-        return fail('not_found', 'No such link on this list — get_list_sharing shows its links.');
-      }
-      return ok('Closed the link', { list_id: String(list._id), link_code: args.link_code.toUpperCase() });
+    if (args.link_id || args.link_code) {
+      const closed = args.link_id
+        ? await revokeListInviteById(ctx.user.id, list, args.link_id)
+        : await revokeListInvite(ctx.user.id, list, args.link_code.toUpperCase());
+      if (!closed) return fail('not_found', 'No such link on this list — get_list_sharing shows its links.');
+      return ok('Closed the link', { list_id: String(list._id), ...(args.link_id ? { link_id: args.link_id } : { link_code: args.link_code.toUpperCase() }) });
     }
     const person = findPerson(await listShares(list), args.friend);
     if (!person) return fail('not_found', 'That person does not have this list — get_list_sharing shows who does.');
