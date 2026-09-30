@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyFolder, updateStudyFolder, deleteStudyFolder } from '../api/study';
-import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
+import { PracticePicker, practiceUrl, sheetUrl } from '../components/study/StudyBits';
 import UnitCard from '../components/study/UnitCard';
 import { ColorChoice } from '../components/study/FolderPicker';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -111,7 +111,10 @@ export default function PluggaFolder() {
         <>
           <div className="card" style={{ background: folder.color ? `var(--${folder.color}-soft)` : 'var(--mustard-soft)' }}>
             <h2 style={{ margin: '0 0 10px', fontSize: 21 }}>Öva på allt i mappen ({units.length} {units.length === 1 ? 'område' : 'områden'})</h2>
-            <PracticePicker onStart={(opts) => navigate(practiceUrl({ folderId: folder.id, back }, opts))} />
+            <PracticePicker
+              onStart={(opts) => navigate(practiceUrl({ folderId: folder.id, back }, opts))}
+              onPrint={(opts) => navigate(sheetUrl({ folderId: folder.id, back }, opts))}
+            />
           </div>
           <div className="stack" style={{ gap: 12 }}>
             {units.map((u) => (

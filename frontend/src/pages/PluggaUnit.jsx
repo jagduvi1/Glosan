@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
-import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, daysUntil } from '../components/study/StudyBits';
+import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, sheetUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
 import FolderPicker from '../components/study/FolderPicker';
 import DeletedList from '../components/study/DeletedList';
@@ -261,6 +261,7 @@ export default function PluggaUnit() {
               hasCards={cards.length > 0}
               hasExercises={exercises.length > 0}
               onStart={(opts) => navigate(practiceUrl({ unitIds: [unit.id], back }, opts))}
+              onPrint={(opts) => navigate(sheetUrl({ unitIds: [unit.id], back }, opts))}
             />
           </div>
         )}

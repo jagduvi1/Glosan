@@ -361,6 +361,23 @@ function itemFull(item, unit) {
   };
 }
 
+/** Mallövningen som den står på ett utskrivet övningsblad (variant = fröet). */
+function printedVariant(item, variant) {
+  try {
+    const inst = instance(item, variant);
+    return {
+      variant,
+      prompt: inst.prompt,
+      answer: inst.answer.value,
+      ...(inst.solution ? { solution: inst.solution } : {}),
+      ...(inst.hints?.length ? { hints: inst.hints } : {}),
+      note: 'The numbers printed with this variant — grade against this answer if the prompt matches the photo (the template may have been edited since the sheet was printed).'
+    };
+  } catch (err) {
+    return { variant, error: err.message };
+  }
+}
+
 /** Ett exempel på en mallövning (frö 1), så AI:n ser hur den blir. */
 function templateExample(item) {
   try {
@@ -599,7 +616,9 @@ registerTool({
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: {
     code: z.string().trim().max(20).optional().describe('e.g. "MA3-14" — tolerant of "ma3 14", "MA 3–14"'),
-    item_id: objectId.optional()
+    item_id: objectId.optional(),
+    variant: z.number().int().min(1).max(2147483646).optional()
+      .describe('A template exercise printed on an övningsblad shows a variant after its code ("MA2-7 · v482"): pass 482 to get exactly those numbers, the answer and the solution')
   },
   handler: async (args, ctx) => {
     const r = await resolveItem(ctx, args, 'read');
@@ -611,6 +630,7 @@ registerTool({
     ]);
     return ok(`${itemCode(unit, item)}`, {
       ...itemFull(item, unit),
+      ...(args.variant && item.template ? { printed: printedVariant(item, args.variant) } : {}),
       unit: { ...unitMeta(unit), ...(await authorship(unit, ctx.user.id)) },
       my_progress: state ? { box: state.box, correct: state.correct, wrong: state.wrong, last_result: state.lastResult } : null,
       my_history: history.map((h) => ({
@@ -1250,7 +1270,8 @@ registerTool({
     result: z.enum(['correct', 'partial', 'wrong']).describe('partial = right method but a slip, or the answer is right but the reasoning incomplete'),
     feedback: z.string().trim().min(1).max(4000).describe('Your feedback to the student in Swedish: what is right, where it first goes wrong, a hint, and what would lift it to the next level'),
     given: z.string().trim().max(500).optional().describe('The student\'s final answer as written'),
-    minutes: z.number().min(0).max(60).optional().describe('How long the student worked on it, if they said (at most 60)')
+    minutes: z.number().min(0).max(60).optional().describe('How long the student worked on it, if they said (at most 60)'),
+    variant: z.number().int().min(1).max(2147483646).optional().describe('For a template exercise from a printed övningsblad: the variant after its code (as passed to get_study_item)')
   },
   handler: async (args, ctx) => {
     const badFigure = figureError('The feedback', args.feedback);
@@ -1259,7 +1280,7 @@ registerTool({
     if (r.error) return r.error;
     const { item, unit } = r;
     const out = await recordPaperAttempt(ctx.user.id, item, unit, {
-      result: args.result, feedback: args.feedback, given: args.given || '', minutes: args.minutes ?? null
+      result: args.result, feedback: args.feedback, given: args.given || '', minutes: args.minutes ?? null, seed: args.variant ?? null
     });
     if (out.error === 'test_item') {
       return fail('invalid_input', `${itemCode(unit, item)} is a question on a practice test — check the whole test and record it with record_paper_test.`);

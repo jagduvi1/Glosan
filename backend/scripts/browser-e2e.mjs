@@ -160,6 +160,22 @@ async function main() {
     assert.match(backHtml, /Rad ett<br\s*\/?>\s*Rad två/, `a single line break on a card back is kept: ${backHtml}`);
     ok('a single line break on a Plugga card back shows as a line break');
 
+    // ── övningsblad: Skriv ut från områdessidan — facit sist, ingen panel på pappret ──
+    await page.goto(`${BASE}/plugga/omrade/${unitIds[0]}`, { waitUntil: 'networkidle0' });
+    await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle0' }), clickText(page, 'button', 'Skriv ut')]);
+    assert.equal(new URL(page.url()).pathname, '/plugga/skriv-ut');
+    await page.waitForSelector('.test-sheet .sheet-facit');
+    const sheetText = await page.$eval('.test-sheet', (el) => el.innerText);
+    assert.match(sheetText, /Övningsblad: Procent/);
+    assert.match(sheetText, /Facit[\s\S]*Rad två/, 'the card\'s back is in the facit');
+    await clickText(page, 'label', 'Facit');
+    await page.waitForFunction(() => !document.querySelector('.sheet-facit'));
+    await page.emulateMediaType('print');
+    assert.equal(await page.$eval('.sheet-controls', (el) => getComputedStyle(el).display), 'none', 'the sheet\'s controls are not printed');
+    assert.equal(await page.$eval('.test-sheet', (el) => getComputedStyle(el).display), 'block', 'the sheet itself is');
+    await page.emulateMediaType(null);
+    ok('Skriv ut on a unit gives an övningsblad with the facit last (can be left out), and no controls on paper');
+
     // ── glos-quiz: ärlig återkoppling ───────────────────────────────────────
     for (const [answer, expected] of [['dog', 'Inte riktigt — rätt svar: häst'], ['hast', 'Nära! Det stavas häst']]) {
       await page.goto(`${BASE}/lists/${listId}/quiz`, { waitUntil: 'networkidle0' });

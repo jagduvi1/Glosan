@@ -178,6 +178,20 @@
 .test-sheet-questions > li.test-sheet-part { list-style: none; margin-left: -24px; border-top: 2px solid var(--ink); font-family: var(--font-headline); font-size: 20px; padding: 12px 0 4px; }
 .test-sheet-space.short { min-height: 50px; }
 
+/* ── Övningsblad (utskrift av övningar, PluggaSheet) ───────────────────── */
+.sheet-section { font-family: var(--font-headline); font-weight: 400; font-size: 22px; margin: 22px 0 0; display: flex; gap: 10px; align-items: center; break-after: avoid; }
+.sheet-hint-list { margin: 6px 0 0; padding-left: 20px; }
+.sheet-facit-answer { margin-top: 4px; font-weight: 700; }
+.sheet-facit-solution { margin-top: 4px; font-size: 15px; }
+.sheet-facit .test-sheet-questions > li, .sheet-hints .test-sheet-questions > li { padding: 8px 0; }
+@media screen {
+  .sheet-hints, .sheet-facit { margin-top: 28px; border-top: 3px double var(--ink); padding-top: 4px; }
+}
+@media print {
+  /* Ledtrådar och facit på egna sidor — lägg undan dem medan du löser. */
+  .sheet-hints, .sheet-facit { break-before: page; }
+}
+
 /* Figurer (```svg i texten) — ritade av AI:n, visade som bild. */
 .study-figure { display: block; max-width: 100%; height: auto; margin: 10px 0; }
 

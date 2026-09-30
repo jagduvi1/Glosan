@@ -598,5 +598,5 @@ function skillReport(answers) {
 
 module.exports = {
   XP_TEST_BONUS, loadTest, testItems, testsForUnit, testOverview, testSheet, startTest, submitTest, assessTest,
-  recordPaperTest, attemptView, expectedAnswer, publicQuestion, skillReport
+  recordPaperTest, attemptView, expectedAnswer, publicQuestion, skillReport, unitBrief
 };

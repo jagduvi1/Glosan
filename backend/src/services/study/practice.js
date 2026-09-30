@@ -25,7 +25,7 @@ const MAX_SESSION_ITEMS = 50;
 // urvalet görs på ett fåtal fält, och bara de valda hämtas hela.
 const MAX_SCOPE_UNITS = 200;
 const MAX_CANDIDATES = 3000;
-const UNIT_FIELDS = '_id user code title subject term';
+const UNIT_FIELDS = '_id user code title subject term gradeYear';
 const PICK_FIELDS = '_id unit kind level number';
 const STATE_FIELDS = 'item box dueAt lastResult correct wrong lastSeenAt';
 // XP: samma skala som glos-quizzen (10 per rätt), halva för "nästan".
@@ -45,9 +45,9 @@ const PAPER_DUPLICATE_MS = 10 * 60 * 1000;
  */
 async function resolveScopeUnits(userId, scope = {}) {
   const filter = { ...readableFilter(userId), archivedAt: null };
-  const ids = Array.isArray(scope.unitIds) ? scope.unitIds.filter(isId).map(oid) : [];
-  if (ids.length) {
-    filter._id = { $in: ids.slice(0, 50) };
+  if (Array.isArray(scope.unitIds) && scope.unitIds.length) {
+    // Valda områden — inga giltiga id:n ger inga områden, aldrig hela biblioteket.
+    filter._id = { $in: scope.unitIds.filter(isId).map(oid).slice(0, 50) };
   } else if (scope.folderId !== undefined) {
     // Direkt mot StudyFolder (inte services/study/folders.js) — undviker en
     // require-cirkel practice → folders → views → practice.
@@ -175,6 +175,49 @@ async function startLadder(userId, units, count) {
   };
 }
 
+const sessionCount = (count) => Math.min(Math.max(parseInt(count, 10) || 15, 1), MAX_SESSION_ITEMS);
+
+/**
+ * Uppgifterna ett pass — eller ett övningsblad (services/study/sheet.js) —
+ * väljer i områdena: { picked (hela, i urvalets ordning), total }.
+ * mode: mixed | cards | exercises | due | wrong.
+ */
+async function pickFromUnits(userId, units, { mode = 'mixed', levels = [], count = 15, skills = [], exclude = [] } = {}) {
+  const query = { unit: { $in: units.map((u) => u._id) }, usage: 'practice' };
+  if (mode === 'cards') query.kind = 'card';
+  if (mode === 'exercises') query.kind = 'exercise';
+  // Kort har ofta ingen nivå — ett nivåfilter gäller övningarna.
+  const lv = Array.isArray(levels) ? levels.filter((l) => LEVELS.includes(l)) : [];
+  if (lv.length) query.$or = [{ level: { $in: lv } }, { kind: 'card', level: null }];
+  // Öva på en färdighet ("Positionssystemet") — t.ex. från provresultatet.
+  const sk = Array.isArray(skills) ? skills.filter((x) => typeof x === 'string' && x.trim()).slice(0, 10) : [];
+  if (sk.length) query.skill = { $in: sk };
+
+  const items = await StudyItem.find(query, PICK_FIELDS).limit(MAX_CANDIDATES).lean();
+  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }, STATE_FIELDS).lean();
+  const stateMap = new Map(states.map((s) => [String(s.item), s]));
+  const n = sessionCount(count);
+  // Övningsbladets "Nya uppgifter": det som redan skrivits ut väljs sist — det
+  // fyller bara på bladet om inget annat finns kvar (utskrift sparar ingen
+  // progress, så urvalet blev annars detsamma varje gång).
+  const ex = new Set((Array.isArray(exclude) ? exclude : []).map(String));
+  const fresh = ex.size ? items.filter((i) => !ex.has(String(i._id))) : items;
+  let lite = pickItems(fresh, stateMap, { mode, count: n });
+  if (lite.length < n && fresh.length < items.length) {
+    const printed = items.filter((i) => ex.has(String(i._id)));
+    lite = [...lite, ...pickItems(printed, stateMap, { mode, count: n - lite.length })];
+  }
+  const picked = await loadPicked(lite);
+  return { picked, total: items.length };
+}
+
+/** Varför urvalet blev tomt, i elevens ord. */
+function emptyMessage(mode) {
+  return mode === 'due' ? 'Inget att repetera just nu — bra jobbat!'
+    : mode === 'wrong' ? 'Du har inga missade uppgifter här.'
+      : 'Det finns inga uppgifter här än.';
+}
+
 /** Starta ett pass. Returnerar { session, items, total } eller { error }. */
 async function startSession(userId, params = {}) {
   const mode = MODES.includes(params.mode) ? params.mode : 'mixed';
@@ -187,28 +230,11 @@ async function startSession(userId, params = {}) {
     return { session: { id: String(session._id), kind: session.kind }, items: [], total: 0 };
   }
 
-  const levels = Array.isArray(params.levels) ? params.levels.filter((l) => LEVELS.includes(l)) : [];
-  const count = Math.min(Math.max(parseInt(params.count, 10) || 15, 1), MAX_SESSION_ITEMS);
-  if (mode === 'ladder') return startLadder(userId, units, count);
-  const query = { unit: { $in: units.map((u) => u._id) }, usage: 'practice' };
-  if (mode === 'cards') query.kind = 'card';
-  if (mode === 'exercises') query.kind = 'exercise';
-  // Kort har ofta ingen nivå — ett nivåfilter gäller övningarna.
-  if (levels.length) query.$or = [{ level: { $in: levels } }, { kind: 'card', level: null }];
-  // Öva på en färdighet ("Positionssystemet") — t.ex. från provresultatet.
-  const skills = Array.isArray(params.skills) ? params.skills.filter((x) => typeof x === 'string' && x.trim()).slice(0, 10) : [];
-  if (skills.length) query.skill = { $in: skills };
-
-  const items = await StudyItem.find(query, PICK_FIELDS).limit(MAX_CANDIDATES).lean();
-  const states = await StudyItemState.find({ user: userId, item: { $in: items.map((i) => i._id) } }, STATE_FIELDS).lean();
-  const stateMap = new Map(states.map((s) => [String(s.item), s]));
-  const picked = await loadPicked(pickItems(items, stateMap, { mode, count }));
-  if (!picked.length) {
-    const why = mode === 'due' ? 'Inget att repetera just nu — bra jobbat!'
-      : mode === 'wrong' ? 'Du har inga missade uppgifter här.'
-        : 'Det finns inga uppgifter här än.';
-    return { error: 'empty', message: why };
-  }
+  if (mode === 'ladder') return startLadder(userId, units, sessionCount(params.count));
+  const { picked, total } = await pickFromUnits(userId, units, {
+    mode, levels: params.levels, count: params.count, skills: params.skills
+  });
+  if (!picked.length) return { error: 'empty', message: emptyMessage(mode) };
   const unitById = new Map(units.map((u) => [String(u._id), u]));
   const session = await StudySession.create({
     user: userId,
@@ -221,7 +247,7 @@ async function startSession(userId, params = {}) {
   return {
     session: { id: String(session._id), kind: session.kind },
     items: picked.map((i) => publicItem(i, unitById.get(String(i.unit)), userId)),
-    total: items.length
+    total
   };
 }
 
@@ -463,7 +489,7 @@ async function finishSession(userId, sessionId) {
  * kort pass (kind 'paper') så tiden och uppgiften syns i "Min plugg", ger
  * XP och räknas som pluggdag. AI:ns återkoppling sparas för eleven.
  */
-async function recordPaperAttempt(userId, item, unit, { result, feedback, given = '', minutes = null }) {
+async function recordPaperAttempt(userId, item, unit, { result, feedback, given = '', minutes = null, seed = null }) {
   // Provfrågor rättas som ett helt prov (record_paper_test).
   if (item.usage === 'test') return { error: 'test_item' };
   const now = new Date();
@@ -500,7 +526,8 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
     correct: result === 'correct' ? 1 : 0
   });
   const state = await recordAttempt({
-    userId, item, unit, sessionId: session._id, source: 'paper', mode: 'practice', result, given, feedback
+    userId, item, unit, sessionId: session._id, source: 'paper', mode: 'practice', result, given, feedback,
+    seed: item.template && Number.isInteger(seed) && seed > 0 ? seed : null
   });
   const xp = checkedToday ? 0 : result === 'correct' ? XP_CORRECT : result === 'partial' ? XP_PARTIAL : 0;
   const award = await awardStudyActivity(userId, { xp, subject: unit.subject });
@@ -508,6 +535,6 @@ async function recordPaperAttempt(userId, item, unit, { result, feedback, given 
 }
 
 module.exports = {
-  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, publicItem, shuffled, seedFrom, startSession, recordAttempt, answerInSession,
-  pingSession, finishSession, recordPaperAttempt
+  MODES, LEVELS, XP_CORRECT, XP_PARTIAL, resolveScopeUnits, pickFromUnits, emptyMessage, publicItem, shuffled, seedFrom, startSession,
+  recordAttempt, answerInSession, pingSession, finishSession, recordPaperAttempt
 };

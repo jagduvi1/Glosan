@@ -113,6 +113,26 @@ the exact task the student solved into the text for the AI.
 points; the student photographs their answers and the AI grades each question
 (`get_practice_test` + `record_paper_test`, points capped per question).
 
+**Övningsblad** (`/plugga/skriv-ut`, `services/study/sheet.js`): "🖨️ Skriv ut"
+next to "Börja öva" on a unit, subject or folder prints the same selection a
+practice session would pick (cards / exercises / mixed / due / missed, levels,
+count, skill) as an A4 sheet, so the student can work entirely on paper. The
+layout:
+- name and date fields at the top;
+- cards as short questions, then the exercises from Lätt to Svår, each with its
+  code and room to answer (a line, boxes to tick, lines for order, space for an
+  open question);
+- hints (optional) and the **facit** last, each starting on a new page. The
+  facit has the answer and the worked solution, and choices and order questions
+  in the letters printed on that sheet.
+
+Printing records nothing. The student checks the sheet with the facit, or
+photographs it and asks their AI ("Rätta mitt övningsblad"); the AI then
+grades and records each exercise through the paper flow above. A template
+exercise prints with a short **variant** (`MA2-7 · v482`) — the seed of that
+instance. The facit is for those numbers, and `get_study_item` /
+`record_paper_attempt` take `variant` so the AI grades exactly them.
+
 ## Practice tests
 
 `create_practice_test` builds a test like the real one or the national tests:
@@ -242,7 +262,8 @@ the same way (`FEATURE_SECTIONS` in `mcp/instructions.js`). 25 tools:
 - Read: `list_study_units` (paged; `include_archived`), `get_study_unit`
   (paged: `codes`, `kind`, `level`, 60 items per call; long genomgångar
   shortened), `get_study_page`, `get_study_item` (by code, for the paper
-  flow — candidates when a code is ambiguous), `get_study_progress`,
+  flow — candidates when a code is ambiguous; `variant` for a template printed
+  on an övningsblad), `get_study_progress`,
   `list_study_flags` (20 per call), `list_study_folders`,
   `get_study_activity`, `get_practice_test`
 - Create: `create_study_unit` (requires årskurs; refuses a duplicate title),
