@@ -1,0 +1,40 @@
+name: Uptime
+
+# Kollar produktionen UTIFRÅN var 15:e minut. Diskvarningen i backend
+# (services/maintenance.js) kan inte larma om backend själv ligger nere — så
+# låg Glosan nere i tre veckor i augusti 2026 utan att någon märkte det, och
+# förstasidan svarade 200 hela tiden. /api/health svarar bara ok när backend
+# lever och når MongoDB.
+#
+# En misslyckad körning = ett mejl från GitHub (Actions-notifieringar för
+# schemalagda körningar går till den som senast ändrade schemat). Tre försök
+# med en halv minuts mellanrum, så en omstart vid deploy inte larmar.
+# OBS: GitHub stänger av schemat i publika repon efter 60 dagar utan aktivitet.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/uptime.yml']
+
+permissions: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: https://glosan.app/api/health
+        run: |
+          for attempt in 1 2 3; do
+            body=$(curl -fsS --max-time 20 https://glosan.app/api/health || true)
+            if echo "$body" | jq -e '.status == "ok" and .mongo == "connected"' >/dev/null 2>&1; then
+              echo "OK: $body"
+              exit 0
+            fi
+            echo "Attempt $attempt failed: ${body:-no response}"
+            [ "$attempt" -lt 3 ] && sleep 30
+          done
+          echo "::error::Glosan is down or has lost MongoDB — https://glosan.app/api/health"
+          exit 1
