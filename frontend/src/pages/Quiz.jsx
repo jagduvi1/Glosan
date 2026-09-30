@@ -6,7 +6,7 @@ import { updateGlos } from '../api/glosor';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
-import { shuffle, answerVariants, buildDistractors, isVoiceMatch } from '../utils/quiz';
+import { shuffle, answerVariants, buildDistractors, isVoiceMatch, isNearMiss } from '../utils/quiz';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
 const VOICE_MODE_KEY = 'glosan:quizVoiceMode';
@@ -105,7 +105,8 @@ export default function Quiz() {
     const expectedWord = current[expectedField];
     stopSpeaking();
     setListening(false);
-    setFeedback({ isCorrect, expected: expectedWord, given });
+    // "Nära!" bara när svaret faktiskt var nära (ett stavfel) — inte i flerval.
+    setFeedback({ isCorrect, expected: expectedWord, given, near: !isCorrect && mode !== 'choice' && isNearMiss(given, expectedWord) });
     setScore((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
     if (current.extra) {
       setExtraStats((s) => isCorrect ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 });
@@ -512,9 +513,9 @@ export default function Quiz() {
                 <h3 style={{ margin: 0 }}>
                   {feedback.isCorrect
                     ? 'Snyggt! Glo tappar hakan.'
-                    : mode === 'choice'
-                      ? `Nära! Rätt svar: ${feedback.expected}.`
-                      : `Nära! Det stavas ${feedback.expected}.`}
+                    : feedback.near
+                      ? `Nära! Det stavas ${feedback.expected}.`
+                      : `Inte riktigt — rätt svar: ${feedback.expected}.`}
                 </h3>
                 {feedback.isCorrect && streak >= 2 && (
                   <p style={{ margin: '4px 0 0', fontFamily: 'var(--font-headline)', fontSize: 22, color: 'var(--coral-deep)' }}>
