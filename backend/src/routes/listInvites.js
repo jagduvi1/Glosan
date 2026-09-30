@@ -9,12 +9,9 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
-const { randomCode } = require('../utils/friendCode');
+const { createListInvite, listListInvites, revokeListInvite } = require('../services/listSharing');
 
 const router = express.Router();
-
-const INVITE_CODE_LENGTH = 8;
-const MAX_ACTIVE_INVITES_PER_LIST = 3;
 
 // Skapande är dyrt (DB-write + collision-check) så vi begränsar — en
 // person ska inte kunna spamma fram tusentals invites. Per konto (körs efter
@@ -28,54 +25,13 @@ const createLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: 'För många nya invites — vänta lite.' })
 });
 
-async function generateUniqueListInviteCode() {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = randomCode(INVITE_CODE_LENGTH);
-    // eslint-disable-next-line no-await-in-loop
-    const exists = await ListInvite.findOne({ code }).select('_id').lean();
-    if (!exists) return code;
-  }
-  throw new Error('Kunde inte generera unik invite-kod');
-}
-
 // POST /api/lists/:id/share-link — kräver ägarskap
 // Body: { ttlDays: 1|7|30, maxUses: number }
 router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList(), async (req, res) => {
   try {
-    const ttlDays = Math.min(Math.max(Number(req.body.ttlDays) || 7, 1), 30);
-    const maxUses = Math.min(Math.max(Number(req.body.maxUses) || 30, 1), 1000);
-
-    // Limita antal samtidigt aktiva invites per lista
-    const active = await ListInvite.countDocuments({
-      list: req.list._id,
-      revokedAt: null,
-      expiresAt: { $gt: new Date() }
-    });
-    if (active >= MAX_ACTIVE_INVITES_PER_LIST) {
-      return res.status(429).json({
-        error: `Du har redan ${active} aktiva invites för den här listan. Avaktivera någon först.`
-      });
-    }
-
-    const code = await generateUniqueListInviteCode();
-    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
-    const invite = await ListInvite.create({
-      list: req.list._id,
-      creator: req.user.id,
-      code,
-      expiresAt,
-      maxUses
-    });
-
-    res.status(201).json({
-      invite: {
-        _id: invite._id,
-        code: invite.code,
-        expiresAt: invite.expiresAt,
-        maxUses: invite.maxUses,
-        usedCount: 0
-      }
-    });
+    const result = await createListInvite(req.user.id, req.list, req.body || {});
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json({ invite: result.invite });
   } catch (err) {
     console.error('Create list-invite error:', err);
     res.status(500).json({ error: 'Kunde inte skapa invite-länk.' });
@@ -85,20 +41,7 @@ router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList()
 // GET /api/lists/:id/share-links — lista mina aktiva invites för listan
 router.get('/lists/:id/share-links', requireAuth, loadOwnedList(), async (req, res) => {
   try {
-    const invites = await ListInvite.find({ list: req.list._id })
-      .sort({ createdAt: -1 })
-      .lean();
-    res.json({
-      invites: invites.map((i) => ({
-        _id: i._id,
-        code: i.code,
-        expiresAt: i.expiresAt,
-        maxUses: i.maxUses,
-        usedCount: i.usedBy.length,
-        revoked: Boolean(i.revokedAt),
-        createdAt: i.createdAt
-      }))
-    });
+    res.json({ invites: await listListInvites(req.list) });
   } catch (err) {
     console.error('List share-links error:', err);
     res.status(500).json({ error: 'Kunde inte hämta invite-länkar.' });
@@ -108,14 +51,9 @@ router.get('/lists/:id/share-links', requireAuth, loadOwnedList(), async (req, r
 // DELETE /api/lists/:id/share-link/:code — revokera (mjukt — sätter revokedAt)
 router.delete('/lists/:id/share-link/:code', requireAuth, loadOwnedList(), async (req, res) => {
   try {
-    const invite = await ListInvite.findOne({
-      code: req.params.code,
-      list: req.list._id,
-      creator: req.user.id
-    });
-    if (!invite) return res.status(404).json({ error: 'Invite hittades inte.' });
-    invite.revokedAt = new Date();
-    await invite.save();
+    if (!(await revokeListInvite(req.user.id, req.list, req.params.code))) {
+      return res.status(404).json({ error: 'Invite hittades inte.' });
+    }
     res.json({ message: 'Invite-länk avaktiverad.' });
   } catch (err) {
     console.error('Revoke list-invite error:', err);
