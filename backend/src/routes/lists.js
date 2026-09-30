@@ -7,6 +7,7 @@ const Glos = require('../models/Glos');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const QuizRunEvent = require('../models/QuizRunEvent');
+const { periodRange } = require('../utils/localTime');
 
 const router = express.Router();
 
@@ -317,13 +318,8 @@ router.post('/:id/leave', loadReadableList(), async (req, res) => {
 // minst en rond denna vecka tas med.
 router.get('/:id/weekly-records', loadReadableList(), async (req, res) => {
   try {
-    // Vecka börjar måndag (svensk konvention).
-    const now = new Date();
-    const day = now.getDay(); // 0 = söndag
-    const offset = day === 0 ? 6 : day - 1;
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - offset);
-    weekStart.setHours(0, 0, 0, 0);
+    // Veckan börjar måndag 00.00 svensk tid (inte serverns UTC).
+    const weekStart = periodRange('week').from;
 
     const participants = [req.list.user, ...(req.list.sharedWith || [])];
     // Aggregera bästa ratio per deltagare. Tie-break: senast.

@@ -23,5 +23,8 @@ const studyFlagSchema = new mongoose.Schema({
 studyFlagSchema.index({ owner: 1, status: 1 });
 studyFlagSchema.index({ unit: 1 });
 studyFlagSchema.index({ reporter: 1 });
+// Gallring: lösta rapporter raderas 180 dagar efter att de stängts. Öppna har
+// resolvedAt null och berörs aldrig av TTL-indexet.
+studyFlagSchema.index({ resolvedAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
 
 module.exports = mongoose.model('StudyFlag', studyFlagSchema);

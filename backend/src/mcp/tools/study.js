@@ -15,6 +15,7 @@ const User = require('../../models/User');
 const { SUBJECT_KEYS, getSubject } = require('../../config/subjects');
 const { termFor, termLabel } = require('../../utils/term');
 const { registerTool } = require('../registry');
+const { withUserLock } = require('../userLock');
 const { objectId, ok, fail, validationMessage } = require('../toolUtil');
 const { loadUnit, loadItem, findItemByCode, itemCode, isId, oid, readableFilter } = require('../../services/study/access');
 const { listUnits, unitUrl, folderUrl, testUrl } = require('../../services/study/views');
@@ -37,6 +38,8 @@ const MAX_UNITS_PER_USER = 1000;
 const MAX_UNITS_TOTAL = 3000;
 const MAX_PAGES_PER_UNIT = 30;
 const MAX_ITEMS_PER_UNIT = 500;
+// Kort och övningar sammanlagt per konto — en skolgång ryms, en AI i loop inte.
+const MAX_ITEMS_PER_ACCOUNT = 10000;
 const MAX_TEMPLATES_PER_CALL = 20;
 // Läsverktygens tak — ett svar ska rymmas i en chatt (~25k tokens är en
 // vanlig gräns för ett verktygssvar).
@@ -203,25 +206,7 @@ function duplicateWarnings({ existing, inCall }, what) {
   return out;
 }
 
-// Ett anrop i taget per användare för verktyg som skapar innehåll: två
-// likadana anrop samtidigt (en omsändning) ska inte båda passera dubblettkollen.
-// Backend kör i en process, så ett lås i minnet räcker.
-const userLocks = new Map();
-async function withUserLock(userId, fn) {
-  const key = String(userId);
-  const prev = userLocks.get(key) || Promise.resolve();
-  let release;
-  const mine = new Promise((r) => { release = r; });
-  const chain = prev.then(() => mine);
-  userLocks.set(key, chain);
-  await prev;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (userLocks.get(key) === chain) userLocks.delete(key);
-  }
-}
+
 
 function unitError(access) {
   return access.error === 'forbidden' ? fail('forbidden', MSG_OWNER_ONLY) : fail('not_found', MSG_UNIT_NOT_FOUND);
@@ -947,9 +932,15 @@ registerTool({
 });
 
 async function insertItems(ctx, unit, docs) {
-  const existing = await StudyItem.countDocuments({ unit: unit._id });
+  const [existing, inAccount] = await Promise.all([
+    StudyItem.countDocuments({ unit: unit._id }),
+    StudyItem.countDocuments({ user: ctx.user.id })
+  ]);
   if (existing + docs.length > MAX_ITEMS_PER_UNIT) {
     return { error: fail('invalid_input', `A unit holds at most ${MAX_ITEMS_PER_UNIT} cards/exercises (it has ${existing}). Create a new unit for the rest.`) };
+  }
+  if (inAccount + docs.length > MAX_ITEMS_PER_ACCOUNT) {
+    return { error: fail('invalid_input', `The account already has ${inAccount} cards/exercises (at most ${MAX_ITEMS_PER_ACCOUNT}). Ask the student to delete old units first (delete_study_unit).`) };
   }
   const first = await StudyUnit.reserveItemNumbers(unit._id, docs.length);
   try {

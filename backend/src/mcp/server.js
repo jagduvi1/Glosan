@@ -1,6 +1,6 @@
 const { toolsForScopes, promptsForScopes } = require('./registry');
 const { buildInstructions } = require('./instructions');
-const { takeMutationSlot } = require('./mutationBudget');
+const { takeMutationSlot, takeWriteBytes } = require('./mutationBudget');
 const version = require('../version');
 require('./tools');   // registrera alla verktyg (sidoeffekt)
 require('./prompts'); // registrera alla prompts (sidoeffekt)
@@ -50,6 +50,9 @@ function budgetedHandler(tool, ctx, state) {
     }
     if (tool.annotations?.readOnlyHint === false && !takeMutationSlot(ctx.user.id)) {
       return rateLimited('Too many changes in a short time — wait a few minutes before changing more. Reads still work.');
+    }
+    if (tool.annotations?.readOnlyHint === false && !takeWriteBytes(ctx.user.id, JSON.stringify(args || {}).length)) {
+      return rateLimited('This account has written a lot of content today — the daily limit is reached. Try again tomorrow; reads still work.');
     }
     try {
       return await tool.handler(args || {}, ctx);

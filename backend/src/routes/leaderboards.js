@@ -4,17 +4,11 @@ const { requireAuth } = require('../middleware/auth');
 const XpEvent = require('../models/XpEvent');
 const Friendship = require('../models/Friendship');
 const User = require('../models/User');
+const { localYmd, startOfLocalDay, addDays, periodRange } = require('../utils/localTime');
 
 const router = express.Router();
 
 router.use(requireAuth);
-
-function startOfMonth(d = new Date()) {
-  const x = new Date(d);
-  x.setDate(1);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
 
 // GET /api/me/leaderboards/xp?period=month — XP-leaderboard mellan mig och
 // mina kompisar för innevarande månad. Bara users med events tas med —
@@ -25,14 +19,10 @@ router.get('/leaderboards/xp', async (req, res) => {
     const friendships = await Friendship.find({ user: req.user.id }, 'friend').lean();
     const friendIds = friendships.map((f) => f.friend);
     const allIds = [new mongoose.Types.ObjectId(req.user.id), ...friendIds];
-    let since;
-    if (period === 'week') {
-      since = new Date();
-      since.setDate(since.getDate() - 6);
-      since.setHours(0, 0, 0, 0);
-    } else {
-      since = startOfMonth();
-    }
+    // I svensk tid: veckan = idag och sex dagar bakåt, månaden från den 1:a.
+    const since = period === 'week'
+      ? startOfLocalDay(addDays(localYmd(), -6))
+      : periodRange('month').from;
     const agg = await XpEvent.aggregate([
       { $match: { user: { $in: allIds }, createdAt: { $gte: since } } },
       { $group: { _id: '$user', xp: { $sum: '$amount' } } }

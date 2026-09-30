@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../contexts/AuthContext';
 import GloAvatar from '../components/GloAvatar';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import { internalPath } from '../utils/postLoginRedirect';
 
 export default function Login() {
   useDocumentTitle('Logga in');
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const location = useLocation();
   const inviteCode = params.get('invite');
   // Delningslänk till ett Plugga-område (/p/<kod>) — bara giltiga koder, så
   // parametern aldrig kan styra om till något annat än /p/.
   const studyInvite = /^[A-Z0-9]{4,16}$/.test(params.get('studyInvite') || '') ? params.get('studyInvite') : null;
-  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : null;
+  // Utloggad av en utgången session (ProtectedRoute): tillbaka dit man var.
+  const from = internalPath(location.state?.from);
+  const afterLogin = inviteCode ? `/j/${inviteCode}` : studyInvite ? `/p/${studyInvite}` : from;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

@@ -10,7 +10,7 @@ const XpEvent = require('../../models/XpEvent');
 const User = require('../../models/User');
 const { getSubject } = require('../../config/subjects');
 const { oid } = require('./access');
-const { periodRange, daysBetween, localYmd } = require('../../utils/localTime');
+const { TZ, periodRange, daysBetween, localYmd } = require('../../utils/localTime');
 const { daysBetween: streakDaysBetween } = require('../gamification');
 
 // Detaljerad tidslinje (varje pass med uppgifterna) för dag och vecka; för
@@ -23,19 +23,56 @@ const subjectInfo = (key) => {
   return { subject: key, label: s?.label || key, emoji: s?.emoji || '📚', color: s?.color || null };
 };
 
-/** Passets tid per ämne: efter svaren i passet, annars lika delat mellan passets ämnen. */
+/**
+ * Passets tid per ämne: efter svaren i passet, annars lika delat mellan passets
+ * ämnen. Ett svar kan vara en räknad rad (`n` svar, se loadAttempts).
+ */
 function splitSessionTime(session, attemptsInSession) {
   const secs = session.activeSeconds || 0;
   if (!secs) return {};
   if (attemptsInSession.length) {
     const per = {};
-    for (const a of attemptsInSession) per[a.subject] = (per[a.subject] || 0) + 1;
+    let total = 0;
+    for (const a of attemptsInSession) {
+      per[a.subject] = (per[a.subject] || 0) + (a.n || 1);
+      total += a.n || 1;
+    }
     const out = {};
-    for (const [subject, n] of Object.entries(per)) out[subject] = (secs * n) / attemptsInSession.length;
+    for (const [subject, n] of Object.entries(per)) out[subject] = (secs * n) / total;
     return out;
   }
   const subjects = session.subjects?.length ? session.subjects : ['ovrigt'];
   return Object.fromEntries(subjects.map((s) => [s, secs / subjects.length]));
+}
+
+/**
+ * Svaren i perioden. Dag och vecka: varje svar (tidslinjen visar dem). Månad
+ * och termin: räknade i databasen — en rad per pass, ämne, resultat, källa och
+ * svensk dag, med antalet i `n` — eftersom en termin kan vara tiotusentals svar.
+ */
+async function loadAttempts(uid, when, detailed) {
+  if (detailed) {
+    return StudyAttempt.find(
+      { user: uid, createdAt: when },
+      'session subject unit unitTitle itemCode source mode result createdAt given feedback'
+    ).sort({ createdAt: 1 }).lean();
+  }
+  const rows = await StudyAttempt.aggregate([
+    { $match: { user: uid, createdAt: when } },
+    {
+      $group: {
+        _id: {
+          session: '$session',
+          subject: '$subject',
+          result: '$result',
+          source: '$source',
+          day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: TZ } }
+        },
+        n: { $sum: 1 }
+      }
+    }
+  ]);
+  return rows.map((r) => ({ ...r._id, n: r.n }));
 }
 
 /**
@@ -47,11 +84,10 @@ async function activityFor(userId, { period, anchor } = {}) {
   const detailed = DETAILED.has(range.period);
   const uid = oid(userId);
   const when = { $gte: range.from, $lt: range.to };
-  const attemptFields = `session subject unit unitTitle itemCode source mode result createdAt${detailed ? ' given feedback' : ''}`;
 
   const [sessionsRaw, attempts, xpRows, user, testsDone] = await Promise.all([
     StudySession.find({ user: uid, startedAt: when }, 'kind subjects units activeSeconds answered correct startedAt').sort({ startedAt: -1 }).lean(),
-    StudyAttempt.find({ user: uid, createdAt: when }, attemptFields).sort({ createdAt: 1 }).lean(),
+    loadAttempts(uid, when, detailed),
     XpEvent.aggregate([
       { $match: { user: uid, createdAt: when, sourceLang: { $regex: '^study:' } } },
       { $group: { _id: null, xp: { $sum: '$amount' } } }
@@ -89,16 +125,17 @@ async function activityFor(userId, { period, anchor } = {}) {
     }
   }
   for (const a of attempts) {
-    totals.answered += 1;
-    totals[a.result] += 1;
-    if (a.source === 'paper') totals.paper += 1;
+    const n = a.n || 1;
+    totals.answered += n;
+    totals[a.result] += n;
+    if (a.source === 'paper') totals.paper += n;
     const s = subj(a.subject);
-    s.answered += 1;
-    if (a.result === 'correct') s.correct += 1;
-    const day = days.get(localYmd(a.createdAt));
+    s.answered += n;
+    if (a.result === 'correct') s.correct += n;
+    const day = days.get(a.day || localYmd(a.createdAt));
     if (day) {
-      day.answered += 1;
-      if (a.result === 'correct') day.correct += 1;
+      day.answered += n;
+      if (a.result === 'correct') day.correct += n;
       day.subjects.add(a.subject);
     }
   }

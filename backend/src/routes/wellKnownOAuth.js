@@ -1,5 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const { ipKey } = require('../middleware/rateKeys');
 const { authServerMetadata, protectedResourceMetadata } = require('../services/mcpOAuth');
 
 // OAuth-discovery för MCP-connectorn. De här dokumenten MÅSTE ligga på
@@ -16,6 +17,7 @@ const router = express.Router();
 router.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false
 }));

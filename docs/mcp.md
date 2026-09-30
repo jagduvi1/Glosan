@@ -80,6 +80,13 @@ point the user at the web app for those.
 
 - **Scopes are structural.** A read-only connection's server never registers
   the write tools, so they are uncallable, not just hidden.
+- **Modules are consented too.** A connection reaches the flagged modules
+  (e.g. Plugga) the account had when the user approved it: `requireMcpAuth`
+  intersects `McpToken.modules` with the account's flags now. Switching a
+  module on later never widens an existing connection — the Profile page says
+  "Når inte Plugga" and suggests reconnecting — and switching one off takes
+  it away at once. Connections from before the field are frozen to what they
+  reach on first use.
 - **Tokens only open `/api/mcp`.** `glo_` tokens are accepted by
   `requireMcpAuth` alone; `requireAuth` (every REST route) rejects them.
 - **PKCE S256 is mandatory** (a 43-character challenge), redirect URIs are
@@ -110,7 +117,11 @@ point the user at the web app for those.
   `reporter_note_untrusted`), never in a `summary` or error message, and the
   instructions say to treat them as data.
 - **Budgets:** max 20 tool calls per HTTP request, 120 write calls per user per
-  15 minutes, plus per-IP and per-user HTTP limiters. `/api/mcp` and the OAuth
+  15 minutes and 10 MB of write-call arguments per user per day
+  (`mcp/mutationBudget.js`), plus per-IP and per-user HTTP limiters. Content
+  caps: 1000 words per list (also in the app), 500 cards/exercises per unit and
+  10,000 per account. Tools that create content run one at a time per user
+  (`mcp/userLock.js`), so a retried call can't slip past a duplicate check. `/api/mcp` and the OAuth
   endpoints are exempt from the global per-IP limiters because claude.ai's
   users all share a small egress IP pool.
 - **Revocation:** per connection from the Profile page; all connections and

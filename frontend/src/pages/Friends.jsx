@@ -12,6 +12,7 @@ import GloAvatar from '../components/GloAvatar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import GoalChallengeDialog from '../components/GoalChallengeDialog';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import { hasFeature } from '../utils/features';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -594,7 +595,7 @@ export default function Friends() {
       {pendingRemove && (
         <ConfirmDialog
           title="Ta bort kompisen?"
-          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s. Ni kan alltid lägga till varandra igen.`}
+          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s.${hasFeature(user, 'study') ? ' Områden ni delat med varandra i Plugga slutar också delas.' : ''} Ni kan alltid lägga till varandra igen.`}
           confirmLabel="Ta bort"
           destructive
           onConfirm={onRemoveConfirmed}

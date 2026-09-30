@@ -74,6 +74,23 @@ async function removeRecipient(unit, userId) {
   await StudyFlag.deleteMany({ unit: unit._id, reporter: oid(userId), status: 'open' });
 }
 
+/**
+ * Två kompisar tar bort varandra: inget område delas längre åt något håll —
+ * samma städning som removeRecipient (mappar, öppna felrapporter). Glosan har
+ * ingen blockering; att ta bort kompisen stänger alltså också vägen för
+ * felrapporter till ens AI. Även den som gått med via en länk tas bort.
+ */
+async function unshareBetween(a, b) {
+  if (!isId(a) || !isId(b)) return;
+  for (const [owner, recipient] of [[oid(a), oid(b)], [oid(b), oid(a)]]) {
+    const ids = (await StudyUnit.find({ user: owner, sharedWith: recipient }, '_id').lean()).map((u) => u._id);
+    if (!ids.length) continue;
+    await StudyUnit.updateMany({ _id: { $in: ids } }, { $pull: { sharedWith: recipient } });
+    await StudyFolder.updateMany({ user: recipient, units: { $in: ids } }, { $pull: { units: { $in: ids } } });
+    await StudyFlag.deleteMany({ unit: { $in: ids }, reporter: recipient, status: 'open' });
+  }
+}
+
 // ── länkar / QR ──────────────────────────────────────────────────────────────
 
 async function uniqueLinkCode() {
@@ -222,6 +239,7 @@ module.exports = {
   listRecipients,
   shareWithFriends,
   removeRecipient,
+  unshareBetween,
   createShareLink,
   listShareLinks,
   revokeShareLink,

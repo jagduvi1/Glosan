@@ -44,7 +44,7 @@ Never commit directly to `main`.
 | Layer | Technology |
 |-------|-----------|
 | Database | MongoDB 7 (Mongoose 8) |
-| Backend | Express 4, Node 20 |
+| Backend | Express 4, Node 24 |
 | Frontend | React 19, React Router 6, Vite 5 |
 | Auth | JWT (15m access + 7d httpOnly refresh), bcryptjs |
 | AI | `@anthropic-ai/sdk` (default model: `claude-haiku-4-5-20251001`) |
@@ -151,6 +151,8 @@ cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 - **Auth:** Access token (JWT, 15m) in `Authorization: Bearer <token>`. Refresh token (random 64 bytes, hashed in DB) in an httpOnly cookie. `apiFetch` in [frontend/src/utils/apiFetch.js](frontend/src/utils/apiFetch.js) auto-refreshes on 401 and retries the request. Token issuing lives in [backend/src/services/authTokens.js](backend/src/services/authTokens.js), shared by password login and SSO.
 - **Google SSO:** [backend/src/routes/oauth.js](backend/src/routes/oauth.js) — mirrored from Cellarion (passport-google-oauth20, PKCE + cookie state store, account linking on verified email). Opt-in: inert without `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; the frontend button probes `GET /api/auth/sso/providers` at runtime, so enabling needs no frontend rebuild.
 - **Middleware:** [backend/src/middleware/auth.js](backend/src/middleware/auth.js) exports `requireAuth`, `optionalAuth`, `requireAdmin`. All non-public routes use `requireAuth`.
+- **Client IP and rate limits:** production is Cloudflare → Traefik → nginx → backend. [utils/clientIp.js](backend/src/utils/clientIp.js) sets `req.ip` from `CF-Connecting-IP` only when the connecting edge is in Cloudflare's published ranges (update the list if Cloudflare adds ranges). Limiters key per user when a genuine JWT is present, even one that just expired ([middleware/rateKeys.js](backend/src/middleware/rateKeys.js)), and per IP otherwise — always through `ipKey()`, which counts IPv6 per /56 — so a classroom behind one school IP fits; login is per IP + username ([middleware/authLimits.js](backend/src/middleware/authLimits.js)), and the auth routes skip the global limiters in app.js.
+- **Maintenance:** [services/maintenance.js](backend/src/services/maintenance.js) runs hourly in the backend: mails admins when the disk is over `DISK_ALERT_PERCENT` and closes abandoned Plugga sessions. Retention is TTL indexes on the models (see the Retention section in [docs/plugga.md](docs/plugga.md)).
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.
 - **AI:** [backend/src/services/anthropic.js](backend/src/services/anthropic.js) lazy-creates the client and returns 503 if `ANTHROPIC_API_KEY` is unset. Prompts ask for JSON and the service parses defensively.
 - **Image import:** `POST /api/ai/parse-image` takes a base64 image and returns the *same* shape as `/parse-list`, so [ImportModal](frontend/src/components/ImportModal.jsx) reuses the whole review-and-save step. The client downscales to 1600px JPEG first ([utils/image.js](frontend/src/utils/image.js)) — a phone photo is 2–12 MB raw, ~300 kB scaled. The image is never stored. Body limits are raised **only** for that one route (app.js + nginx.conf); the rest of the API stays at 64 kB.

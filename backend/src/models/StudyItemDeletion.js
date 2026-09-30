@@ -27,5 +27,7 @@ const studyItemDeletionSchema = new mongoose.Schema({
 });
 
 studyItemDeletionSchema.index({ unit: 1, deletedAt: -1 });
+// Gallring: en borttagen uppgift går att ångra i 180 dagar, sedan raderas posten.
+studyItemDeletionSchema.index({ deletedAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
 
 module.exports = mongoose.model('StudyItemDeletion', studyItemDeletionSchema);

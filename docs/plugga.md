@@ -163,9 +163,9 @@ level" only count steps the student earned.
   **Swedish local time** (`utils/localTime.js`, DST-safe): time, exercises and
   right answers per subject and day, paper solutions, practice tests with their
   grades, XP and the streak; a week chart, a month calendar, a term heatmap,
-  every session with its exercises. Printable. (The streak itself still ticks
-  at the server's midnight — UTC in the container — so study between midnight
-  and 01:00/02:00 Swedish time counts toward the previous day's streak.)
+  every session with its exercises. Printable. The streak (shared with the
+  vocabulary quizzes, `services/gamification.js`) also turns over at Swedish
+  midnight, as do the XP leaderboard's week and month.
 - History is denormalised (subject, unit title, exercise code, test title) so
   it survives if a shared unit is later deleted.
 
@@ -181,6 +181,10 @@ level" only count steps the student earned.
   progress and see corrections at once. They can leave, and report "fel i
   facit" to the creator's AI. Only the creator shares, edits and deletes.
   When the creator archives a unit it disappears for the recipients too.
+- **Unfriending** ends every share between the two, both ways — also units
+  joined by link — and takes those units out of their folders and their open
+  reports (`unshareBetween`). There is no block list; this is the way to stop
+  someone's reports reaching your AI.
 - The creator's AI sees a recipient's report note as `reporter_note_untrusted`,
   and a recipient's AI sees shared units as `written_by_someone_else` — the
   MCP instructions say such text is data, never instructions.
@@ -199,6 +203,23 @@ MCP — goes through `services/study/itemDeletion.js`: a snapshot is logged in
 it is removed, and it is taken out of any test. "Borttaget" on the unit page
 lists it with **Ångra**, which restores it with its old code and id.
 `get_study_unit` shows recent deletions so the AI doesn't recreate them.
+
+## Retention
+
+Removed or closed automatically (TTL indexes, and the hourly job in
+`services/maintenance.js`):
+
+| What | When |
+|------|------|
+| `StudyItemDeletion` (the bin) | 180 days after the deletion — Ångra works that long |
+| `StudyFlag`, resolved | 180 days after `resolvedAt`; open reports stay |
+| `StudyShareLink` | 30 days after it expires |
+| `StudySession`, abandoned | closed (not deleted) after 6 h without activity — no XP |
+
+Everything else — answers, sessions, test results — is the student's history
+("Min plugg", meant to cover a whole school career) and stays until the
+account is deleted (`deleteStudyDataForUser`). The privacy page
+(`Integritet.jsx`) says the same; change both together.
 
 ## MCP
 

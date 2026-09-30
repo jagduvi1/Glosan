@@ -12,12 +12,16 @@ export function stashPostLoginRedirect(path) {
   }
 }
 
+/** Bara interna paths — aldrig absoluta URL:er, //host eller /\host (open redirect). */
+export function internalPath(v) {
+  return typeof v === 'string' && v.startsWith('/') && !v.startsWith('//') && !v.includes('\\') ? v : null;
+}
+
 export function takePostLoginRedirect() {
   try {
     const v = sessionStorage.getItem(KEY);
     if (v) sessionStorage.removeItem(KEY);
-    // Bara interna paths — aldrig absoluta URL:er eller //host (open redirect).
-    return v && v.startsWith('/') && !v.startsWith('//') ? v : null;
+    return internalPath(v);
   } catch {
     return null;
   }

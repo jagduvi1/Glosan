@@ -118,9 +118,22 @@ async function main() {
     for (const k of ['gradeYear', 'description', 'book']) assert.equal(preview.body.unit[k], undefined, `the public preview has no ${k}`);
     assert.equal((await api(`/api/study-invite/${code}/accept`, null, { method: 'POST' })).status, 401);
     if (!forAll) assert.equal(await hasPlugga(C), false);
+    // En AI som C kopplade innan Plugga slogs på får inte Plugga av sig själv.
+    const hasStudyTools = async (client) => (await client.listTools()).tools.some((t) => t.name === 'create_study_unit');
+    const cEarly = forAll ? null : await connectMcp(C.token);
+    if (cEarly) assert.equal(await hasStudyTools(cEarly), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
     assert.deepEqual(joined.body, { unitId, joined: true });
     assert.ok(await hasPlugga(C), 'the classmate gets Plugga');
+    if (cEarly) {
+      assert.equal(await hasStudyTools(cEarly), false, 'an old connection does not widen by itself');
+      const cConns = await api('/api/mcp/connections', C.token);
+      assert.deepEqual(cConns.body.connections[0].missingModules, [{ key: 'study', label: 'Plugga' }]);
+      const cLater = await connectMcp(C.token);
+      assert.equal(await hasStudyTools(cLater), true, 'a new connection gets Plugga');
+      await cEarly.close();
+      await cLater.close();
+    }
     const again = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
     assert.equal(again.body.joined, false);
     const own = await api(`/api/study-invite/${code}/accept`, A.token, { method: 'POST' });
@@ -135,7 +148,7 @@ async function main() {
     assert.equal((await api(`/api/study/units/${unitId}/leave`, C.token, { method: 'POST' })).status, 200);
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
-    ok('QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares');
+    ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
 
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });
@@ -303,6 +316,18 @@ async function main() {
     assert.equal(week.body.bySubject[0].subject, 'matematik');
     const term = await api('/api/study/activity?period=term', B.token);
     assert.equal(term.body.timeline.kind, 'days');
+    // B skapades i dag, så vecka, månad och termin rymmer samma pass och svar —
+    // men månad och termin räknas i databasen (aggregering), veckan svar för
+    // svar. Siffrorna ska bli exakt desamma oavsett väg.
+    const month = await api('/api/study/activity?period=month', B.token);
+    const todayRow = (r) => r.body.days.find((d) => d.date === r.body.today);
+    const bySubject = (r) => Object.fromEntries(r.body.bySubject.map((s) => [s.subject, s]));
+    assert.ok(todayRow(week).answered >= 5);
+    for (const view of [month, term]) {
+      assert.deepEqual(view.body.totals, week.body.totals);
+      assert.deepEqual(bySubject(view), bySubject(week));
+      assert.deepEqual(todayRow(view), todayRow(week));
+    }
     const viaAiActivity = await call(claude, 'get_study_activity', { period: 'week' });
     assert.ok(viaAiActivity.data.totals.answered >= act.body.totals.answered, 'the week includes today');
     assert.ok(viaAiActivity.data.sessions.some((s) => s.kind === 'test'));
@@ -427,8 +452,13 @@ async function main() {
     assert.equal(afterDel.body.score.total, 4);
     await api(`/api/study/units/${unitId}/share/${B.id}`, A.token, { method: 'DELETE' });
     assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
+    // Att ta bort kompisen (här gör mottagaren det) avslutar delningen åt båda hållen.
+    assert.equal((await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id] } })).status, 200);
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
+    assert.equal((await api(`/api/me/friends/${A.id}`, B.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
     await claude.close();
-    ok('delete_practice_test keeps the results; removing the friend takes the unit away');
+    ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
 
     // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);

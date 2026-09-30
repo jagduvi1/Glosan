@@ -39,8 +39,40 @@ setInterval(() => {
   }
 }, WINDOW_MS).unref();
 
-function _reset() {
-  buckets.clear();
+// Volym per dygn: 120 skrivanrop per kvart kan var och ett vara nära 1 MB,
+// så antalet räcker inte som skydd för disken. Varje skrivanrops argument
+// räknas (JSON-längd) mot en dygnsbudget per användare — långt över vad en
+// elev skapar (en lista med 300 glosor ≈ 30 kB, ett område ≈ 100–300 kB).
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_WRITE_BYTES_PER_DAY = 10 * 1024 * 1024;
+const byteBuckets = new Map(); // userId → [{ at, bytes }], äldst först
+
+/** Dra `bytes` från användarens dygnsbudget. false = budgeten räcker inte. */
+function takeWriteBytes(userId, bytes, now = Date.now()) {
+  const key = String(userId);
+  let list = byteBuckets.get(key);
+  if (!list) {
+    list = [];
+    byteBuckets.set(key, list);
+  }
+  while (list.length && list[0].at <= now - DAY_MS) list.shift();
+  const used = list.reduce((sum, e) => sum + e.bytes, 0);
+  if (used + bytes > MAX_WRITE_BYTES_PER_DAY) return false;
+  list.push({ at: now, bytes });
+  return true;
 }
 
-module.exports = { takeMutationSlot, WINDOW_MS, MAX_WRITES, _reset };
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, list] of byteBuckets) {
+    while (list.length && list[0].at <= now - DAY_MS) list.shift();
+    if (!list.length) byteBuckets.delete(key);
+  }
+}, 60 * 60 * 1000).unref();
+
+function _reset() {
+  buckets.clear();
+  byteBuckets.clear();
+}
+
+module.exports = { takeMutationSlot, takeWriteBytes, WINDOW_MS, MAX_WRITES, MAX_WRITE_BYTES_PER_DAY, _reset };

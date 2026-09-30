@@ -5,13 +5,17 @@ const User = require('../models/User');
 const CoopStreak = require('../models/CoopStreak');
 const XpEvent = require('../models/XpEvent');
 const { SUBJECT_KEYS } = require('../config/subjects');
+const { localYmd, startOfLocalDay } = require('../utils/localTime');
 
+// Dagar räknas i svensk tid, inte serverns (UTC i containern): den som
+// pluggar 00.30 ska få streaken på rätt dag. Returnerar UTC-ögonblicket då
+// det svenska dygnet som `d` ligger i börjar. Gamla streak-dagar sparade som
+// UTC-midnatt (02.00 svensk tid) hamnar på samma datum som förut.
 function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+  return startOfLocalDay(localYmd(new Date(d)));
 }
 
+// Math.round: dygnet är 23 eller 25 timmar när sommartiden slår om.
 function daysBetween(a, b) {
   return Math.round((startOfDay(b) - startOfDay(a)) / (24 * 60 * 60 * 1000));
 }

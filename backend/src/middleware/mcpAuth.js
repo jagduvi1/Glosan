@@ -21,7 +21,9 @@ const LAST_USED_THROTTLE_MS = 60 * 60 * 1000;
  *   access-token från webbappen). Får fulla scopes, precis som webbappen.
  *
  * Sätter även req.mcpFeatures (användarens effektiva funktionsflaggor), så att
- * verktyg för dolda moduler bara registreras för den som har flaggan.
+ * verktyg för dolda moduler bara registreras för den som har flaggan. För en
+ * glo_-anslutning bara de flaggor som också godkändes vid anslutningen
+ * (McpToken.modules) — en modul som slås på senare kräver ett nytt samtycke.
  *
  * Fel svarar 401 så att MCP-klienten kör sin refresh-grant; routen lägger på
  * WWW-Authenticate-headern som pekar på discovery-dokumentet.
@@ -59,7 +61,14 @@ async function requireMcpAuth(req, res, next) {
     };
     req.mcpToken = { id: String(token._id), scopes: token.scopes };
     req.mcpScopes = token.scopes;
-    req.mcpFeatures = effectiveFeatures(user);
+    const current = effectiveFeatures(user);
+    let approved = Array.isArray(token.modules) ? token.modules : null;
+    if (!approved) {
+      // Anslutning från före McpToken.modules: frys den till det den når nu.
+      approved = current;
+      McpToken.updateOne({ _id: token._id, modules: { $exists: false } }, { $set: { modules: current } }).catch(() => {});
+    }
+    req.mcpFeatures = current.filter((k) => approved.includes(k));
 
     if (!token.lastUsedAt || Date.now() - token.lastUsedAt.getTime() > LAST_USED_THROTTLE_MS) {
       McpToken.updateOne({ _id: token._id }, { $set: { lastUsedAt: new Date() } }).catch(() => {});

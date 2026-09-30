@@ -6,6 +6,8 @@ const OAuthClient = require('../models/OAuthClient');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
+const { ipKey } = require('../middleware/rateKeys');
+const { effectiveFeatures, FEATURE_FIELDS } = require('../config/features');
 const {
   issuer, resourceUrl, verifyPkce, grantedScopes, redirectUriRegistered,
   rotateCredentials, tokenResponse, redirectTrust,
@@ -37,6 +39,7 @@ const router = express.Router();
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 60,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'invalid_request', error_description: 'Too many client registrations from this address; try again later.' }
@@ -48,6 +51,7 @@ const registerLimiter = rateLimit({
 const oauthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 600,
+  keyGenerator: ipKey,
   standardHeaders: true,
   legacyHeaders: false,
   // RFC 6749 §5.2-formad body — en OAuth-klient som får en naken
@@ -256,7 +260,7 @@ router.post('/approve', oauthLimiter, requireAuth, async (req, res) => {
     }
     // En inloggning från före en lösenordsåterställning får inte koppla en AI
     // (en stulen JWT lever upp till 15 min efter bytet).
-    const me = await User.findById(req.user.id, 'credentialsChangedAt').lean();
+    const me = await User.findById(req.user.id, `credentialsChangedAt ${FEATURE_FIELDS}`).lean();
     if (!me) return res.status(401).json({ error: 'Logga in igen.' });
     if (me.credentialsChangedAt && !(req.user.iat >= Math.floor(me.credentialsChangedAt.getTime() / 1000))) {
       return res.status(401).json({ error: 'Logga in igen.' });
@@ -286,6 +290,9 @@ router.post('/approve', oauthLimiter, requireAuth, async (req, res) => {
       redirectUri: redirect_uri,
       codeChallenge: code_challenge,
       scopes,
+      // Det samtyckessidan visade (t.ex. pluggområden) — anslutningen når
+      // aldrig mer än så, även om fler moduler slås på senare.
+      modules: effectiveFeatures(me),
       resource: resource || resourceUrl(),
       expiresAt: new Date(Date.now() + OAuthAuthCode.AUTH_CODE_TTL_MS)
     });
@@ -361,6 +368,7 @@ router.post('/token', oauthLimiter, async (req, res) => {
         user: codeDoc.user,
         name: client.clientName ? client.clientName.slice(0, 120) : 'Ansluten AI',
         scopes: codeDoc.scopes,
+        ...(Array.isArray(codeDoc.modules) ? { modules: [...codeDoc.modules] } : {}),
         oauthClientId: client.clientId,
         resource: codeDoc.resource || resourceUrl(),
         ...cred.fields

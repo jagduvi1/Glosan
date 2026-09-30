@@ -125,3 +125,22 @@ describe('duplicate detection for add_words / create_list', () => {
     expect(duplicates).toHaveLength(2);
   });
 });
+
+describe('daily write volume (audit)', () => {
+  beforeEach(() => mutationBudget._reset());
+
+  test('write tools spend a per-user byte budget per day', async () => {
+    const ctx = { user: { id: 'vol1' }, scopes: ['read', 'write'] };
+    const writeTool = { name: 'w', annotations: { readOnlyHint: false }, handler: async () => 'ran' };
+    expect(mutationBudget.takeWriteBytes('vol1', mutationBudget.MAX_WRITE_BYTES_PER_DAY - 10)).toBe(true);
+    const over = await budgetedHandler(writeTool, ctx, { calls: 0 })({ words: 'x'.repeat(100) });
+    expect(over.isError).toBe(true);
+    expect(over.content[0].text).toMatch(/daily limit/);
+    // En annan användare, och nästa dygn, har sin egen budget.
+    expect(await budgetedHandler(writeTool, { ...ctx, user: { id: 'vol2' } }, { calls: 0 })({ words: 'x' })).toBe('ran');
+    const t0 = 5_000_000;
+    expect(mutationBudget.takeWriteBytes('vol3', mutationBudget.MAX_WRITE_BYTES_PER_DAY, t0)).toBe(true);
+    expect(mutationBudget.takeWriteBytes('vol3', 1, t0 + 1000)).toBe(false);
+    expect(mutationBudget.takeWriteBytes('vol3', 1, t0 + 24 * 60 * 60 * 1000 + 1)).toBe(true);
+  });
+});

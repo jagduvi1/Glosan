@@ -33,6 +33,13 @@ const mcpTokenSchema = new mongoose.Schema({
       message: 'Token must have at least one scope'
     }
   },
+  // Moduler bakom funktionsflaggor (config/features.js, t.ex. 'study' =
+  // Plugga) som kontot hade när användaren godkände anslutningen. mcpAuth ger
+  // anslutningen bara flaggor som finns både här och på kontot nu — så en
+  // anslutning vidgas aldrig av att en modul slås på senare; då ansluter man
+  // igen (profilsidan säger till). Saknas på rader från före fältet: de fryses
+  // vid första användningen till det de når då.
+  modules: { type: [String], default: undefined },
   // Access-tokenens utgång. mcpAuth svarar 401 efter detta → klienten kör
   // sin refresh-grant.
   expiresAt: { type: Date, required: true },

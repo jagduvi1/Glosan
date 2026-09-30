@@ -229,7 +229,8 @@ export default function ConnectAiAuthorize() {
 
       <p className="t-hand muted" style={{ fontSize: 15 }}>
         Du kan koppla bort AI:n när som helst under Profil. Den når dina listor, glosor{study ? ', pluggområden' : ''} och
-        resultat — aldrig ditt lösenord eller din e-post.
+        resultat — aldrig ditt lösenord eller din e-post. Slås fler delar av Glosan på senare når AI:n dem först
+        när du anslutit igen.
       </p>
       <p className="t-hand muted" style={{ fontSize: 14 }}>
         När du godkänt skickas du tillbaka till <strong>{redirectHost}</strong>

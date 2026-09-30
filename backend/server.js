@@ -28,6 +28,7 @@ const http = require('http');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const { initSockets } = require('./src/socket');
+const { startMaintenance } = require('./src/services/maintenance');
 
 const PORT = process.env.PORT || 5000;
 
@@ -38,4 +39,6 @@ connectDB().then(() => {
   server.listen(PORT, () => {
     console.log(`Glosan backend running on port ${PORT}`);
   });
+  // Diskvarning till admins och stängning av övergivna pass, en gång i timmen.
+  startMaintenance();
 });

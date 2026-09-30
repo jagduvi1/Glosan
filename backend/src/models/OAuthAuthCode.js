@@ -20,6 +20,8 @@ const oauthAuthCodeSchema = new mongoose.Schema({
   redirectUri: { type: String, required: true },
   codeChallenge: { type: String, required: true },
   scopes: { type: [String], required: true },
+  // Modulerna användaren hade när hen godkände (se McpToken.modules).
+  modules: { type: [String], default: undefined },
   resource: { type: String, default: null },
   consumedAt: { type: Date, default: null },
   expiresAt: { type: Date, required: true },

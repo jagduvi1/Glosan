@@ -81,12 +81,34 @@ describe('streak (shared by vocabulary quizzes and Plugga)', () => {
 
   test('starts, continues, is unchanged the same day, resets after a gap', () => {
     const u = { streak: { current: 0, longest: 0, lastActiveDay: null } };
-    expect(tickStreak(u, day('2026-10-01T12:00:00'))).toBe('started');
-    expect(tickStreak(u, day('2026-10-01T18:00:00'))).toBe('unchanged');
-    expect(tickStreak(u, day('2026-10-02T09:00:00'))).toBe('continued');
+    expect(tickStreak(u, day('2026-10-01T12:00:00Z'))).toBe('started');
+    expect(tickStreak(u, day('2026-10-01T18:00:00Z'))).toBe('unchanged');
+    expect(tickStreak(u, day('2026-10-02T09:00:00Z'))).toBe('continued');
     expect(u.streak).toMatchObject({ current: 2, longest: 2 });
-    expect(tickStreak(u, day('2026-10-05T09:00:00'))).toBe('reset');
+    expect(tickStreak(u, day('2026-10-05T09:00:00Z'))).toBe('reset');
     expect(u.streak).toMatchObject({ current: 1, longest: 2 });
+  });
+
+  test('days are Swedish days: 23.30 and 00.30 are two days in a row (audit)', () => {
+    const u = { streak: { current: 0, longest: 0, lastActiveDay: null } };
+    // Sommartid (UTC+2): båda ligger på samma UTC-dygn, men på två svenska.
+    expect(tickStreak(u, day('2026-09-29T21:30:00Z'))).toBe('started');
+    expect(tickStreak(u, day('2026-09-29T22:30:00Z'))).toBe('continued');
+    expect(tickStreak(u, day('2026-09-30T21:59:00Z'))).toBe('unchanged');
+  });
+
+  test('the 25-hour day when summer time ends is still one day', () => {
+    const u = { streak: { current: 0, longest: 0, lastActiveDay: null } };
+    expect(tickStreak(u, day('2026-10-24T10:00:00Z'))).toBe('started');
+    expect(tickStreak(u, day('2026-10-25T22:30:00Z'))).toBe('continued'); // 23.30 vintertid
+    expect(tickStreak(u, day('2026-10-26T10:00:00Z'))).toBe('continued');
+  });
+
+  test('streak days stored at UTC midnight before the fix still line up', () => {
+    const u = { streak: { current: 3, longest: 3, lastActiveDay: new Date('2026-09-29T00:00:00Z') } };
+    expect(tickStreak(u, day('2026-09-30T08:00:00Z'))).toBe('continued');
+    const v = { streak: { current: 3, longest: 3, lastActiveDay: new Date('2026-09-30T00:00:00Z') } };
+    expect(tickStreak(v, day('2026-09-30T08:00:00Z'))).toBe('unchanged');
   });
 
   test('subject XP total ignores junk', () => {
