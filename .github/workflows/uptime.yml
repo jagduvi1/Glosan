@@ -10,6 +10,9 @@ name: Uptime
 # schemalagda körningar går till den som senast ändrade schemat). Tre försök
 # med en halv minuts mellanrum, så en omstart vid deploy inte larmar.
 # OBS: GitHub stänger av schemat i publika repon efter 60 dagar utan aktivitet.
+# OBS: GitHub startar schemalagda körningar när det finns kapacitet — på det
+# här kontot ofta timmar sent, och täta scheman tappas. Det här är ingen riktig
+# larmtjänst; se "Monitoring" i docs/backup.md.
 
 on:
   schedule:

@@ -144,13 +144,21 @@ the only monitoring watched the front page, which nginx kept serving happily
 without a backend. Whatever watches the backups should also watch
 `/api/health`, not `/`.
 
-`.github/workflows/uptime.yml` does that from the outside: every 15 minutes
-a GitHub-hosted runner fetches `https://glosan.app/api/health` (three tries,
-half a minute apart, so a deploy restart doesn't count) and fails unless it
-says `ok` with MongoDB `connected`. GitHub mails a failed scheduled run to
-whoever last changed the schedule — keep Actions notifications on. GitHub
-pauses schedules in public repos after 60 days without activity; re-enable
-it under Actions if that happens.
+`.github/workflows/uptime.yml` tries to do that from the outside: four times
+an hour a GitHub-hosted runner fetches `https://glosan.app/api/health` (three
+tries, half a minute apart, so a deploy restart doesn't count) and fails
+unless it says `ok` with MongoDB `connected`. GitHub mails a failed scheduled
+run to whoever last changed the schedule — keep Actions notifications on.
+GitHub pauses schedules in public repos after 60 days without activity;
+re-enable it under Actions if that happens.
+
+**It is best effort, not a monitor.** GitHub starts scheduled runs when it has
+capacity: Cellarion's weekly 06:17 check started between 07:16 and 13:57 in
+August–September 2026, and runs of a frequent schedule are dropped — on
+2026-09-30 this one had not run once in three hours. For real alerting, point
+an external monitor (UptimeRobot, Better Stack or similar) at
+`https://glosan.app/api/health` with the keyword `connected`, and put
+healthchecks.io ping URLs in `backup.env` (above).
 
 The backend watches the disk itself too: once an hour
 `backend/src/services/maintenance.js` reads the host disk (the container's
