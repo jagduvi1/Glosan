@@ -74,7 +74,12 @@ log "uploading encrypted snapshot to $RESTIC_REPOSITORY…"
 restic backup --tag glosan --host glosan "$STAGE"
 
 log "pruning (keep ${KEEP_DAILY}d / ${KEEP_WEEKLY}w / ${KEEP_MONTHLY}m)…"
-restic forget --tag glosan --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+# Group by host+tag, not restic's default host+paths: every run stages the dump
+# in a fresh mktemp dir, so with the default each snapshot was a group of its
+# own and nothing was ever forgotten (34 snapshots on 2026-09-30, none pruned).
+FORGET=(forget --tag glosan --group-by host,tags
+  --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune)
+restic "${FORGET[@]}"
 
 # Optional second, off-provider copy (e.g. Backblaze B2) so a Hetzner-account
 # level loss can't wipe everything. Enable by setting B2_* in backup.env.
@@ -84,7 +89,7 @@ if [ -n "${B2_RESTIC_REPOSITORY:-}" ]; then
   restic -r "$B2_RESTIC_REPOSITORY" snapshots >/dev/null 2>&1 \
     || restic -r "$B2_RESTIC_REPOSITORY" init --copy-chunker-params --from-repo "$RESTIC_REPOSITORY"
   restic -r "$B2_RESTIC_REPOSITORY" copy --from-repo "$RESTIC_REPOSITORY" --tag glosan
-  restic -r "$B2_RESTIC_REPOSITORY" forget --tag glosan --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+  restic -r "$B2_RESTIC_REPOSITORY" "${FORGET[@]}"
 fi
 
 log "backup complete."

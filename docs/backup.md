@@ -27,6 +27,10 @@ setup runs for Cellarion on the other VM.
 - **A minimum-size guard** in `backup.sh`. `mongodump` of an empty database
   exits 0 and writes a tiny archive; without the guard, a broken database would
   produce valid-looking snapshots that rotate the good ones away within a week.
+- **`forget --group-by host,tags`.** Each run stages the dump in a fresh temp
+  dir, and restic groups snapshots by host *and path* by default — so every
+  snapshot was a group of its own and retention never removed anything. Until
+  2026-09-30 it didn't: the restore drill that day found 34 snapshots, all kept.
 
 ## First-time setup on the VM
 
