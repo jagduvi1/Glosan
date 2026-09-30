@@ -37,7 +37,8 @@
 .chip:disabled { opacity: 0.5; cursor: default; }
 
 .practice-shell { max-width: 720px; margin: 0 auto; }
-.practice-choice { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: flex-start; padding: 14px 18px; font-size: 17px; text-align: left; }
+/* .btn är nowrap med line-height 1: långa svarsalternativ klipptes vid skärmkanten på mobilen. */
+.practice-choice { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: flex-start; padding: 14px 18px; font-size: 17px; text-align: left; white-space: normal; line-height: 1.35; }
 .practice-choice-key { width: 28px; height: 28px; border: 2px solid var(--ink); border-radius: 6px; font-family: var(--font-mono); font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; background: var(--paper-deep); flex: none; }
 
 .result-banner { border: 3px solid var(--ink); border-radius: 16px; padding: 14px 18px; font-weight: 800; font-size: 19px; }
