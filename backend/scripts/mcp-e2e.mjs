@@ -203,6 +203,20 @@ async function main() {
     assert.equal(about.data.license, 'AGPL-3.0-or-later');
     ok('not_found for unknown ids, list_hard_words, get_profile, get_source_info');
 
+    // Dela via AI:n: kompisar (den här användaren har inga) och länk — som i appen.
+    assert.deepEqual((await call(client, 'list_friends')).data.friends, []);
+    const notFriend = await call(client, 'share_list', { list_id: listId, friends: ['nobody-here'] });
+    assert.equal(notFriend.error.code, 'not_found');
+    assert.deepEqual(notFriend.error.not_friends, ['nobody-here']);
+    const link = await call(client, 'create_list_link', { list_id: listId, days: 1, max_uses: 10 });
+    assert.match(link.data.url, /\/j\/[A-Z0-9]+$/);
+    assert.equal((await fetch(`${BASE}/api/list-invite/${link.data.code}`)).status, 200, 'the link opens for anyone');
+    assert.equal((await call(client, 'create_list_link', { list_id: listId, days: 2 })).error.code, 'invalid_input');
+    assert.deepEqual((await call(client, 'get_list_sharing', { list_id: listId })).data.links.map((l) => l.code), [link.data.code]);
+    assert.equal((await call(client, 'stop_sharing_list', { list_id: listId, link_code: link.data.code })).isError, false);
+    assert.equal((await fetch(`${BASE}/api/list-invite/${link.data.code}`)).status, 404, 'a closed link is dead');
+    ok('sharing: list_friends, share_list only with friends, create_list_link (opens for anyone), get_list_sharing, stop_sharing_list');
+
     const del = await call(client, 'delete_words', { list_id: listId, word_ids: [gurka.word_id] });
     assert.equal(del.data.deleted.length, 1);
     const gone = await call(client, 'delete_list', { list_id: listId });

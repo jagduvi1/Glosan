@@ -55,7 +55,7 @@ describe('tool invariants', () => {
     const destructive = allTools().filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort();
     expect(destructive).toEqual([
       'delete_list', 'delete_practice_test', 'delete_study_items', 'delete_study_page', 'delete_study_unit', 'delete_words',
-      'update_study_item', 'update_study_page', 'update_study_unit'
+      'stop_sharing_list', 'stop_sharing_study', 'update_study_item', 'update_study_page', 'update_study_unit'
     ]);
   });
 

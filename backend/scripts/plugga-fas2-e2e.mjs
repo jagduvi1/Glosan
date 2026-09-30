@@ -175,6 +175,23 @@ async function main() {
     assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
     ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units');
 
+    // ── Dela via AI:n ───────────────────────────────────────────────────────
+    const aiShare = await call(claude, 'share_study_units', { units: [unitId, histId], friends: [B.name] });
+    assert.equal(aiShare.isError, false, JSON.stringify(aiShare));
+    const aiNotFriend = await call(claude, 'share_study_units', { units: [unitId], friends: [C.name] });
+    assert.deepEqual(aiNotFriend.error.not_friends, [C.name], 'a classmate who joined by link is not a friend');
+    const aiLink = await call(claude, 'create_study_link', { units: [unitId, histId], title: 'Från AI:n', days: 1, max_uses: 10 });
+    assert.match(aiLink.data.url, /\/p\/[A-Z0-9]+$/);
+    const aiPreview = await api(`/api/study-invite/${aiLink.data.code}`);
+    assert.equal(aiPreview.body.title, 'Från AI:n');
+    assert.equal(aiPreview.body.units.length, 2);
+    assert.ok((await call(claude, 'get_study_sharing', {})).data.links.some((l) => l.code === aiLink.data.code && l.unit_count === 2));
+    assert.ok((await call(claude, 'get_study_sharing', { unit: unitId })).data.shared_with.some((p) => p.username === B.name));
+    assert.equal((await call(claude, 'share_study_units', { units: ['64b000000000000000000009'], friends: [B.name] })).error.code, 'not_found');
+    assert.equal((await call(claude, 'stop_sharing_study', { link_code: aiLink.data.code })).isError, false);
+    assert.equal((await api(`/api/study-invite/${aiLink.data.code}`)).status, 404);
+    ok('the AI shares units: share_study_units (friends only), create_study_link (one link, title, preview), get_study_sharing, stop_sharing_study');
+
     // ── Mappar ──────────────────────────────────────────────────────────────
     const folder = await api('/api/study/folders', A.token, { method: 'POST', body: { name: 'Inför provet v. 42', color: 'sky', unitIds: [unitId, hist.data.unit_id, '64b000000000000000000009'] } });
     assert.equal(folder.status, 201);
