@@ -106,6 +106,10 @@ async function main() {
     assert.equal(new URL(page.url()).pathname, '/login');
     await login(page, A);
     assert.equal(new URL(page.url()).pathname, '/plugga', 'back on the Plugga page after logging in');
+    // …och kvar där: /login-vakten skickade förut vidare till /lists en stund
+    // efter att sidan själv navigerat (React Router 7 byter sida i en transition).
+    await pause(2000);
+    assert.equal(new URL(page.url()).pathname, '/plugga', 'still on the Plugga page a moment later');
     await page.goto(`${BASE}/finns-inte`, { waitUntil: 'networkidle0' });
     await waitForText(page, 'vilse');
     ok('a Plugga page sends you to login and back again; unknown pages show the 404 page');
@@ -140,9 +144,19 @@ async function main() {
     await waitForText(gpage, 'Allt inför provet');
     await waitForText(gpage, 'delar 3 områden med dig');
     await waitForText(gpage, 'Skapa konto');
+    // En klasskompis med konto: "Jag har konto" → logga in → tillbaka till
+    // länken och med i områdena (inte bara till listorna).
+    const C = await signUp('brc');
+    await Promise.all([gpage.waitForNavigation({ waitUntil: 'networkidle0' }), clickText(gpage, 'button, a', 'Jag har konto')]);
+    assert.equal(new URL(gpage.url()).pathname, '/login');
+    await login(gpage, C);
+    await gpage.waitForFunction(() => /^\/plugga/.test(location.pathname), { timeout: 10000 });
+    await pause(1500);
+    assert.match(new URL(gpage.url()).pathname, /^\/plugga/, 'lands in Plugga, not on /lists');
+    assert.equal((await api('/api/study/units?allTerms=1', C.token)).body.units.length, 3, 'joined all three units');
     await guest.close();
     current = page;
-    ok('the link shows its name and all three units to someone without an account, with "Skapa konto"');
+    ok('the link shows its name and all three units to someone without an account; logging in from it joins them');
 
     // ── ämnessidan ──────────────────────────────────────────────────────────
     await page.goto(`${BASE}/plugga/amne/matematik`, { waitUntil: 'networkidle0' });

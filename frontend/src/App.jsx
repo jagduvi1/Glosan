@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { postLoginPath } from './utils/postLoginRedirect';
 import { GamificationProvider } from './contexts/GamificationContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -65,6 +66,16 @@ function LoginFirst() {
   return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
 }
 
+// /login och /register för den som redan är inloggad: vidare dit sidan själv
+// skulle skicka en (QR-inbjudan, sidan man var på väg till) — inte alltid
+// /lists. Efter inloggning byter React Router 7 sida i en transition, och
+// vakten här hann före sidans navigate: QR-länkar gick aldrig med.
+function AuthPage({ children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  return user ? <Navigate to={postLoginPath(location)} replace /> : children;
+}
+
 function FeatureRoute({ feature, children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="container"><p>Laddar…</p></div>;
@@ -91,11 +102,11 @@ function AppRoutes() {
   return (
     <Suspense fallback={<div className="container"><p>Laddar…</p></div>}>
       <Routes>
-        <Route path="/login"    element={user ? <Navigate to="/lists" replace /> : <Login />} />
+        <Route path="/login"    element={<AuthPage><Login /></AuthPage>} />
         {/* Landning efter Google-rundresan — navigerar själv utifrån user/error,
             så den gateas inte på user som /login. */}
         <Route path="/login/callback" element={<LoginCallback />} />
-        <Route path="/register" element={user ? <Navigate to="/lists" replace /> : <Register />} />
+        <Route path="/register" element={<AuthPage><Register /></AuthPage>} />
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/lists" replace /> : <ForgotPassword />} />
