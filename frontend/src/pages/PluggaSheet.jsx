@@ -125,7 +125,14 @@ export default function PluggaSheet() {
             <button
               type="button"
               className="btn btn-ghost"
-              onClick={() => setExclude((prev) => [...new Set([...prev, ...data.items.map((it) => it.id)])].slice(-100))}
+              onClick={() => {
+                const ids = data.items.map((it) => it.id);
+                // Allt redan utskrivet (bladet gav inget nytt): börja om från det här bladet.
+                setExclude((prev) => {
+                  const all = [...new Set([...prev, ...ids])];
+                  return all.length === prev.length ? ids : all.slice(-100);
+                });
+              }}
               title="Andra uppgifter än de du redan skrivit ut, när det finns fler — och nya tal i mallövningarna"
             >
               🎲 Nya uppgifter

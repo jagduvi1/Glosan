@@ -491,6 +491,7 @@ async function main() {
     assert.equal(exSheet.body.items.some((i) => i.kind === 'card'), false, 'mode exercises prints no cards');
     assert.equal((await api(`/api/study/sheet?units=${drillId}&mode=ladder`, A.token)).status, 400, 'the ladder cannot be printed');
     assert.equal((await api(`/api/study/sheet?units=${drillId}&levels=X`, A.token)).status, 400);
+    assert.equal((await api('/api/study/sheet?units=,', A.token)).status, 400, 'an empty unit list is not "everything"');
     assert.equal((await api(`/api/study/sheet?units=${drillId}`, B.token)).status, 404, 'no sheet from someone else\'s unit');
 
     const tplTest = await call(claude, 'create_practice_test', { unit_id: drillId, title: 'x', questions: [exs[5]] });

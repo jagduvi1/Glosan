@@ -224,7 +224,7 @@ router.get('/sheet', async (req, res, next) => {
     if (levels && levels.some((l) => !LEVELS.includes(l))) return bad(res, 'levels must be a subset of E, C, A');
     // Ett omfång som finns men inte går att läsa ger 400 — aldrig hela biblioteket.
     const unitIds = list(q.units);
-    if (q.units !== undefined && !unitIds) return bad(res, 'units must be a comma-separated list of ids');
+    if (q.units !== undefined && !unitIds?.length) return bad(res, 'units must be a comma-separated list of ids');
     if (q.folder !== undefined && !str(q.folder, 40)) return bad(res, 'folder must be an id');
     const exclude = q.exclude === undefined ? [] : list(q.exclude);
     if (!exclude) return bad(res, 'exclude must be a comma-separated list of ids');
