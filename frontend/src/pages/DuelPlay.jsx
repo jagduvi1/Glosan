@@ -5,7 +5,7 @@ import { fetchDuel, submitDuel } from '../api/duels';
 import GloAvatar from '../components/GloAvatar';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG } from '../utils/lang';
-import { answerVariants } from '../utils/quiz';
+import { matchesAnswer } from '../utils/quiz';
 
 // Sida för att spela en async-duell. Frågorna är låsta vid skapandet, så
 // vi visar dem i samma ordning som alla andra deltagare. Timer startar
@@ -69,10 +69,7 @@ export default function DuelPlay() {
   const promptWord = duel.reversed ? current.target : current.source;
   const expectedWord = duel.reversed ? current.source : current.target;
 
-  const checkAnswer = (given) => {
-    const variants = answerVariants(expectedWord);
-    return variants.includes(given.trim().toLowerCase());
-  };
+  const checkAnswer = (given) => matchesAnswer(given, expectedWord);
 
   const onSubmitAnswer = (e) => {
     e.preventDefault();

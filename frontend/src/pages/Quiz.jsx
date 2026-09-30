@@ -6,7 +6,7 @@ import { updateGlos } from '../api/glosor';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
-import { shuffle, answerVariants, buildDistractors, isVoiceMatch, isNearMiss } from '../utils/quiz';
+import { shuffle, matchesAnswer, buildDistractors, isVoiceMatch, isNearMiss } from '../utils/quiz';
 import { speak, stopSpeaking, createRecognition, isTTSSupported, isSTTSupported } from '../utils/voice';
 
 const VOICE_MODE_KEY = 'glosan:quizVoiceMode';
@@ -128,7 +128,7 @@ export default function Quiz() {
     e.preventDefault();
     if (!current) return;
     const expectedWord = current[expectedField];
-    const isCorrect = answerVariants(expectedWord).includes(answer.trim().toLowerCase());
+    const isCorrect = matchesAnswer(answer, expectedWord);
     recordAnswer(isCorrect, answer.trim());
   };
 

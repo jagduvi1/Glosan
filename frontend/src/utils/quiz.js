@@ -33,6 +33,16 @@ export function answerVariants(target) {
   return acc.map((parts) => parts.join(' ').toLowerCase());
 }
 
+// Is `given` one of the accepted phrasings? Word by word, like the server's
+// live duel — never through the (capped) list of all combinations, so a word
+// with many alternatives is still graded right. Case and spacing are ignored.
+export function matchesAnswer(given, target) {
+  const words = String(given ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const tokens = String(target ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length !== tokens.length) return false;
+  return tokens.every((t, i) => t.split('/').map((s) => s.trim()).filter(Boolean).includes(words[i]));
+}
+
 // Plain Levenshtein edit distance. Used to forgive close STT mis-hearings
 // in voice mode (e.g. "red" vs "read"). Not used for text mode.
 export function levenshtein(a, b) {
@@ -65,8 +75,8 @@ export function levenshtein(a, b) {
 export function isVoiceMatch(transcript, expectedWord) {
   if (!transcript || !expectedWord) return false;
   const t = transcript.trim().toLowerCase();
+  if (matchesAnswer(t, expectedWord)) return true;
   const variants = answerVariants(expectedWord);
-  if (variants.includes(t)) return true;
   for (const v of variants) {
     const threshold = v.length >= 7 ? 2 : v.length >= 4 ? 1 : 0;
     if (threshold === 0) continue;
