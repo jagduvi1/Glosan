@@ -170,8 +170,8 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
     }
 
     // Lägg till båda som vänner (upsert) — bara om skaparen kryssat i det. Länkar
-    // från innan kryssrutan fanns saknar fältet och fortsätter som de lovade;
-    // länkar som AI:n gjort har alltid false.
+    // från innan kryssrutan fanns (true, eller helt utan fältet från före
+    // v0.1.31) fortsätter som de lovade; länkar som AI:n gjort har alltid false.
     if (invite.befriend !== false) {
       const now = new Date();
       await Friendship.updateOne(
