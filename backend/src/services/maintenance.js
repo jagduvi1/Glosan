@@ -43,7 +43,6 @@ async function checkDisk({ now = Date.now(), usage = diskUsage(), send = email.s
   const admins = await User.find({ roles: 'admin' }, 'email').lean();
   const to = admins.map((a) => a.email).filter(Boolean);
   if (!to.length) return { used: usage.used, alerted: false };
-  lastDiskAlertAt = now;
   await send({
     to,
     subject: `Glosan: disken är ${pct} % full`,
@@ -57,6 +56,8 @@ async function checkDisk({ now = Date.now(), usage = diskUsage(), send = email.s
       'Du får ett nytt mejl om ett dygn om disken fortfarande är full.'
     ].join('\n')
   });
+  // Först efter ett lyckat utskick: misslyckas det försöker nästa körning igen.
+  lastDiskAlertAt = now;
   return { used: usage.used, alerted: true };
 }
 

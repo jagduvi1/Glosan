@@ -26,6 +26,17 @@ test('a nearly full disk mails the admins, once a day', async () => {
   warn.mockRestore();
 });
 
+test('a mail that fails is retried next hour, not a day later (review of #119)', async () => {
+  const usage = { used: 0.9, freeBytes: 4 * 1024 ** 3 };
+  const t0 = 2_000_000_000;
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const down = jest.fn(async () => { throw new Error('resend down'); });
+  await expect(checkDisk({ now: t0, usage, send: down, mailEnabled: true })).rejects.toThrow('resend down');
+  const up = jest.fn(async () => ({}));
+  expect((await checkDisk({ now: t0 + 60 * 60 * 1000, usage, send: up, mailEnabled: true })).alerted).toBe(true);
+  warn.mockRestore();
+});
+
 test('a disk with room is left alone', async () => {
   const send = jest.fn();
   expect((await checkDisk({ usage: { used: 0.5, freeBytes: 18 * 1024 ** 3 }, send, mailEnabled: true })).alerted).toBe(false);
