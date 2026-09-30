@@ -104,9 +104,30 @@ It asks for confirmation, drops the whole `glosan` database, then runs
 collections that are in the archive, so collections added by a later release
 (e.g. `studytests`) would otherwise survive and point at data that is gone.
 
-**Run a restore drill periodically.** An untested backup is not a backup — the
-failure modes (wrong database name, a password nobody wrote down, an
-`authorized_keys` entry that was rotated away) only surface when you try.
+### Restore drill
+
+An untested backup is not a backup — the failure modes (wrong database name, a
+password nobody wrote down, an `authorized_keys` entry that was rotated away)
+only surface when you try. `drill.sh` tries without touching production:
+
+```bash
+cd ~/apps/glosan/scripts/backup
+./drill.sh              # latest snapshot (or pass an id)
+```
+
+It restores the snapshot into a throwaway `mongo` container (same image, no
+network, 512 MB cap), lists every collection's documents/indexes next to the
+live database's (read-only), fails if the backup has no users, and removes
+everything it created. Differences are expected — they are what changed after
+the snapshot was taken, including collections and indexes from later releases.
+Run it monthly and after any change to the backup setup.
+
+## The copy on the VM
+
+The VM runs its own copy of these scripts in `~/apps/glosan/scripts/backup` —
+that directory is not a git checkout. After changing a script here, copy it
+there (`scp scripts/backup/<file> johan@<vm>:apps/glosan/scripts/backup/`)
+and `chmod +x` it.
 
 ## Monitoring
 
