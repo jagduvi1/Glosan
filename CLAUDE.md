@@ -145,6 +145,12 @@ cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 # your installed Chrome; CHROME_PATH overrides; screenshot on failure in browser-shots/)
 cd backend && node scripts/browser-e2e.mjs http://localhost:8080
 # Frontend unit tests not configured yet — add Vitest when you write the first test.
+
+# Change backend dependencies with the image's npm: a different local npm can
+# write a lockfile that `npm ci` in the Docker build rejects (EUSAGE)
+docker run --rm -v "$PWD/backend:/app" -w /app node:24-alpine npm install <pkg> --package-lock-only
+# App icons (favicon.ico, home-screen PNGs) are drawn from assets/logo-mark.svg
+cd backend && node scripts/make-icons.mjs
 ```
 
 ---
