@@ -26,18 +26,50 @@ function promptFor(q, reversed) {
   return reversed ? q.target : q.source;
 }
 
-// Mjuk svarsmatchning: trimma + lowercase + slash-varianter. Vi importerar
-// inte frontend's quiz.js, men replikerar samma logik här.
+// Mjuk svarsmatchning: trimma + lowercase + slash-varianter ("mycket söt/gullig"
+// → "mycket söt" eller "mycket gullig"). Ord för ord — alla kombinationer
+// räknades förut ut i förväg, och "a/b a/b a/b …" (2^50 varianter) åt upp
+// serverns minne.
 function answerMatches(given, expected) {
-  if (!given || !expected) return false;
-  const g = given.trim().toLowerCase();
-  const tokens = expected.trim().split(/\s+/);
-  const perToken = tokens.map((t) => t.split('/').map((s) => s.trim()).filter(Boolean));
-  const variants = perToken
-    .reduce((acc, opts) => acc.flatMap((prefix) => opts.map((opt) => [...prefix, opt])), [[]])
-    .map((parts) => parts.join(' ').toLowerCase());
-  return variants.includes(g);
+  if (typeof given !== 'string' || typeof expected !== 'string') return false;
+  const words = given.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const tokens = expected.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length !== tokens.length) return false;
+  return tokens.every((t, i) => t.split('/').map((s) => s.trim()).filter(Boolean).includes(words[i]));
 }
+
+// Varje händelse och timer körs skyddat: ett fel (eller ett trasigt meddelande
+// från en klient) loggas i stället för att ta ner hela servern för alla.
+function safe(name, fn) {
+  return (...args) => {
+    try {
+      const out = fn(...args);
+      if (out && typeof out.catch === 'function') out.catch((e) => console.error(`live duel ${name}:`, e.message));
+    } catch (e) {
+      console.error(`live duel ${name}:`, e.message);
+    }
+  };
+}
+
+// Timers hör till sin match: de rensas när matchen tar slut eller alla går, och
+// gör ingenting om matchen hunnit bytas ut (samma duell startad på nytt).
+function later(duelId, game, ms, fn) {
+  const t = setTimeout(safe('timer', () => {
+    game.timers.delete(t);
+    if (game.finished || games.get(duelId) !== game) return;
+    fn();
+  }), ms);
+  game.timers.add(t);
+  return t;
+}
+
+function clearTimers(game) {
+  for (const t of game.timers) clearTimeout(t);
+  game.timers.clear();
+  game.roundTimer = null;
+}
+
+const isObjectId = (v) => typeof v === 'string' && /^[a-f0-9]{24}$/i.test(v);
 
 function maskQuestion(q, reversed) {
   // Skickar bara promptdelen till klienten — det förväntade svaret behålls
@@ -57,6 +89,11 @@ function getOrCreateGame(duelId, duel) {
     scores: new Map(duel.participants.map((p) => [p.user.toString(), 0])),
     currentIdx: -1,
     roundAnswered: new Set(),
+    // En runda är öppen från frågan tills den avgjorts: svar efter det (en
+    // andra rätt inom pausen) räknas inte och startar inga fler rundor.
+    roundOpen: false,
+    startScheduled: false,
+    timers: new Set(),
     questions: duel.questions,
     reversed: duel.reversed,
     duelDoc: duel,
@@ -67,12 +104,14 @@ function getOrCreateGame(duelId, duel) {
 }
 
 function startRound(io, duelId, game) {
+  if (game.finished || games.get(duelId) !== game) return;
   game.currentIdx += 1;
   game.roundAnswered = new Set();
   if (game.currentIdx >= game.questions.length) {
     return finishGame(io, duelId, game);
   }
   const q = game.questions[game.currentIdx];
+  game.roundOpen = true;
   io.to(duelId).emit('live:round', {
     index: game.currentIdx,
     total: game.questions.length,
@@ -80,17 +119,23 @@ function startRound(io, duelId, game) {
     startsInMs: 0
   });
   // Timeout om ingen svarar
-  game.roundTimer = setTimeout(() => {
+  game.roundTimer = later(duelId, game, ROUND_TIMEOUT_MS, () => {
     advanceRound(io, duelId, game, null, null, null);
-  }, ROUND_TIMEOUT_MS);
+  });
 }
 
 function advanceRound(io, duelId, game, winnerId, given, isCorrect) {
+  // Bara en gång per runda — annars startade ett sent svar en extra runda,
+  // och en kvarglömd timer kraschade servern efter sista frågan.
+  if (!game.roundOpen) return;
+  game.roundOpen = false;
   if (game.roundTimer) {
     clearTimeout(game.roundTimer);
+    game.timers.delete(game.roundTimer);
     game.roundTimer = null;
   }
   const q = game.questions[game.currentIdx];
+  if (!q) return;
   const expected = expectedFor(q, game.reversed);
   io.to(duelId).emit('live:round-result', {
     index: game.currentIdx,
@@ -100,12 +145,14 @@ function advanceRound(io, duelId, game, winnerId, given, isCorrect) {
     expected,
     scores: Array.from(game.scores.entries()).map(([id, s]) => ({ userId: id, score: s }))
   });
-  setTimeout(() => startRound(io, duelId, game), BETWEEN_ROUNDS_MS);
+  later(duelId, game, BETWEEN_ROUNDS_MS, () => startRound(io, duelId, game));
 }
 
 async function finishGame(io, duelId, game) {
   if (game.finished) return;
   game.finished = true;
+  game.roundOpen = false;
+  clearTimers(game);
   // Skriv tillbaka till Duel-dokumentet så result-sidan kan hämta det
   // som vanligt via REST.
   try {
@@ -130,13 +177,15 @@ async function finishGame(io, duelId, game) {
     scores: Array.from(game.scores.entries()).map(([id, s]) => ({ userId: id, score: s })),
     total: game.questions.length
   });
-  games.delete(duelId);
+  // Bara den här matchen — en ny av samma duell får aldrig raderas härifrån.
+  if (games.get(duelId) === game) games.delete(duelId);
 }
 
 function registerLiveDuel(io) {
   io.on('connection', (socket) => {
-    socket.on('live:join', async ({ duelId }) => {
-      if (!duelId) return socket.emit('live:error', 'Saknar duelId');
+    socket.on('live:join', safe('join', async (payload) => {
+      const duelId = payload?.duelId;
+      if (!isObjectId(duelId)) return socket.emit('live:error', 'Saknar duelId');
       try {
         const duel = await Duel.findById(duelId);
         if (!duel || duel.kind !== 'live') {
@@ -146,6 +195,10 @@ function registerLiveDuel(io) {
         const isParticipant = duel.participants.some((p) => p.user.toString() === userId);
         if (!isParticipant) {
           return socket.emit('live:error', 'Du är inte med i den här duellen');
+        }
+        // En avgjord duell spelas inte om (resultatet skulle skrivas över).
+        if (duel.participants.every((p) => p.status === 'completed')) {
+          return socket.emit('live:error', 'Duellen är redan klar');
         }
         const game = getOrCreateGame(duelId, duel);
         if (game.finished) {
@@ -171,11 +224,12 @@ function registerLiveDuel(io) {
           }))
         });
       } catch (e) {
-        socket.emit('live:error', e.message);
+        console.error('live duel join:', e.message);
+        socket.emit('live:error', 'Kunde inte gå med i duellen');
       }
-    });
+    }));
 
-    socket.on('live:ready', () => {
+    socket.on('live:ready', safe('ready', () => {
       const duelId = socket.data.liveDuelId;
       if (!duelId) return;
       const game = games.get(duelId);
@@ -184,22 +238,27 @@ function registerLiveDuel(io) {
       io.to(duelId).emit('live:lobby-update', {
         ready: Array.from(game.ready)
       });
-      // Båda redo → kicka igång
+      // Båda redo → kicka igång (en gång — ett upprepat "redo" under
+      // nedräkningen startade matchen igen).
       const allReady =
         game.scores.size === game.ready.size &&
         Array.from(game.scores.keys()).every((id) => game.ready.has(id));
-      if (allReady && game.currentIdx === -1) {
+      if (allReady && game.currentIdx === -1 && !game.startScheduled) {
+        game.startScheduled = true;
         game.startedAt = Date.now();
         io.to(duelId).emit('live:start', { startsInMs: QUESTION_REVEAL_MS });
-        setTimeout(() => startRound(io, duelId, game), QUESTION_REVEAL_MS);
+        later(duelId, game, QUESTION_REVEAL_MS, () => startRound(io, duelId, game));
       }
-    });
+    }));
 
-    socket.on('live:answer', ({ index, given }) => {
+    socket.on('live:answer', safe('answer', (payload) => {
+      const index = payload?.index;
+      const given = payload?.given;
+      if (!Number.isInteger(index) || typeof given !== 'string' || given.length > 200) return;
       const duelId = socket.data.liveDuelId;
       if (!duelId) return;
       const game = games.get(duelId);
-      if (!game || game.finished) return;
+      if (!game || game.finished || !game.roundOpen) return; // rundan redan avgjord
       if (index !== game.currentIdx) return; // gammal/försenat svar
       const userId = socket.user.id;
       if (game.roundAnswered.has(userId)) return; // har redan svarat i denna runda
@@ -221,9 +280,9 @@ function registerLiveDuel(io) {
       if (game.roundAnswered.size === game.players.size) {
         advanceRound(io, duelId, game, null, null, false);
       }
-    });
+    }));
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', safe('disconnect', () => {
       const duelId = socket.data.liveDuelId;
       if (!duelId) return;
       const game = games.get(duelId);
@@ -233,13 +292,15 @@ function registerLiveDuel(io) {
       game.ready.delete(userId);
       io.to(duelId).emit('live:opponent-left', { userId });
       // Om ingen är kvar, rensa state (men låt Duel-dokumentet vara —
-      // TTL-indexet tar det när liveExpiresAt passerar)
+      // TTL-indexet tar det när liveExpiresAt passerar). Alla timers följer
+      // med, annars fortsatte den gamla matchen bredvid en ny.
       if (game.players.size === 0 && !game.finished) {
-        if (game.roundTimer) clearTimeout(game.roundTimer);
+        clearTimers(game);
+        game.roundOpen = false;
         games.delete(duelId);
       }
-    });
+    }));
   });
 }
 
-module.exports = { registerLiveDuel };
+module.exports = { registerLiveDuel, answerMatches, _games: games };
