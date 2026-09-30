@@ -120,9 +120,17 @@ describe('gradeText', () => {
     expect(gradeText('  fotosyntesen. ', spec).result).toBe('correct');
   });
 
-  test('a small typo in a longer word passes, with the right spelling shown', () => {
-    expect(gradeText('fotosyntez', spec)).toMatchObject({ result: 'correct', note: expect.stringContaining('fotosyntes') });
+  test('a small typo inside a longer word passes, with the right spelling shown', () => {
+    expect(gradeText('fotosymtes', spec)).toMatchObject({ result: 'correct', note: expect.stringContaining('fotosyntes') });
     expect(gradeText('respiration', spec).result).toBe('wrong');
+  });
+
+  test('a slip at the start or end of the word is "nästan", not right — it is often another word', () => {
+    expect(gradeText('elektrod', { accepted: ['elektron'] })).toMatchObject({ result: 'partial', note: expect.stringContaining('elektron') });
+    expect(gradeText('adsorption', { accepted: ['absorption'] }).result).toBe('partial');
+    expect(gradeText('fotosyntez', spec)).toMatchObject({ result: 'partial', expected: 'fotosyntes' });
+    // En annan godkänd variant som stämmer bättre vinner.
+    expect(gradeText('elektrod', { accepted: ['elektron', 'elektrod'] }).result).toBe('correct');
   });
 
   test('numbers (years) must match exactly; short words get no typo slack', () => {
@@ -140,10 +148,12 @@ describe('gradeText', () => {
     expect(gradeText('propen', { accepted: ['propan'] }).result).toBe('wrong');
     expect(gradeText('Karl XI', { accepted: ['Karl XII'] }).result).toBe('wrong');
     expect(gradeText('Gustav II Adolf', { accepted: ['Gustav III Adolf'] }).result).toBe('wrong');
-    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('correct');
-    expect(gradeText('klorofyl', { accepted: ['klorofyll'], exact: true }).result).toBe('wrong');
+    expect(gradeText('klorofyl', { accepted: ['klorofyll'] }).result).toBe('partial');
+    expect(gradeText('klorfyll', { accepted: ['klorofyll'] }).result).toBe('correct');
+    expect(gradeText('klorfyll', { accepted: ['klorofyll'], exact: true }).result).toBe('wrong');
     // Två stavfel först från 12 tecken.
-    expect(gradeText('fotosyntesne', { accepted: ['fotosyntesen'] }).result).toBe('correct');
+    expect(gradeText('fotosytnesen', { accepted: ['fotosyntesen'] }).result).toBe('correct');
+    expect(gradeText('fotosyntesne', { accepted: ['fotosyntesen'] }).result).toBe('partial');
     expect(gradeText('fotosyntzz', { accepted: ['fotosyntes'] }).result).toBe('wrong');
   });
 

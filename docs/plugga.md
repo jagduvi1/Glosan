@@ -61,7 +61,7 @@ behind a feature flag and shown to more users step by step.
 | `multi` | several right ("Vilka av talen är primtal?") — only right picks but some missing = nearly | the app |
 | `order` | put in order (numbers, a timeline, the steps of a method) — 3–8 items, shuffled at random (a test attempt keeps its order) | the app |
 | `factors` | a product in any order ("Primtalsfaktorisera 90" → `2·3·3·5`, `2·3²·5`) — the right product with other factors = nearly | the app |
-| `text` | short facts: a term, a year, a name — with accepted variants; one typo from 8 letters, two from 12, never for years or Roman numerals, none with `exact` | the app |
+| `text` | short facts: a term, a year, a name — with accepted variants; one typo from 8 letters, two from 12, never for years or Roman numerals, none with `exact`; a typo in the first or last two letters (elektrod for elektron) is "nästan", not right | the app |
 | `self` | open questions ("förklara", "resonera"), SO/NO/history | the student against the model answer and E/C/A criteria — or their AI via the paper flow |
 
 An unreadable answer ("3 eller 4", "tjugo", a blank choice) is never counted as

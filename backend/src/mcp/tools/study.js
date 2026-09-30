@@ -89,7 +89,7 @@ const answerInput = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
     accepted: z.array(z.string().trim().min(1).max(200)).min(1).max(10).describe('Accepted answers, e.g. ["fotosyntes", "fotosyntesen"]'),
-    exact: z.boolean().optional().describe('true when a one-letter slip is a different answer (etanol/metanol, Karl XI/XII) — turns off the small typo allowance for long words')
+    exact: z.boolean().optional().describe('true when a one-letter slip is a different answer (etanol/metanol, Karl XI/XII) — turns off the small typo allowance for long words (a slip in the first or last two letters is already graded only as partial)')
   }),
   z.object({
     type: z.literal('self'),
