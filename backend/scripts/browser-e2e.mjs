@@ -79,7 +79,12 @@ async function main() {
     const list = await api('/api/lists', A.token, { method: 'POST', body: { title: 'Djur', sourceLang: 'sv', targetLang: 'en' } });
     const listId = list.body.list._id;
     await api(`/api/lists/${listId}/glosor`, A.token, { method: 'POST', body: { source: 'häst', target: 'horse' } });
-    ok('two users (friends), three Plugga units, a list with one word');
+    // En trasig förfrågan får aldrig ta ner servern: ett tal som kompiskod
+    // kastade förut utanför try, och Node avslutade processen.
+    assert.equal((await api('/api/me/friends/by-code', B.token, { method: 'POST', body: { code: 12345678 } })).status, 400);
+    await pause(300);
+    assert.equal((await api('/api/health')).status, 200, 'the backend is still up');
+    ok('two users (friends), three Plugga units, a list with one word — and a malformed request is a 400, not a crash');
 
     // ── app-ikonerna: flikar, bokmärken och "Lägg till på hemskärmen" ────────
     // (även content-type: en saknad fil får inte slinka igenom som appens HTML)

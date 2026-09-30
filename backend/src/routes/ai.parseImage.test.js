@@ -207,3 +207,24 @@ describe('POST /api/ai/parse-image — stavningsrättning', () => {
     expect(system).toContain('never treat a word you cannot read as a misspelling');
   });
 });
+
+describe('POST /api/ai/parse-image — fält som inte är text', () => {
+  // Ett tal som mediaType kastade förut utanför try och tog ner hela servern.
+  test('ett tal som mediaType ger 400, inte en krasch', async () => {
+    const res = await request(app)
+      .post('/api/ai/parse-image')
+      .send({ image: jpegBase64(), mediaType: 1 });
+    expect(res.status).toBe(400);
+    expect(anthropic.complete).not.toHaveBeenCalled();
+  });
+
+  // En lista hoppade förut över längdkollen och hamnade ändå i prompten.
+  test('en lista som sourceLang ger 400 och når aldrig AI:n', async () => {
+    const res = await request(app)
+      .post('/api/ai/parse-image')
+      .send({ image: jpegBase64(), mediaType: 'image/jpeg', sourceLang: ['x'.repeat(100000)] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/sourceLang must be text/);
+    expect(anthropic.complete).not.toHaveBeenCalled();
+  });
+});
