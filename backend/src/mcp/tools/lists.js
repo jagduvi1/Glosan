@@ -10,6 +10,7 @@ const {
   objectId, ok, fail, resolveList, listSummary, wordSummary, splitDuplicates, validationMessage
 } = require('../toolUtil');
 const { wordInput, langCode, MAX_WORDS_PER_CALL, MAX_WORDS_PER_LIST } = require('./schemas');
+const { withUserLock } = require('../userLock');
 
 // get_list returnerar hela listan i ett svar; större listor än så här är i
 // praktiken ett misstag och skulle bara spräcka modellens kontext.
@@ -104,7 +105,7 @@ registerTool({
       word_count: truncated ? `${GET_LIST_WORD_CAP}+` : words.length,
       words: words.slice(0, GET_LIST_WORD_CAP).map((g) => wordSummary(g, { withStats: args.include_stats !== false }))
     };
-    return ok(`"${list.title}" — ${data.words.length} word(s)`, data, truncated ? { warnings: [`Only the first ${GET_LIST_WORD_CAP} words are shown.`] } : {});
+    return ok(`List with ${data.words.length} word(s)`, data, truncated ? { warnings: [`Only the first ${GET_LIST_WORD_CAP} words are shown.`] } : {});
   }
 });
 
@@ -127,7 +128,7 @@ registerTool({
     category_id: objectId.optional().describe('Optional category id from list_categories'),
     words: z.array(wordInput).max(MAX_WORDS_PER_CALL).optional().describe('The word pairs to put on the list')
   },
-  handler: async (args, ctx) => {
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const userId = ctx.user.id;
     const catError = await checkCategory(userId, args.category_id);
     if (catError) return catError;
@@ -162,12 +163,12 @@ registerTool({
       throw err;
     }
 
-    return ok(`Created list "${list.title}" with ${fresh.length} word(s)`, {
+    return ok(`Created a list with ${fresh.length} word(s)`, {
       ...listSummary(list.toObject(), { is_owner: true }),
       word_count: fresh.length,
       ...(duplicates.length ? { skipped_duplicates: duplicates.map((w) => ({ source: w.source, target: w.target })) } : {})
     });
-  }
+  })
 });
 
 registerTool({
@@ -214,7 +215,7 @@ registerTool({
       if (err.name === 'ValidationError') return fail('invalid_input', validationMessage(err));
       throw err;
     }
-    return ok(`Updated ${changed.join(', ')} on "${list.title}"`, listSummary(list.toObject(), { is_owner: true }));
+    return ok(`Updated ${changed.join(', ')} on the list`, listSummary(list.toObject(), { is_owner: true }));
   }
 });
 
@@ -242,7 +243,7 @@ registerTool({
         updateOne: { filter: { _id: g._id }, update: { $set: { source: g.target, target: g.source } } }
       })));
     }
-    return ok(`Swapped "${list.title}" to ${list.sourceLang} → ${list.targetLang} (${words.length} word(s))`, listSummary(list.toObject(), { is_owner: true }));
+    return ok(`Swapped the list to ${list.sourceLang} → ${list.targetLang} (${words.length} word(s))`, listSummary(list.toObject(), { is_owner: true }));
   }
 });
 
@@ -261,7 +262,7 @@ registerTool({
     const { list } = access;
     const { deletedCount } = await Glos.deleteMany({ list: list._id });
     await list.deleteOne();
-    return ok(`Deleted list "${list.title}" and its ${deletedCount} word(s)`, { list_id: String(list._id), title: list.title, words_deleted: deletedCount });
+    return ok(`Deleted the list and its ${deletedCount} word(s)`, { list_id: String(list._id), title: list.title, words_deleted: deletedCount });
   }
 });
 

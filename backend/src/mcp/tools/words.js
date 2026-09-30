@@ -9,6 +9,7 @@ const {
   objectId, ok, fail, MSG_WORD_NOT_FOUND, resolveList, wordSummary, splitDuplicates, validationMessage, listUrl
 } = require('../toolUtil');
 const { wordInput, MAX_WORDS_PER_CALL, MAX_WORDS_PER_LIST } = require('./schemas');
+const { withUserLock } = require('../userLock');
 const { toGlosDoc } = require('./lists');
 
 registerTool({
@@ -24,7 +25,7 @@ registerTool({
     list_id: objectId.describe('List id from list_lists'),
     words: z.array(wordInput).min(1).max(MAX_WORDS_PER_CALL).describe('The word pairs to add')
   },
-  handler: async (args, ctx) => {
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const access = await resolveList(ctx.user.id, args.list_id, 'edit');
     if (access.error) return access.error;
     const { list, isOwner } = access;
@@ -42,14 +43,20 @@ registerTool({
       if (err.name === 'ValidationError') return fail('invalid_input', validationMessage(err));
       throw err;
     }
-    return ok(`Added ${inserted.length} word(s) to "${list.title}"${duplicates.length ? `, skipped ${duplicates.length} already on the list` : ''}`, {
+    // Taket igen efter insättningen: någon annan med redigeringsrätt kan ha
+    // lagt till samtidigt (låset gäller en användare). Över taket → ta bort våra.
+    if (inserted.length && (await Glos.countDocuments({ list: list._id })) > MAX_WORDS_PER_LIST) {
+      await Glos.deleteMany({ _id: { $in: inserted.map((g) => g._id) } });
+      return fail('invalid_input', `The list reached its limit of ${MAX_WORDS_PER_LIST} words while adding — nothing was added. Create a new list for the rest.`);
+    }
+    return ok(`Added ${inserted.length} word(s) to the list${duplicates.length ? `, skipped ${duplicates.length} already on it` : ''}`, {
       list_id: String(list._id),
       url: listUrl(list._id),
       added: inserted.map((g) => wordSummary(g, { withStats: false })),
       ...(duplicates.length ? { skipped_duplicates: duplicates.map((w) => ({ source: w.source, target: w.target })) } : {}),
       word_count: existing.length + inserted.length
     });
-  }
+  })
 });
 
 registerTool({
@@ -125,7 +132,7 @@ registerTool({
     const foundIds = new Set(found.map((g) => String(g._id)));
     await Glos.deleteMany({ _id: { $in: [...foundIds] }, list: list._id });
     const missing = ids.filter((id) => !foundIds.has(id));
-    return ok(`Deleted ${found.length} word(s) from "${list.title}"`, {
+    return ok(`Deleted ${found.length} word(s) from the list`, {
       list_id: String(list._id),
       deleted: found.map((g) => ({ word_id: String(g._id), source: g.source, target: g.target })),
       ...(missing.length ? { not_on_list: missing } : {})

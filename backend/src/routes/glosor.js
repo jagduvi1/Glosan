@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { loadEditableList, loadEditableGlos } = require('../middleware/ownership');
 const Glos = require('../models/Glos');
+const { MAX_WORDS_PER_LIST } = require('../mcp/tools/schemas');
 
 const router = express.Router();
 
@@ -12,6 +13,10 @@ router.post('/lists/:listId/glosor', loadEditableList('listId'), async (req, res
     const { source, target, notes, exampleSentence, extra } = req.body;
     if (!source || !target) {
       return res.status(400).json({ error: 'source and target are required' });
+    }
+    // Samma tak som MCP-verktygen: en lista rymmer högst 1000 glosor.
+    if (await Glos.countDocuments({ list: req.list._id }) >= MAX_WORDS_PER_LIST) {
+      return res.status(409).json({ error: `En lista rymmer högst ${MAX_WORDS_PER_LIST} glosor — skapa en ny lista för resten.` });
     }
 
     const glos = await Glos.create({
