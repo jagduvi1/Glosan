@@ -24,7 +24,7 @@
 | Lager | Teknologi |
 |-------|-----------|
 | Databas | MongoDB 7 (Mongoose 8) |
-| Backend | Express 4, Node 20 |
+| Backend | Express 4, Node 24 |
 | Frontend | React 19, React Router 6, Vite 5 |
 | Realtid | Socket.IO (live-duell) |
 | Auth | JWT (15 min access + 7d httpOnly refresh-cookie), bcryptjs, token-family-replay-skydd |
