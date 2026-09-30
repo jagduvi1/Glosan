@@ -85,6 +85,9 @@ restic "${FORGET[@]}"
 # level loss can't wipe everything. Enable by setting B2_* in backup.env.
 if [ -n "${B2_RESTIC_REPOSITORY:-}" ]; then
   export B2_ACCOUNT_ID="${B2_ACCOUNT_ID:-}" B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY:-}"
+  # init/copy --from-repo read the SOURCE repo's password from RESTIC_FROM_PASSWORD,
+  # not RESTIC_PASSWORD; under systemd there is no terminal to prompt on.
+  export RESTIC_FROM_PASSWORD="$RESTIC_PASSWORD"
   log "copying snapshots to off-provider repo $B2_RESTIC_REPOSITORY…"
   restic -r "$B2_RESTIC_REPOSITORY" snapshots >/dev/null 2>&1 \
     || restic -r "$B2_RESTIC_REPOSITORY" init --copy-chunker-params --from-repo "$RESTIC_REPOSITORY"
