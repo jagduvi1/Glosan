@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchStudyUnits, fetchStudyOverview } from '../api/study';
-import { PracticePicker, practiceUrl } from '../components/study/StudyBits';
+import { PracticePicker, practiceUrl, sheetUrl } from '../components/study/StudyBits';
 import UnitCard from '../components/study/UnitCard';
 import FolderPicker from '../components/study/FolderPicker';
 import ShareStudyDialog from '../components/study/ShareStudyDialog';
@@ -95,12 +95,9 @@ export default function PluggaSubject() {
   const selectedChapter = chapters.find((c) => c.units.length === selected.length && c.units.every((u) => selected.includes(u.id)));
   const inShownTerm = units.filter((u) => u.term === shownTerm);
   const back = `/plugga/amne/${subject}${term ? `?term=${term}` : ''}`;
-  const start = (opts) => {
-    const scope = selected.length
-      ? { unitIds: selected, back }
-      : { subject, term: shownTerm, back };
-    navigate(practiceUrl(scope, opts));
-  };
+  const pickedScope = () => (selected.length ? { unitIds: selected, back } : { subject, term: shownTerm, back });
+  const start = (opts) => navigate(practiceUrl(pickedScope(), opts));
+  const print = (opts) => navigate(sheetUrl(pickedScope(), opts));
   const practiceTarget = selectedChapter
     ? `kapitlet ${selectedChapter.label}`
     : selected.length
@@ -146,7 +143,7 @@ export default function PluggaSubject() {
                   </div>
                 )}
               </div>
-              <PracticePicker onStart={start} />
+              <PracticePicker onStart={start} onPrint={print} />
             </div>
           )}
           {byTerm.map((g) => (

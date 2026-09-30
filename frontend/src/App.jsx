@@ -41,6 +41,7 @@ const PluggaFolder = lazy(() => import('./pages/PluggaFolder'));
 const PluggaActivity = lazy(() => import('./pages/PluggaActivity'));
 const PluggaTest = lazy(() => import('./pages/PluggaTest'));
 const PluggaTestPaper = lazy(() => import('./pages/PluggaTestPaper'));
+const PluggaSheet = lazy(() => import('./pages/PluggaSheet'));
 const PluggaTestResult = lazy(() => import('./pages/PluggaTestResult'));
 const DuelPlay   = lazy(() => import('./pages/DuelPlay'));
 const DuelResult = lazy(() => import('./pages/DuelResult'));
@@ -187,6 +188,14 @@ function AppRoutes() {
           element={
             <FeatureRoute feature="study">
               <Layout><PluggaTestPaper /></Layout>
+            </FeatureRoute>
+          }
+        />
+        <Route
+          path="/plugga/skriv-ut"
+          element={
+            <FeatureRoute feature="study">
+              <Layout><PluggaSheet /></Layout>
             </FeatureRoute>
           }
         />

@@ -188,6 +188,12 @@ export async function fetchStudyTest(apiFetch, testId) {
 }
 
 // GET → { test, questions } — att skriva ut (inget facit)
+// GET → { units, items (med facit och mallvariant), total } — ett övningsblad
+// att skriva ut. `query`: URLSearchParams från scopeQuery (StudyBits).
+export async function fetchStudySheet(apiFetch, query) {
+  return readJson(await apiFetch(`/api/study/sheet?${query}`), 'Kunde inte hämta övningarna');
+}
+
 export async function fetchStudyTestSheet(apiFetch, testId) {
   return readJson(await apiFetch(`/api/study/tests/${testId}/sheet`), 'Kunde inte hämta provet');
 }

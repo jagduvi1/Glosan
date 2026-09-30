@@ -472,6 +472,27 @@ async function main() {
     assert.equal(bySkill.body.items.length, 2, 'practise one skill');
     await api(`/api/study/sessions/${bySkill.body.session.id}/finish`, A.token, { method: 'POST' });
 
+    // Övningsbladet (utskrift): facit, ordna i pappersordningen, mallens variant
+    // — och AI:n får exakt samma tal med get_study_item + variant.
+    const exSheet = await api(`/api/study/sheet?units=${drillId}&mode=exercises&count=40`, A.token);
+    assert.equal(exSheet.status, 200, JSON.stringify(exSheet.body));
+    const onPaper = (re) => exSheet.body.items.find((i) => re.test(i.prompt));
+    assert.equal(onPaper(/primtal\?/).facit.answer, 'B. 23  ·  D. 29');
+    const paperOrder = onPaper(/storleksordning/);
+    const orderLetters = paperOrder.facit.answer.split(' (')[0].split(' → ');
+    assert.deepEqual(orderLetters.map((l) => paperOrder.items[l.charCodeAt(0) - 65]), ['0,05', '0,5', '5'], 'facit in the letters of the printed order');
+    const paperTpl = exSheet.body.items.find((i) => i.variant);
+    assert.ok(paperTpl.variant >= 1 && paperTpl.variant <= 999 && !paperTpl.prompt.includes('{{'), 'a template prints with a short variant');
+    const [, px, py] = /Beräkna (\d+) · (\d+)/.exec(paperTpl.prompt);
+    assert.equal(paperTpl.facit.answer, String(px * py));
+    const printedForAi = await call(claude, 'get_study_item', { code: paperTpl.code, variant: paperTpl.variant });
+    assert.equal(printedForAi.data.printed.prompt, paperTpl.prompt, 'the AI gets exactly the printed numbers');
+    assert.equal(printedForAi.data.printed.answer, px * py);
+    assert.equal(exSheet.body.items.some((i) => i.kind === 'card'), false, 'mode exercises prints no cards');
+    assert.equal((await api(`/api/study/sheet?units=${drillId}&mode=ladder`, A.token)).status, 400, 'the ladder cannot be printed');
+    assert.equal((await api(`/api/study/sheet?units=${drillId}&levels=X`, A.token)).status, 400);
+    assert.equal((await api(`/api/study/sheet?units=${drillId}`, B.token)).status, 404, 'no sheet from someone else\'s unit');
+
     const tplTest = await call(claude, 'create_practice_test', { unit_id: drillId, title: 'x', questions: [exs[5]] });
     assert.match(tplTest.error?.message || '', /templates are for practice/);
     const parts = await call(claude, 'create_practice_test', {

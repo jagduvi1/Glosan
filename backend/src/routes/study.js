@@ -19,6 +19,7 @@ const {
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
+const { practiceSheet, SHEET_MODES } = require('../services/study/sheet');
 const { deleteItems, listDeletions, restoreDeletion } = require('../services/study/itemDeletion');
 const { PERIODS, parseYmd } = require('../utils/localTime');
 const User = require('../models/User');
@@ -204,6 +205,39 @@ router.post('/sessions', async (req, res, next) => {
     });
     if (result.error) return res.status(404).json({ error: result.message });
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/study/sheet?units=a,b | folder= | subject= | group=, term, allTerms=1,
+// mode, levels=E,C, count, skill — ett övningsblad att skriva ut: samma urval
+// som ett pass, med facit. Inget pass skapas och inget räknas.
+router.get('/sheet', async (req, res, next) => {
+  try {
+    const q = req.query;
+    const str = (v, max = 80) => (typeof v === 'string' && v.length <= max ? v : undefined);
+    const list = (v) => (str(v, 2000) ? v.split(',').map((s) => s.trim()).filter(Boolean) : undefined);
+    if (q.mode !== undefined && !SHEET_MODES.includes(q.mode)) return bad(res, `mode must be one of: ${SHEET_MODES.join(', ')}`);
+    const levels = list(q.levels);
+    if (levels && levels.some((l) => !LEVELS.includes(l))) return bad(res, 'levels must be a subset of E, C, A');
+    const unitIds = list(q.units);
+    if (unitIds && unitIds.length > 50) return bad(res, 'at most 50 units');
+    const skill = str(q.skill);
+    const result = await practiceSheet(req.user.id, {
+      unitIds,
+      folderId: str(q.folder, 40),
+      subject: str(q.subject),
+      group: str(q.group),
+      term: str(q.term),
+      allTerms: q.allTerms === '1',
+      mode: q.mode,
+      levels,
+      count: str(q.count, 4),
+      skills: skill ? [skill] : undefined
+    });
+    if (result.error) return res.status(404).json({ error: result.message });
+    res.json(result);
   } catch (err) {
     next(err);
   }

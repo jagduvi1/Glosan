@@ -45,7 +45,9 @@ const MODES = [
  * Välj hur man vill öva: läge, nivåer (tomt = alla) och antal. Anropar
  * onStart({ mode, levels, count }).
  */
-export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öva →', hasCards = true, hasExercises = true }) {
+// onPrint (valfri): samma val som ett övningsblad att skriva ut — inte i
+// nivåstegen, som väljer nästa uppgift efter varje svar.
+export function PracticePicker({ onStart, onPrint = null, busy = false, startLabel = 'Börja öva →', hasCards = true, hasExercises = true }) {
   const [mode, setMode] = useState('mixed');
   const [levels, setLevels] = useState([]);
   const [count, setCount] = useState(15);
@@ -90,13 +92,24 @@ export function PracticePicker({ onStart, busy = false, startLabel = 'Börja öv
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onStart({ mode, levels, count })}>
           {busy ? 'Startar…' : startLabel}
         </button>
+        {onPrint && (
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || mode === 'ladder'}
+            title={mode === 'ladder' ? 'Nivåstegen väljer nästa uppgift efter varje svar — välj ett annat sätt att skriva ut' : 'Ett övningsblad med facit att lösa på papper'}
+            onClick={() => onPrint({ mode, levels, count })}
+          >
+            🖨️ Skriv ut
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-/** Bygg /plugga/ova-URL:en av ett omfång + valen i PracticePicker. */
-export function practiceUrl(scope, { mode, levels, count, skill }) {
+/** Ett omfång + valen i PracticePicker som URL-parametrar (samma för att öva och skriva ut). */
+export function scopeQuery(scope, { mode, levels, count, skill } = {}) {
   const q = new URLSearchParams();
   if (scope.unitIds?.length) q.set('units', scope.unitIds.join(','));
   if (scope.folderId) q.set('folder', scope.folderId);
@@ -109,7 +122,36 @@ export function practiceUrl(scope, { mode, levels, count, skill }) {
   if (skill) q.set('skill', skill);
   if (count) q.set('count', String(count));
   if (scope.back) q.set('back', scope.back);
-  return `/plugga/ova?${q}`;
+  return q;
+}
+
+/** Bygg /plugga/ova-URL:en av ett omfång + valen i PracticePicker. */
+export const practiceUrl = (scope, opts) => `/plugga/ova?${scopeQuery(scope, opts)}`;
+
+/** Övningsbladet (utskrift) för samma omfång och val. */
+export const sheetUrl = (scope, opts) => `/plugga/skriv-ut?${scopeQuery(scope, opts)}`;
+
+/** Bara en sökväg i appen ("/plugga/…") — aldrig en annan sajt ("https://…", "//…"). */
+export function safeBack(value) {
+  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/plugga';
+}
+
+/** Omfånget och valen ur /plugga/ova- och /plugga/skriv-ut-URL:en. */
+export function readScope(params) {
+  const list = (k) => (params.get(k) ? params.get(k).split(',').filter(Boolean) : undefined);
+  return {
+    unitIds: list('units'),
+    folderId: params.get('folder') || undefined,
+    subject: params.get('subject') || undefined,
+    group: params.get('group') || undefined,
+    term: params.get('term') || undefined,
+    allTerms: params.get('allTerms') === '1',
+    mode: params.get('mode') || 'mixed',
+    levels: list('levels'),
+    skill: params.get('skill') || undefined,
+    count: Number(params.get('count')) || 15,
+    back: safeBack(params.get('back'))
+  };
 }
 
 /** Nivåstegen E → C → A med aktuell nivå markerad. */

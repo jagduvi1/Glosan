@@ -5,7 +5,7 @@ import { useGamification } from '../contexts/GamificationContext';
 import { startStudySession, answerStudyItem, finishStudySession, flagStudyItem, deleteStudyItem } from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
 import { MultiChoice, OrderList } from '../components/study/AnswerInputs';
-import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, formatDuration } from '../components/study/StudyBits';
+import { LevelPill, CodeTag, LadderSteps, LEVEL_LABEL, practiceUrl, readScope, formatDuration } from '../components/study/StudyBits';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import ConfirmDialog from '../components/ConfirmDialog';
 import '../styles/study.css';
@@ -25,28 +25,6 @@ const SELF_OPEN = [
   { self: 'partial', label: 'Delvis' },
   { self: 'wrong', label: 'Inte än' }
 ];
-
-function readScope(params) {
-  const list = (k) => (params.get(k) ? params.get(k).split(',').filter(Boolean) : undefined);
-  return {
-    unitIds: list('units'),
-    folderId: params.get('folder') || undefined,
-    subject: params.get('subject') || undefined,
-    group: params.get('group') || undefined,
-    term: params.get('term') || undefined,
-    allTerms: params.get('allTerms') === '1',
-    mode: params.get('mode') || 'mixed',
-    levels: list('levels'),
-    skill: params.get('skill') || undefined,
-    count: Number(params.get('count')) || 15,
-    back: safeBack(params.get('back'))
-  };
-}
-
-/** Bara en sökväg i appen ("/plugga/…") — aldrig en annan sajt ("https://…", "//…"). */
-function safeBack(value) {
-  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/plugga';
-}
 
 function FlagForm({ itemId }) {
   const { apiFetch } = useAuth();
