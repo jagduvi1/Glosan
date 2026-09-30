@@ -57,6 +57,7 @@ async function main() {
   const signUp = async (prefix) => { const u = await register(prefix); users.push(u); return u; };
   let browser = null;
   let page = null;
+  let current = null; // sidan som körs just nu — den som skärmdumpas vid fel
   try {
     // ── data via API/MCP ────────────────────────────────────────────────────
     const A = await signUp('bra');
@@ -81,6 +82,7 @@ async function main() {
       args: process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []
     });
     page = await browser.newPage();
+    current = page;
     watch(page);
     await page.setViewport({ width: 390, height: 844 });
 
@@ -115,6 +117,7 @@ async function main() {
     // ── länken för någon utan konto ─────────────────────────────────────────
     const guest = await browser.createBrowserContext();
     const gpage = await guest.newPage();
+    current = gpage;
     watch(gpage);
     await gpage.setViewport({ width: 390, height: 844 });
     await gpage.goto(shareUrl.replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: 'networkidle0' });
@@ -122,6 +125,7 @@ async function main() {
     await waitForText(gpage, 'delar 3 områden med dig');
     await waitForText(gpage, 'Skapa konto');
     await guest.close();
+    current = page;
     ok('the link shows its name and all three units to someone without an account, with "Skapa konto"');
 
     // ── ämnessidan ──────────────────────────────────────────────────────────
@@ -179,10 +183,10 @@ async function main() {
     assert.deepEqual(errors, [], `no page errors:\n${errors.join('\n')}`);
     ok('no errors in any page');
   } catch (err) {
-    if (page) {
+    if (current && !current.isClosed()) {
       fs.mkdirSync(SHOTS, { recursive: true });
       const file = path.join(SHOTS, 'failure.png');
-      await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+      await current.screenshot({ path: file, fullPage: true }).catch(() => {});
       console.error(`  screenshot: ${file}`);
     }
     if (errors.length) console.error(`  page errors:\n  ${errors.join('\n  ')}`);
@@ -194,7 +198,8 @@ async function main() {
       const r = await api('/api/me', u.token, { method: 'DELETE' }).catch(() => ({ status: 0 }));
       if (r.status !== 200) leftover += 1;
     }
-    if (!leftover) console.log('  · deleted throwaway users');
+    if (leftover) console.warn(`  ! ${leftover} throwaway user(s) could not be deleted`);
+    else console.log('  · deleted throwaway users');
   }
   console.log('All good.');
 }
