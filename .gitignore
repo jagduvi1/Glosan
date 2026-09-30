@@ -24,6 +24,7 @@ logs/
 # ── Test / coverage ───────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
+backend/browser-shots/
 
 # ── Build output / caches ─────────────────────────────────────────────────────
 backend/dist/

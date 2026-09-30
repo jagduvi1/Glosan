@@ -228,8 +228,9 @@ cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
 discovery, OAuth, every tool, a read-only connection, refresh rotation and
 disconnecting. It creates a throwaway user and deletes it afterwards. The e2e
 scripts refuse any base URL that isn't localhost (pass `--allow-remote` if you
-really mean it), and CI (`.github/workflows/ci.yml`) runs all three against a
-Docker stack on every PR and before every release.
+really mean it), and CI (`.github/workflows/ci.yml`) runs all of them — the
+three API suites and `browser-e2e.mjs`, which drives the pages in headless
+Chrome — against a Docker stack on every PR and before every release.
 
 claude.ai cannot reach `localhost`; to try the real Claude against a local
 build you need a public HTTPS tunnel with `FRONTEND_URL` set to its URL.

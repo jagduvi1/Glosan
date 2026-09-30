@@ -141,7 +141,10 @@ cd backend && node scripts/mcp-e2e.mjs http://localhost:8080
 # Plugga end-to-end (with or without FEATURES_FOR_ALL=study)
 cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
 cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
-# Frontend tests not configured yet — add Vitest when you write the first test.
+# Browser end-to-end: pages at phone size in headless Chrome (puppeteer-core,
+# your installed Chrome; CHROME_PATH overrides; screenshot on failure in browser-shots/)
+cd backend && node scripts/browser-e2e.mjs http://localhost:8080
+# Frontend unit tests not configured yet — add Vitest when you write the first test.
 ```
 
 ---
@@ -162,7 +165,7 @@ cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 - **Sharing and blocking:** lists and Plugga units are shared with confirmed friends or by link (`/j/` gives a copy, and befriends only when the creator ticks that box in the app; `/p/` gives access to one or more units without friendship). The rules live in [services/listSharing.js](backend/src/services/listSharing.js) and [services/study/sharing.js](backend/src/services/study/sharing.js), used by both the app and the MCP share tools. A block list ([services/blocks.js](backend/src/services/blocks.js)) ends everything between two accounts and is checked wherever someone could reconnect (friend codes, list and unit links).
 - **Frontend API client:** Pages should call helpers from [frontend/src/api/](frontend/src/api) (e.g. `lists.js`, `glosor.js`, `ai.js`) rather than writing raw `fetch` calls. Each helper takes `apiFetch` as its first argument.
 - **Build env vars:** Frontend env vars must be prefixed `VITE_` and accessed via `import.meta.env.VITE_*`. They are read at build time and baked into the bundle — see `Analytics.jsx` for the pattern.
-- **CI:** `.github/workflows/ci.yml` runs jest, the frontend build and all three e2e scripts (against a Docker stack) on every PR and push to main; `release.yml` builds images only after it passes and stamps the release tag into the backend (`APP_VERSION` → `/api/health`). The e2e scripts refuse non-localhost URLs unless given `--allow-remote`.
+- **CI:** `.github/workflows/ci.yml` runs jest, the frontend build, the three API e2e scripts and the browser e2e (headless Chrome, uploads a screenshot when it fails) against a Docker stack on every PR and push to main; `release.yml` builds images only after it passes and stamps the release tag into the backend (`APP_VERSION` → `/api/health`). The e2e scripts refuse non-localhost URLs unless given `--allow-remote`.
 
 ---
 
