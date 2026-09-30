@@ -104,6 +104,23 @@ const baseComponents = {
 // nytt stycke börjar på ny rad via .md-p i study.css).
 const inlineComponents = { ...baseComponents, p: ({ children }) => <span className="md-p">{children}</span> };
 
+// AI:n skriver ibland <br> — i en tabellcell är det enda sättet att bryta en
+// rad. All HTML hoppas annars över (skipHtml), och då klistrades orden ihop
+// ("Rad ettRad två"). Ett ensamt <br> utan attribut blir en vanlig radbrytning;
+// allt annat, även <br> med attribut, hoppas fortfarande över.
+const BR_TAG = /^<br\s*\/?>$/i;
+const PHRASING = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'linkReference']);
+function remarkBrTags() {
+  const walk = (node) => {
+    if (!node.children) return;
+    if (PHRASING.has(node.type)) {
+      node.children = node.children.map((c) => (c.type === 'html' && BR_TAG.test(c.value.trim()) ? { type: 'break' } : c));
+    }
+    node.children.forEach(walk);
+  };
+  return walk;
+}
+
 // memo: en provsida har många frågor, och klockan/varje tangenttryck ska inte
 // tolka om all Markdown och alla formler.
 function StudyMarkdown({ children, inline = false }) {
@@ -111,7 +128,7 @@ function StudyMarkdown({ children, inline = false }) {
   return (
     <Tag className={`study-md${inline ? ' study-md-inline' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks, remarkBrTags]}
         rehypePlugins={[KATEX]}
         skipHtml
         components={inline ? inlineComponents : baseComponents}
