@@ -49,4 +49,10 @@ connectDB().then(() => {
   });
   // Diskvarning till admins och stängning av övergivna pass, en gång i timmen.
   startMaintenance();
+}).catch((err) => {
+  // Kommer servern inte igång ska processen avslutas, så att Docker startar
+  // om den — unhandledRejection-hanteraren ovan skulle annars lämna en
+  // process som inte lyssnar.
+  console.error('FATAL: startup failed:', err?.stack || err);
+  process.exit(1);
 });
