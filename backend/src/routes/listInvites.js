@@ -29,7 +29,8 @@ const createLimiter = rateLimit({
 // Body: { ttlDays: 1|7|30, maxUses: number }
 router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList(), async (req, res) => {
   try {
-    const result = await createListInvite(req.user.id, req.list, req.body || {});
+    // Appens länkar gör den som går med till kompis (klassrummets QR-flöde).
+    const result = await createListInvite(req.user.id, req.list, { ttlDays: req.body?.ttlDays, maxUses: req.body?.maxUses });
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.status(201).json({ invite: result.invite });
   } catch (err) {
@@ -90,7 +91,8 @@ router.get('/list-invite/:code', async (req, res) => {
         avatar: creator.avatar || { kind: 'initial', value: '' }
       },
       expiresAt: invite.expiresAt,
-      remainingUses: invite.maxUses - invite.usedBy.length
+      remainingUses: invite.maxUses - invite.usedBy.length,
+      befriend: invite.befriend !== false
     });
   } catch (err) {
     console.error('List-invite preview error:', err);
@@ -162,18 +164,20 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
       );
     }
 
-    // Lägg till båda som vänner (upsert)
-    const now = new Date();
-    await Friendship.updateOne(
-      { user: req.user.id, friend: invite.creator },
-      { $setOnInsert: { user: req.user.id, friend: invite.creator, addedAt: now } },
-      { upsert: true }
-    );
-    await Friendship.updateOne(
-      { user: invite.creator, friend: req.user.id },
-      { $setOnInsert: { user: invite.creator, friend: req.user.id, addedAt: now } },
-      { upsert: true }
-    );
+    // Lägg till båda som vänner (upsert) — inte för länkar som en AI skapat.
+    if (invite.befriend !== false) {
+      const now = new Date();
+      await Friendship.updateOne(
+        { user: req.user.id, friend: invite.creator },
+        { $setOnInsert: { user: req.user.id, friend: invite.creator, addedAt: now } },
+        { upsert: true }
+      );
+      await Friendship.updateOne(
+        { user: invite.creator, friend: req.user.id },
+        { $setOnInsert: { user: invite.creator, friend: req.user.id, addedAt: now } },
+        { upsert: true }
+      );
+    }
 
     res.json({
       listId: copy._id,

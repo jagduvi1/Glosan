@@ -210,7 +210,25 @@ async function main() {
     assert.deepEqual(notFriend.error.not_friends, ['nobody-here']);
     const link = await call(client, 'create_list_link', { list_id: listId, days: 1, max_uses: 10 });
     assert.match(link.data.url, /\/j\/[A-Z0-9]+$/);
-    assert.equal((await fetch(`${BASE}/api/list-invite/${link.data.code}`)).status, 200, 'the link opens for anyone');
+    const linkPreview = await fetch(`${BASE}/api/list-invite/${link.data.code}`);
+    assert.equal(linkPreview.status, 200, 'the link opens for anyone');
+    assert.equal((await linkPreview.json()).befriend, false, 'a link made by the AI never befriends');
+    // Någon går med via AI:ns länk: får en kopia men blir inte kompis (ett barn
+    // ska inte få främlingar som kompisar av en manipulerad AI).
+    const joinerName = `mcpjoin${crypto.randomBytes(3).toString('hex')}`;
+    const joinerReg = await fetch(`${BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: joinerName, email: `${joinerName}@example.test`, password: 'E2e-Passw0rd!x', ageConsent: true })
+    });
+    const joinerJwt = (await joinerReg.json()).token;
+    try {
+      const joined = await fetch(`${BASE}/api/list-invite/${link.data.code}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${joinerJwt}` } });
+      assert.equal(joined.status, 200, 'the joiner gets a copy');
+      assert.deepEqual((await call(client, 'list_friends')).data.friends, [], 'but does not become a friend');
+    } finally {
+      await fetch(`${BASE}/api/me`, { method: 'DELETE', headers: { Authorization: `Bearer ${joinerJwt}` } });
+    }
     assert.equal((await call(client, 'create_list_link', { list_id: listId, days: 2 })).error.code, 'invalid_input');
     assert.deepEqual((await call(client, 'get_list_sharing', { list_id: listId })).data.links.map((l) => l.code), [link.data.code]);
     assert.equal((await call(client, 'stop_sharing_list', { list_id: listId, link_code: link.data.code })).isError, false);

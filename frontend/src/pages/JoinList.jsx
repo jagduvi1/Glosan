@@ -123,7 +123,7 @@ export default function JoinList() {
             {user ? (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  En kopia av listan läggs till på ditt konto. Du och @{preview.creator.username} blir vänner.
+                  En kopia av listan läggs till på ditt konto.{preview.befriend !== false ? ` Du och @${preview.creator.username} blir vänner.` : ''}
                 </p>
                 <button className="btn btn-primary btn-lg btn-block" onClick={onAccept} disabled={accepting}>
                   {accepting ? 'Lägger till…' : `Acceptera och spara på mitt konto`}
@@ -132,7 +132,7 @@ export default function JoinList() {
             ) : (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  Registrera ett konto (eller logga in) så får du listan kopierad till dig och blir vän med @{preview.creator.username}.
+                  Registrera ett konto (eller logga in) så får du listan kopierad till dig{preview.befriend !== false ? ` och blir vän med @${preview.creator.username}` : ''}.
                 </p>
                 <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
                   <Link to={`/register?invite=${code}`} style={{ flex: 1, textDecoration: 'none' }}>

@@ -69,9 +69,11 @@ function inviteOut(i) {
 
 /**
  * Skapa en länk (/j/<kod>) till en egen lista: 1–30 dagar, 1–1000
- * användningar, högst 3 aktiva per lista. Returnerar { invite } eller { error, status }.
+ * användningar, högst 3 aktiva per lista. `befriend: false` = den som går
+ * med blir inte kompis med skaparen (länkar från AI:n). Returnerar { invite }
+ * eller { error, status }.
  */
-async function createListInvite(ownerId, list, { ttlDays, maxUses } = {}) {
+async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = true } = {}) {
   const ttl = Math.min(Math.max(Number(ttlDays) || 7, 1), 30);
   const uses = Math.min(Math.max(Number(maxUses) || 30, 1), 1000);
   const active = await ListInvite.countDocuments({ list: list._id, revokedAt: null, expiresAt: { $gt: new Date() } });
@@ -83,7 +85,8 @@ async function createListInvite(ownerId, list, { ttlDays, maxUses } = {}) {
     creator: ownerId,
     code: await uniqueInviteCode(),
     expiresAt: new Date(Date.now() + ttl * DAY_MS),
-    maxUses: uses
+    maxUses: uses,
+    befriend: befriend !== false
   });
   return { invite: inviteOut(invite) };
 }

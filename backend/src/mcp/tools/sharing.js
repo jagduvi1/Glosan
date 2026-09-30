@@ -65,10 +65,15 @@ async function resolveFriends(userId, refs) {
   return { ids: [...ids], missing };
 }
 
-/** Någon i en mottagarlista (namn eller id). */
+/**
+ * Någon i en mottagarlista: först på id, sedan på namn — ett användarnamn kan
+ * se ut precis som någon annans id.
+ */
 function findPerson(people, ref) {
   const name = ref.replace(/^@/, '').toLowerCase();
-  return people.find((p) => String(p._id) === ref || p.username.toLowerCase() === name) || null;
+  return people.find((p) => String(p._id) === ref.toLowerCase())
+    || people.find((p) => p.username.toLowerCase() === name)
+    || null;
 }
 
 /** Elevens egna (icke arkiverade) områden via id eller kod, i ordning — eller { error }. */
@@ -164,7 +169,7 @@ registerTool({
 registerTool({
   name: 'create_list_link',
   title: 'Create a share link for a list',
-  description: 'Makes a link to one of the user\'s lists (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list and become the user\'s friend in Glosan. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
+  description: 'Makes a link to one of the user\'s lists (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list; unlike links made in the app, a link you make does NOT make them the user\'s friend. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   inputSchema: { list_id: objectId.describe('List id from list_lists'), days: daysInput, max_uses: usesInput },
@@ -173,14 +178,15 @@ registerTool({
     if (bad) return bad;
     const access = await resolveList(ctx.user.id, args.list_id, 'owner');
     if (access.error) return access.error;
-    const r = await createListInvite(ctx.user.id, access.list, { ttlDays: args.days || 7, maxUses: args.max_uses || 30 });
+    // Länkar från AI:n gör aldrig någon till kompis (se ListInvite.befriend).
+    const r = await createListInvite(ctx.user.id, access.list, { ttlDays: args.days || 7, maxUses: args.max_uses || 30, befriend: false });
     if (r.error) return fail('conflict', 'This list already has 3 active links — close one with stop_sharing_list first (get_list_sharing shows them).');
     return ok('Created a share link for the list', {
       code: r.invite.code,
       url: listLinkUrl(r.invite.code),
       expires_at: r.invite.expiresAt,
       max_uses: r.invite.maxUses,
-      joiners_get: 'their own copy of the list, and they become the user\'s friend'
+      joiners_get: 'their own copy of the list (they do not become the user\'s friend)'
     });
   }
 });
