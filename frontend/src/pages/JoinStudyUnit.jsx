@@ -42,7 +42,12 @@ export default function JoinStudyUnit() {
       const r = await acceptStudyInvite(apiFetch, code);
       await refreshUser(); // Plugga-flaggan kan just ha slagits på
       setStatus('joined');
-      const target = r.unitIds && r.unitIds.length > 1 ? '/plugga' : `/plugga/omrade/${r.unitId}`;
+      // Flera områden: till ämnessidan om alla hör till samma ämne (den visar
+      // alla terminer), annars till Plugga.
+      const subjects = [...new Set((preview?.units || []).map((x) => x.subject))];
+      const target = r.unitIds && r.unitIds.length > 1
+        ? (subjects.length === 1 ? `/plugga/amne/${subjects[0]}` : '/plugga')
+        : `/plugga/omrade/${r.unitId}`;
       redirectTimer.current = setTimeout(() => navigate(target), 1200);
     } catch (e) {
       setError(e.message);
@@ -51,7 +56,7 @@ export default function JoinStudyUnit() {
     } finally {
       setJoining(false);
     }
-  }, [apiFetch, code, navigate, refreshUser]);
+  }, [apiFetch, code, navigate, refreshUser, preview]);
 
   const rememberInvite = () => {
     try { sessionStorage.setItem(PENDING_KEY, code); } catch { /* privat läge — man får klicka en gång till */ }

@@ -134,6 +134,7 @@ export default function PluggaFolder() {
           units={units}
           initialSelected={units.filter((u) => u.isOwner).map((u) => u.id)}
           title={folder.name}
+          linkTitle=""
           onClose={() => setSharing(false)}
         />
       )}

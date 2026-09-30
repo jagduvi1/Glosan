@@ -55,7 +55,7 @@ async function listRecipients(unit) {
  * id är ogiltigt, någon annans, arkiverat eller saknas (dela bara det man äger).
  */
 async function loadOwnedUnits(userId, unitIds) {
-  const ids = [...new Set((unitIds || []).map(String))];
+  const ids = [...new Set((unitIds || []).map((id) => String(id).toLowerCase()))];
   if (!ids.length || ids.length > MAX_UNITS_PER_SHARE || ids.some((id) => !isId(id))) return null;
   const units = await StudyUnit.find({ _id: { $in: ids.map(oid) }, user: oid(userId), archivedAt: null });
   if (units.length !== ids.length) return null;
@@ -298,17 +298,22 @@ async function acceptInvite(userId, code) {
   if (!(await User.exists({ _id: oid(userId) }))) return { error: 'Logga in igen.', status: 401 };
   const units = await linkUnits(link, 'user sharedWith');
   if (!units.length) return { error: 'Området finns inte längre.', status: 404 };
-  const unitIds = units.map((u) => String(u._id));
   const uid = oid(userId);
-  if (String(link.creator) === String(userId)) return { unitId: unitIds[0], unitIds, joined: false, own: true };
+  if (String(link.creator) === String(userId)) {
+    const own = units.map((u) => String(u._id));
+    return { unitId: own[0], unitIds: own, joined: false, own: true };
+  }
   // Blockerad åt något håll → länken ser bara ut att inte fungera.
   if (await isBlockedBetween(userId, link.creator)) return { error: LINK_GONE, status: 404 };
   const isMember = (u) => (u.sharedWith || []).some((id) => String(id) === String(userId));
   const toJoin = units.filter((u) => !isMember(u) && (u.sharedWith || []).length < MAX_RECIPIENTS);
+  // Svaret räknar bara områden man faktiskt är med i (ett fullt område hoppas över).
+  const memberIds = units.filter((u) => isMember(u) || toJoin.includes(u)).map((u) => String(u._id));
+  const full = units.length - memberIds.length;
   if (!toJoin.length) {
     if (!units.every(isMember)) return { error: `Området är redan delat med ${MAX_RECIPIENTS} personer.`, status: 409 };
     await grantStudyFeature([userId]);
-    return { unitId: unitIds[0], unitIds, joined: false };
+    return { unitId: memberIds[0], unitIds: memberIds, joined: false };
   }
   // Förbruka en plats atomärt, så två samtidiga klick aldrig spräcker maxUses.
   const claimed = await StudyShareLink.findOneAndUpdate(
@@ -325,7 +330,7 @@ async function acceptInvite(userId, code) {
   if (!claimed) return { error: LINK_GONE, status: 404 };
   await StudyUnit.updateMany({ _id: { $in: toJoin.map((u) => u._id) } }, { $addToSet: { sharedWith: uid } });
   await grantStudyFeature([userId]);
-  return { unitId: unitIds[0], unitIds, joined: true };
+  return { unitId: memberIds[0], unitIds: memberIds, joined: true, ...(full ? { full } : {}) };
 }
 
 module.exports = {

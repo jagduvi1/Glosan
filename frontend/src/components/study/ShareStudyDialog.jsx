@@ -15,9 +15,14 @@ import { LinkOptions, QrLinkCard } from './shareBits';
 // egen statistik, och bara du (och din AI) kan ändra innehållet.
 //
 // `units` = områdena på sidan (utelämnat → alla dina, alla terminer);
-// `initialSelected` = förvalda id:n; `title` = förslag på länkens namn.
+// `initialSelected` = förvalda id:n; `title` = rubriken; `linkTitle` =
+// förslag på länkens namn (syns för alla med länken — därför inte en mapps
+// privata namn).
 
 const unitLabel = (u) => `${u.code} ${u.title}`;
+// Samma tak som servern (services/study/sharing.js).
+const SHARE_MAX = 100;
+const LINK_MAX = 50;
 
 function UnitPicker({ own, othersCount, selected, onToggle, onAll }) {
   const all = own.length > 0 && own.every((u) => selected.has(u.id));
@@ -86,11 +91,12 @@ function FriendsTab({ friends, count, busy, onShare }) {
         type="button"
         className="btn btn-primary btn-block"
         style={{ marginTop: 12 }}
-        disabled={busy || picked.size === 0 || count === 0}
+        disabled={busy || picked.size === 0 || count === 0 || count > SHARE_MAX}
         onClick={async () => { if (await onShare([...picked])) setPicked(new Set()); }}
       >
         {busy ? 'Delar…' : `Dela ${count} ${count === 1 ? 'område' : 'områden'}${picked.size ? ` med ${picked.size} ${picked.size === 1 ? 'kompis' : 'kompisar'}` : ''}`}
       </button>
+      {count > SHARE_MAX && <p className="t-hand muted" style={{ fontSize: 13, margin: '6px 0 0' }}>Du kan dela högst {SHARE_MAX} områden åt gången — välj färre.</p>}
     </div>
   );
 }
@@ -117,11 +123,12 @@ function LinkTab({ count, defaultTitle, links, busy, onCreate, onRevoke }) {
         <button
           type="button"
           className="btn btn-primary btn-block"
-          disabled={busy || count === 0}
+          disabled={busy || count === 0 || count > LINK_MAX}
           onClick={async () => { const code = await onCreate({ ttlDays, maxUses, title: title.trim() }); if (code) setShownCode(code); }}
         >
           {busy ? 'Skapar…' : `Skapa QR-kod för ${count} ${count === 1 ? 'område' : 'områden'}`}
         </button>
+        {count > LINK_MAX && <p className="t-hand muted" style={{ fontSize: 13, margin: 0 }}>En QR-kod kan gälla högst {LINK_MAX} områden — välj färre, eller gör en kod per kapitel.</p>}
       </div>
       {links.length > 0 && (
         <div>
@@ -146,7 +153,7 @@ function LinkTab({ count, defaultTitle, links, busy, onCreate, onRevoke }) {
   );
 }
 
-export default function ShareStudyDialog({ units: pageUnits, initialSelected = [], title = '', onClose, onChanged }) {
+export default function ShareStudyDialog({ units: pageUnits, initialSelected = [], title = '', linkTitle = title, onClose, onChanged }) {
   const { apiFetch } = useAuth();
   const ref = useModalFocus(onClose);
   const [units, setUnits] = useState(pageUnits || null);
@@ -252,7 +259,7 @@ export default function ShareStudyDialog({ units: pageUnits, initialSelected = [
               {tab === 'friends' ? (
                 <FriendsTab friends={friends} count={chosen.length} busy={busy} onShare={onShare} />
               ) : (
-                <LinkTab count={chosen.length} defaultTitle={title} links={links} busy={busy} onCreate={onCreate} onRevoke={onRevoke} />
+                <LinkTab count={chosen.length} defaultTitle={linkTitle} links={links} busy={busy} onCreate={onCreate} onRevoke={onRevoke} />
               )}
             </>
           )}
