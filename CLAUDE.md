@@ -45,7 +45,7 @@ Never commit directly to `main`.
 |-------|-----------|
 | Database | MongoDB 7 (Mongoose 8) |
 | Backend | Express 4, Node 24 |
-| Frontend | React 19, React Router 6, Vite 5 |
+| Frontend | React 19, React Router 7, Vite 8 |
 | Auth | JWT (15m access + 7d httpOnly refresh), bcryptjs |
 | AI | `@anthropic-ai/sdk` (default model: `claude-haiku-4-5-20251001`) |
 | Containerisation | Docker Compose |
