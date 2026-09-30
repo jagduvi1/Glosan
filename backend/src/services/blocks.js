@@ -2,7 +2,8 @@
 // kod, men en klasskompis kan ändå bli jobbig — trakassera via delningar,
 // felrapporter till ens AI eller utmaningar. Att blockera någon:
 //
-//   - tar bort vänskapen, co-op-streaken och pågående utmaningar mellan er,
+//   - tar bort vänskapen, co-op-streaken och pågående utmaningar mellan bara er
+//     två (gruppens utmaningar är de andras också och får vara kvar),
 //   - tar bort allt ni delat med varandra (glos-listor och Plugga-områden,
 //     även de den andra gick med i via länk) — åt båda hållen,
 //   - hindrar att ni blir kompisar igen (kod eller länk till en lista) och att
@@ -58,7 +59,7 @@ async function blockUser(userId, targetId) {
   }
   await Friendship.deleteMany({ $or: [{ user: me, friend: them }, { user: them, friend: me }] });
   await CoopStreak.deleteMany({ users: { $all: [me, them] } });
-  await Duel.deleteMany({ 'participants.user': { $all: [me, them] }, 'participants.status': 'pending' });
+  await Duel.deleteMany({ participants: { $size: 2 }, 'participants.user': { $all: [me, them] }, 'participants.status': 'pending' });
   await GlosList.updateMany({ user: me, sharedWith: them }, { $pull: { sharedWith: them } });
   await GlosList.updateMany({ user: them, sharedWith: me }, { $pull: { sharedWith: me } });
   // Sent: sharing.js behöver inte känna till blockeringar vid laddning.
