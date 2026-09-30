@@ -16,6 +16,29 @@ export async function addFriendByCode(apiFetch, code) {
   return data.friend;
 }
 
+// Blockera: tar bort vänskap och allt ni delat, och stoppar nya (services/blocks.js).
+async function blocksJson(res, fallback) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || fallback);
+  return data.blocked;
+}
+
+export async function fetchBlocked(apiFetch) {
+  return blocksJson(await apiFetch('/api/me/blocks'), 'Kunde inte hämta blockeringarna');
+}
+
+export async function blockUser(apiFetch, userId) {
+  return blocksJson(await apiFetch('/api/me/blocks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId })
+  }), 'Kunde inte blockera');
+}
+
+export async function unblockUser(apiFetch, userId) {
+  return blocksJson(await apiFetch(`/api/me/blocks/${userId}`, { method: 'DELETE' }), 'Kunde inte häva blockeringen');
+}
+
 export async function removeFriend(apiFetch, friendId) {
   const res = await apiFetch(`/api/me/friends/${friendId}`, { method: 'DELETE' });
   if (!res.ok) {

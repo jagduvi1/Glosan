@@ -18,6 +18,7 @@ const { getSubject } = require('../../config/subjects');
 const { termLabel } = require('../../utils/term');
 const { randomCode } = require('../../utils/friendCode');
 const { isId, oid } = require('./access');
+const { isBlockedBetween } = require('../blocks');
 
 const MAX_RECIPIENTS = 300;
 const MAX_ACTIVE_LINKS_PER_UNIT = 3;
@@ -300,6 +301,8 @@ async function acceptInvite(userId, code) {
   const unitIds = units.map((u) => String(u._id));
   const uid = oid(userId);
   if (String(link.creator) === String(userId)) return { unitId: unitIds[0], unitIds, joined: false, own: true };
+  // Blockerad åt något håll → länken ser bara ut att inte fungera.
+  if (await isBlockedBetween(userId, link.creator)) return { error: LINK_GONE, status: 404 };
   const isMember = (u) => (u.sharedWith || []).some((id) => String(id) === String(userId));
   const toJoin = units.filter((u) => !isMember(u) && (u.sharedWith || []).length < MAX_RECIPIENTS);
   if (!toJoin.length) {

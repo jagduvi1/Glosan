@@ -485,6 +485,33 @@ async function main() {
     await claude.close();
     ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
 
+    // ── Blockera ────────────────────────────────────────────────────────────
+    const codeFor = async (u) => (await api('/api/me/invite-codes', u.token, { method: 'POST' })).body.inviteCode.code;
+    assert.ok((await api('/api/me/friends/by-code', C.token, { method: 'POST', body: { code: await codeFor(A) } })).status < 300);
+    assert.equal((await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } })).status, 200);
+    const aList = await api('/api/lists', A.token, { method: 'POST', body: { title: 'Blockera-test', sourceLang: 'sv', targetLang: 'en' } });
+    const listId = aList.body.list?._id || aList.body._id;
+    assert.equal((await api(`/api/lists/${listId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } })).status, 200);
+    const blockRes = await api('/api/me/blocks', A.token, { method: 'POST', body: { userId: C.id } });
+    assert.equal(blockRes.status, 200);
+    assert.deepEqual(blockRes.body.blocked.map((b) => b.username), [C.name]);
+    // Allt mellan dem är borta.
+    assert.ok(!(await api('/api/me/friends', A.token)).body.friends.some((f) => f.username === C.name), 'no longer friends');
+    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
+    assert.equal((await api(`/api/lists/${listId}`, C.token)).status, 404);
+    // Den blockerade kommer inte tillbaka: ingen kod, ingen länk — och får inte veta varför.
+    const cTry = await api('/api/me/friends/by-code', C.token, { method: 'POST', body: { code: await codeFor(A) } });
+    assert.equal(cTry.status, 404);
+    assert.doesNotMatch(cTry.body.error, /block/i);
+    assert.equal((await api('/api/me/friends/by-code', A.token, { method: 'POST', body: { code: await codeFor(C) } })).status, 409);
+    const aLink = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/study-invite/${aLink.body.link.code}/accept`, C.token, { method: 'POST' })).status, 404);
+    const listLink = await api(`/api/lists/${listId}/share-link`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/list-invite/${listLink.body.invite.code}/accept`, C.token, { method: 'POST' })).status, 404);
+    // Häv blockeringen: länken fungerar igen.
+    assert.deepEqual((await api(`/api/me/blocks/${C.id}`, A.token, { method: 'DELETE' })).body.blocked, []);
+    assert.equal((await api(`/api/study-invite/${aLink.body.link.code}/accept`, C.token, { method: 'POST' })).status, 200);
+    ok('block: friendship, unit and list shares go both ways; no way back by code or link (and no hint why); unblock restores links');
 
     // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);

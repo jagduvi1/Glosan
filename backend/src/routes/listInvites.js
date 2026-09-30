@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
+const { isBlockedBetween } = require('../services/blocks');
 const { loadOwnedList } = require('../middleware/ownership');
 const ListInvite = require('../models/ListInvite');
 const GlosList = require('../models/GlosList');
@@ -175,6 +176,23 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
     if (invite.usedBy.some((u) => u.toString() === req.user.id)) {
       return res.status(400).json({ error: 'Du har redan använt den här länken.' });
     }
+    // Blockerad åt något håll → länken ser bara ut att inte fungera.
+    if (await isBlockedBetween(req.user.id, invite.creator)) {
+      return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });
+    }
+    // Ta en plats atomärt, så två samtidiga klick aldrig spräcker maxUses.
+    const uid = new mongoose.Types.ObjectId(req.user.id);
+    const claimed = await ListInvite.findOneAndUpdate(
+      {
+        _id: invite._id,
+        revokedAt: null,
+        expiresAt: { $gt: new Date() },
+        usedBy: { $ne: uid },
+        $expr: { $lt: [{ $size: '$usedBy' }, '$maxUses'] }
+      },
+      { $push: { usedBy: uid } }
+    );
+    if (!claimed) return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });
 
     // Hämta originalet
     const original = await GlosList.findById(invite.list);
@@ -218,10 +236,6 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
       { $setOnInsert: { user: invite.creator, friend: req.user.id, addedAt: now } },
       { upsert: true }
     );
-
-    // Markera invite som använd av denne user
-    invite.usedBy.push(new mongoose.Types.ObjectId(req.user.id));
-    await invite.save();
 
     res.json({
       listId: copy._id,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { fetchFriends } from '../../api/friends';
+import { fetchFriends, blockUser } from '../../api/friends';
 import {
   fetchUnitShares, shareUnitWithFriends, removeUnitRecipient, createUnitShareLink, revokeUnitShareLink
 } from '../../api/study';
@@ -13,8 +13,9 @@ import { LinkOptions, QrLinkCard, isActiveLink } from './shareBits';
 // Ingen får en kopia: alla övar med sin egen statistik, och bara du (och din
 // AI) kan ändra innehållet — rättar du något når det alla.
 
-function FriendsTab({ friends, recipients, busy, onShare, onRemove }) {
+function FriendsTab({ friends, recipients, busy, onShare, onRemove, onBlock }) {
   const [selected, setSelected] = useState(() => new Set());
+  const [confirmBlock, setConfirmBlock] = useState(null);
   const have = new Set(recipients.map((r) => r._id));
   const available = friends.filter((f) => !have.has(f._id));
   const toggle = (id) => setSelected((cur) => {
@@ -33,9 +34,24 @@ function FriendsTab({ friends, recipients, busy, onShare, onRemove }) {
               <div key={r._id} className="row" style={{ gap: 10, padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10, background: 'var(--plum-soft)' }}>
                 <AvatarDisplay avatar={r.avatar} username={r.username} size={32} />
                 <span className="grow" style={{ fontWeight: 700 }}>{r.username}</span>
-                <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => onRemove(r._id)}>
-                  Ta bort
-                </button>
+                {confirmBlock === r._id ? (
+                  <>
+                    <span className="t-hand" style={{ fontSize: 13 }}>Blockera? Allt ni delar tas bort.</span>
+                    <button type="button" className="btn btn-sm" style={{ background: 'var(--berry-soft)', color: 'var(--berry-deep)' }} disabled={busy} onClick={async () => { setConfirmBlock(null); await onBlock(r._id); }}>
+                      Blockera
+                    </button>
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirmBlock(null)}>Avbryt</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => onRemove(r._id)}>
+                      Ta bort
+                    </button>
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => setConfirmBlock(r._id)} title="Ta bort och stoppa allt från den här personen">
+                      Blockera
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -177,6 +193,12 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
     setRecipients(r.recipients);
     return r;
   });
+  const onBlock = (userId) => run(async () => {
+    await blockUser(apiFetch, userId);
+    setRecipients((cur) => cur.filter((x) => x._id !== userId));
+    setFriends((cur) => cur.filter((x) => x._id !== userId));
+    return true;
+  });
   const onCreate = (opts) => run(async () => {
     const r = await createUnitShareLink(apiFetch, unit.id, opts);
     setLinks((cur) => [r.link, ...cur]);
@@ -211,7 +233,7 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
           {loading ? (
             <p className="t-hand muted" style={{ margin: 0 }}>Glo hämtar dina kompisar…</p>
           ) : tab === 'friends' ? (
-            <FriendsTab friends={friends} recipients={recipients} busy={busy} onShare={onShare} onRemove={onRemove} />
+            <FriendsTab friends={friends} recipients={recipients} busy={busy} onShare={onShare} onRemove={onRemove} onBlock={onBlock} />
           ) : (
             <LinkTab links={links} busy={busy} onCreate={onCreate} onRevoke={onRevoke} />
           )}

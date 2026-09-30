@@ -128,6 +128,9 @@ const userSchema = new mongoose.Schema({
   // är hårdkodade i routes/friends.js (3 → studentmössa, 10 →
   // ambassadör). Lägg till nya rewards där.
   referralCount: { type: Number, default: 0, min: 0 },
+  // Konton användaren har blockerat (services/blocks.js): de kan inte bli
+  // kompis igen, dela med hen eller gå med i det hen delar via länk.
+  blocked: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
   unlockedRewards: { type: [String], default: [] },
   aiUsage: {
     count: { type: Number, default: 0, min: 0 },
@@ -188,6 +191,7 @@ userSchema.methods.toJSON = function () {
   // dolda moduler utan att känna till env-variabeln.
   obj.features = effectiveFeatures(obj);
   delete obj.featureBlocks;
+  delete obj.blocked; // egen endpoint: GET /api/me/blocks
   delete obj.studyCodeCounters;
   delete obj.authProviders;
   delete obj.password;
