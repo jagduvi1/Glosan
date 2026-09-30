@@ -25,7 +25,7 @@ const CHROME = process.env.CHROME_PATH || {
 const errors = [];
 const watch = (page) => {
   page.on('pageerror', (e) => errors.push(`pageerror ${page.url()}: ${e.message}`));
-  // 401 från refresh-proben och 404 för favicon är väntade — inga fel i appen.
+  // 401 från refresh-proben (utloggad) är väntad — inget fel i appen.
   page.on('console', (m) => {
     if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`console ${page.url()}: ${m.text()}`);
   });
@@ -80,6 +80,16 @@ async function main() {
     const listId = list.body.list._id;
     await api(`/api/lists/${listId}/glosor`, A.token, { method: 'POST', body: { source: 'häst', target: 'horse' } });
     ok('two users (friends), three Plugga units, a list with one word');
+
+    // ── app-ikonerna: flikar, bokmärken och "Lägg till på hemskärmen" ────────
+    // (även content-type: en saknad fil får inte slinka igenom som appens HTML)
+    const manifest = await fetch(`${BASE}/manifest.json`).then((r) => r.json());
+    for (const src of ['favicon.ico', 'apple-touch-icon.png', ...manifest.icons.map((i) => i.src)]) {
+      const r = await fetch(`${BASE}/${src.replace(/^\//, '')}`);
+      assert.equal(r.status, 200, `${src} is served`);
+      assert.match(r.headers.get('content-type') || '', /^image\//, `${src} is an image`);
+    }
+    ok('the favicon, the home-screen icons and the manifest\'s icons are served');
 
     browser = await puppeteer.launch({
       executablePath: CHROME,
