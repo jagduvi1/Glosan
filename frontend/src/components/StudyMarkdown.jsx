@@ -2,12 +2,16 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import '../styles/study.css';
 
 // Renderar AI-skrivet Plugga-innehåll: Markdown med formler i LaTeX ($…$ och
-// $$…$$). Texten kommer från en AI och ska aldrig kunna bli körbar kod:
+// $$…$$). En enkel radbrytning blir en radbrytning (remark-breaks) — i vanlig
+// Markdown blir den ett mellanslag, och korttexter med en rad per sak flöt ihop
+// till en enda rad. Formler, kod och figurer påverkas inte.
+// Texten kommer från en AI och ska aldrig kunna bli körbar kod:
 // - ingen rå HTML (skipHtml),
 // - KaTeX utan `trust` (inga \href / \url / \htmlClass),
 // - inga externa bilder (CSP:n blockerar dem ändå) — alt-texten visas i stället,
@@ -106,7 +110,7 @@ function StudyMarkdown({ children, inline = false }) {
   return (
     <Tag className={`study-md${inline ? ' study-md-inline' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
         rehypePlugins={[KATEX]}
         skipHtml
         components={inline ? inlineComponents : baseComponents}

@@ -285,7 +285,7 @@ every answer → send the link.
 | Model | Holds |
 |---|---|
 | `StudyUnit` | creator, subject, term, gradeYear, code (MA3), title, description, source{book, chapter, pages}, examDate, sharedWith, archivedAt |
-| `StudyPage` | a genomgång: markdown + LaTeX + ```svg figures, rendered without raw HTML |
+| `StudyPage` | a genomgång: markdown + LaTeX + ```svg figures, rendered without raw HTML. All Plugga text keeps single line breaks (remark-breaks): plain Markdown turns them into spaces, and card backs written one line per point ran together |
 | `StudyItem` | a card or exercise: prompt, back / answer (number · choice · multi · order · factors · text · self; `expr` for templates), hints, solution, level E/C/A, skill, sourceRef, usage (practice/test), number (→ code), template |
 | `StudyItemState` | per user + item: Leitner box 0–5, dueAt, correct, wrong |
 | `StudyAttempt` | per answer: result, source (app/paper), mode, given, AI feedback, template seed, denormalised subject/title/code |
