@@ -105,7 +105,8 @@ router.get('/list-invite/:code', async (req, res) => {
 });
 
 // POST /api/list-invite/:code/accept — kräver auth
-// Kopierar listan + glosor till requestern + skapar friendship med creator.
+// Kopierar listan + glosor till requestern, och gör dem till kompisar med
+// skaparen om länken säger det (befriend).
 router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
   try {
     // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökkompisar.
@@ -168,7 +169,9 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
       );
     }
 
-    // Lägg till båda som vänner (upsert) — inte för länkar som en AI skapat.
+    // Lägg till båda som vänner (upsert) — bara om skaparen kryssat i det. Länkar
+    // från innan kryssrutan fanns saknar fältet och fortsätter som de lovade;
+    // länkar som AI:n gjort har alltid false.
     if (invite.befriend !== false) {
       const now = new Date();
       await Friendship.updateOne(

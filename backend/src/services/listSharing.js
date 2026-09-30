@@ -1,7 +1,8 @@
 // Dela glos-listor — med kompisar (de får tillgång till originalet, att läsa
-// eller redigera) eller via en länk (den som går med får en KOPIA av listan och
-// blir kompis med skaparen — klassrummets QR-flöde). Samma regler för appen
-// (routes/lists.js, routes/listInvites.js) och användarens AI (mcp/tools/sharing.js).
+// eller redigera) eller via en länk (den som går med får en KOPIA av listan, och
+// blir kompis med skaparen bara om skaparen kryssat i det i appen). Samma regler
+// för appen (routes/lists.js, routes/listInvites.js) och användarens AI
+// (mcp/tools/sharing.js).
 const mongoose = require('mongoose');
 const ListInvite = require('../models/ListInvite');
 const Friendship = require('../models/Friendship');

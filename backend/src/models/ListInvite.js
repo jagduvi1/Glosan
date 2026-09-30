@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 // Multi-use invite-länk till en specifik lista. Användaren skapar en
 // kod, klasskompisar scannar QR-koden, registrerar/loggar in, och
-// får listan kopierad till sitt konto + blir vän med skaparen.
+// får listan kopierad till sitt konto (+ blir vän med skaparen om
+// skaparen kryssat i det — se befriend nedan).
 //
 // Skiljer sig från InviteCode (engångskod för att bli vän):
 // - kan användas flera gånger (upp till maxUses)
