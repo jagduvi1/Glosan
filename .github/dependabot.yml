@@ -1,0 +1,34 @@
+# Månadsvisa beroende-PR:er, grupperade så att de blir få att gå igenom:
+# en för backend, en för frontend (minor + patch), en för GitHub Actions.
+# Större versionshopp (major) kommer som egna PR:er. CI (jest, bygget, e2e i
+# Docker och webbläsartestet) avgör om de håller.
+#
+# Faller Docker-bygget i CI på `npm ci`, har Dependabots npm skrivit en låsfil
+# som imagens npm inte godtar — generera om den i containern (se CLAUDE.md).
+# release.yml:s docker-actions körs bara vid en release: håll koll på första
+# releasen efter att en actions-uppdatering mergats.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: monthly
+    groups:
+      backend:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    groups:
+      frontend:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
