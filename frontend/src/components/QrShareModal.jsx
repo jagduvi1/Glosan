@@ -19,6 +19,9 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
   const { apiFetch } = useAuth();
   const [ttlDays, setTtlDays] = useState(7);
   const [maxUses, setMaxUses] = useState(30);
+  // Av som standard: en länk kan skickas vidare, och då ska främlingar inte
+  // bli kompis med ett barn.
+  const [befriend, setBefriend] = useState(false);
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -62,7 +65,7 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
     setError('');
     setCreating(true);
     try {
-      const invite = await createListInvite(apiFetch, listId, { ttlDays, maxUses });
+      const invite = await createListInvite(apiFetch, listId, { ttlDays, maxUses, befriend });
       setInvites((cur) => [invite, ...cur]);
       setSelectedCode(invite.code);
     } catch (err) {
@@ -114,6 +117,7 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
                     {selectedInvite.usedCount} av {selectedInvite.maxUses === 1000 ? '∞' : selectedInvite.maxUses} har använt
                     {' · '}
                     går ut {new Date(selectedInvite.expiresAt).toLocaleDateString('sv-SE')}
+                    {selectedInvite.befriend ? ' · de blir dina kompisar' : ''}
                   </p>
                 </div>
               )}
@@ -151,6 +155,15 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
                       ))}
                     </div>
                   </div>
+                  <label className="row" style={{ gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={befriend} onChange={(e) => setBefriend(e.target.checked)} style={{ width: 18, height: 18, marginTop: 3 }} />
+                    <span>
+                      <strong>Bli kompisar med dem som går med</strong>
+                      <span className="t-hand muted" style={{ display: 'block', fontSize: 13 }}>
+                        Bara om du känner alla som kan få länken — en länk kan skickas vidare.
+                      </span>
+                    </span>
+                  </label>
                   {error && <p className="error">{error}</p>}
                   <button className="btn btn-primary btn-block" onClick={onCreate} disabled={creating}>
                     {creating ? 'Skapar…' : 'Generera ny QR-länk'}

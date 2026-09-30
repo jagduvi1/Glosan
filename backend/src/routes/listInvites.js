@@ -26,11 +26,15 @@ const createLimiter = rateLimit({
 });
 
 // POST /api/lists/:id/share-link — kräver ägarskap
-// Body: { ttlDays: 1|7|30, maxUses: number }
+// Body: { ttlDays: 1|7|30, maxUses: number, befriend?: boolean }
 router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList(), async (req, res) => {
   try {
-    // Appens länkar gör den som går med till kompis (klassrummets QR-flöde).
-    const result = await createListInvite(req.user.id, req.list, { ttlDays: req.body?.ttlDays, maxUses: req.body?.maxUses });
+    // Den som går med blir kompis bara om skaparen kryssat i det (av som standard).
+    const result = await createListInvite(req.user.id, req.list, {
+      ttlDays: req.body?.ttlDays,
+      maxUses: req.body?.maxUses,
+      befriend: req.body?.befriend === true
+    });
     if (result.error) return res.status(result.status).json({ error: result.error });
     res.status(201).json({ invite: result.invite });
   } catch (err) {

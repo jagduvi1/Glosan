@@ -47,10 +47,11 @@ const listInviteSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
-  // Blir den som går med kompis med skaparen? Ja för länkar gjorda i appen
-  // (klassrummets QR-flöde). Nej för länkar som användarens AI gjort: en AI
-  // kan luras att skapa och sprida en länk, och då ska främlingar inte bli
-  // kompis med ett barn — de får bara en kopia av listan.
+  // Blir den som går med kompis med skaparen? Bara om skaparen kryssat i det
+  // när länken skapades i appen (av som standard — en länk kan skickas vidare,
+  // och då ska främlingar inte bli kompis med ett barn). Länkar som
+  // användarens AI gör blir aldrig det. Standardvärdet true gäller länkar från
+  // innan kryssrutan fanns: de fortsätter som de lovade.
   befriend: {
     type: Boolean,
     default: true
