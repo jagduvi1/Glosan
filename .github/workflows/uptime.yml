@@ -13,7 +13,10 @@ name: Uptime
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # Inte på hel timme: då är GitHub mest belastat och skjuter upp eller
+    # släpper schemalagda körningar — */15 hade inte körts en enda gång två
+    # timmar efter att den lades till (2026-09-30).
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
   pull_request:
     paths: ['.github/workflows/uptime.yml']
