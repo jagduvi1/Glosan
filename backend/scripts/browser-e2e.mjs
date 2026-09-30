@@ -46,6 +46,8 @@ const waitForText = (page, text, timeout = 10000) =>
   page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
 
 async function login(page, user) {
+  // Inloggningssidans kod kan fortfarande laddas (ett hopp i appen i en ny kontext).
+  await page.waitForSelector('input.inp');
   const inputs = await page.$$('input.inp');
   await inputs[0].type(user.name);
   await inputs[1].type(PASSWORD);
@@ -238,6 +240,16 @@ async function main() {
     await clickText(page, 'button', 'Häv blockering');
     await waitForText(page, 'är hävd');
     ok('Kompisar: block (the friend loses the shared units) and unblock');
+
+    // ── utloggning: nästa elev på samma dator hamnar inte på den förras sida ──
+    await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });
+    await page.click('button[aria-label="Visa meny"]');
+    await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle0' }), clickText(page, '.nav-drawer button', 'Logga ut')]);
+    assert.equal(new URL(page.url()).pathname, '/login');
+    await login(page, B);
+    await pause(1500);
+    assert.equal(new URL(page.url()).pathname, '/lists', 'the next person starts on their own lists, not on the last page of the one who logged out');
+    ok('after "Logga ut", the next person to log in starts on their own lists');
 
     assert.deepEqual(errors, [], `no page errors:\n${errors.join('\n')}`);
     ok('no errors in any page');

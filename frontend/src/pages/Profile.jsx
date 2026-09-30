@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { updateAvatar, getMyPlan, startMyTrial, exportMyData, deleteMyAccount } from '../api/me';
@@ -68,7 +68,6 @@ export default function Profile() {
   useDocumentTitle('Profil');
   const { user, apiFetch, logout } = useAuth();
   const { profile, loading, error, refresh } = useGamification();
-  const navigate = useNavigate();
   const [showPicker, setShowPicker] = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [plan, setPlan] = useState(null);
@@ -141,8 +140,8 @@ export default function Profile() {
     setDeleteBusy(true);
     try {
       await deleteMyAccount(apiFetch);
-      await logout();
-      navigate('/login', { replace: true });
+      // Hel omladdning: ingen "tillbaka hit" till nästa som loggar in, inget kvar i minnet.
+      await logout({ thenGoTo: '/login' });
     } catch (e) {
       setRightsError(e.message);
       setDeleteBusy(false);

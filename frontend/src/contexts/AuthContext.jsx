@@ -50,7 +50,11 @@ export function AuthProvider({ children }) {
     return refreshInFlight.current;
   }, []);
 
-  const logout = useCallback(async () => {
+  // thenGoTo: en uttrycklig utloggning laddar om till den sidan direkt, utan
+  // att först visa sidan utloggad — sidvakten lade annars "tillbaka dit du var"
+  // i historiken (och webbläsaren behöll den genom omladdningen), så nästa
+  // elev som loggade in på samma dator hamnade på den förras sida.
+  const logout = useCallback(async ({ thenGoTo } = {}) => {
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
@@ -66,6 +70,10 @@ export function AuthProvider({ children }) {
       }
     } catch { /* privat läge */ }
     clearToken();
+    if (thenGoTo) {
+      window.location.replace(thenGoTo);
+      return;
+    }
     setUser(null);
   }, []);
 

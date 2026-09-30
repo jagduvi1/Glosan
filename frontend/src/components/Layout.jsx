@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
 import { StreakPill, XpPill, QuotaPill } from './Pill';
@@ -18,7 +18,6 @@ import { hasFeature } from '../utils/features';
 export default function Layout({ children }) {
   const { user, logout, apiFetch } = useAuth();
   const { profile } = useGamification();
-  const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
@@ -117,10 +116,10 @@ export default function Layout({ children }) {
   };
   const showVerifyBanner = user && user.emailVerified === false && verifyBanner.visible;
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
+  // En hel omladdning till /login: inget "dit du var på väg" från den som
+  // loggade ut (nästa elev på samma dator hamnade annars på den förras sida),
+  // och inget av den förras data kvar i minnet.
+  const handleLogout = () => logout({ thenGoTo: '/login' });
 
   const isOnLists = location.pathname.startsWith('/lists');
   const isOnProfile = location.pathname.startsWith('/profile');
