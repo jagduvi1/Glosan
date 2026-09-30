@@ -50,6 +50,8 @@ const studySessionSchema = new mongoose.Schema({
 });
 
 studySessionSchema.index({ user: 1, startedAt: -1 });
+// Underhållsjobbet som stänger övergivna pass (services/maintenance.js).
+studySessionSchema.index({ endedAt: 1, lastActiveAt: 1 });
 
 /** Sekunder att lägga till för en aktivitet vid `now` (tak: ACTIVE_GAP_CAP_SEC). */
 studySessionSchema.statics.activeIncrement = function (lastActiveAt, now = new Date()) {

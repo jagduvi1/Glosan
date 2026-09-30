@@ -38,6 +38,7 @@ services:
       - FEATURES_DISABLED=${FEATURES_DISABLED:-}
       - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
       - MCP_DISABLED=${MCP_DISABLED:-}
+      - DISK_ALERT_PERCENT=${DISK_ALERT_PERCENT:-85}
       - NODE_ENV=${NODE_ENV:-production}
     deploy:
       resources:

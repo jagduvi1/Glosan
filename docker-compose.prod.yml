@@ -56,6 +56,8 @@ services:
       - MCP_KNOWN_REDIRECT_HOSTS=${MCP_KNOWN_REDIRECT_HOSTS:-}
       # Nödbroms: true stänger AI-anslutningen (discovery, OAuth, /api/mcp) med 503.
       - MCP_DISABLED=${MCP_DISABLED:-}
+      # Mejla admins när disken är så här full (procent, services/maintenance.js).
+      - DISK_ALERT_PERCENT=${DISK_ALERT_PERCENT:-85}
       - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       mongo:

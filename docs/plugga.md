@@ -200,6 +200,23 @@ it is removed, and it is taken out of any test. "Borttaget" on the unit page
 lists it with **Ångra**, which restores it with its old code and id.
 `get_study_unit` shows recent deletions so the AI doesn't recreate them.
 
+## Retention
+
+Removed or closed automatically (TTL indexes, and the hourly job in
+`services/maintenance.js`):
+
+| What | When |
+|------|------|
+| `StudyItemDeletion` (the bin) | 180 days after the deletion — Ångra works that long |
+| `StudyFlag`, resolved | 180 days after `resolvedAt`; open reports stay |
+| `StudyShareLink` | 30 days after it expires |
+| `StudySession`, abandoned | closed (not deleted) after 6 h without activity — no XP |
+
+Everything else — answers, sessions, test results — is the student's history
+("Min plugg", meant to cover a whole school career) and stays until the
+account is deleted (`deleteStudyDataForUser`). The privacy page
+(`Integritet.jsx`) says the same; change both together.
+
 ## MCP
 
 All study tools and prompts carry `feature: 'study'` and are only registered

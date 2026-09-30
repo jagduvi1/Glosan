@@ -117,6 +117,13 @@ the only monitoring watched the front page, which nginx kept serving happily
 without a backend. Whatever watches the backups should also watch
 `/api/health`, not `/`.
 
+The backend watches the disk itself too: once an hour
+`backend/src/services/maintenance.js` reads the host disk (the container's
+root filesystem is the host's) and mails every admin account through Resend
+when it is fuller than `DISK_ALERT_PERCENT` (default 85) — at most once a day
+while it stays full. It needs `RESEND_API_KEY`; without it the warning only
+goes to the backend log.
+
 ## Off-provider copy
 
 `B2_RESTIC_REPOSITORY` and the `B2_*` credentials enable a second copy to

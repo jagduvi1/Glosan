@@ -52,6 +52,8 @@ export default function Integritet() {
           <li><strong>Kompis­relationer</strong> (<em>Friendship</em>): vilka konton som lagt till varandra. Inga meddelanden eller chattar.</li>
           <li><strong>Co-op-streaks</strong> (<em>CoopStreak</em>): gemensam streak per kompis-par och senaste dagen ni båda var aktiva.</li>
           <li><strong>Utmaningar</strong> (<em>Duel</em>): async-, mål- eller live-duells du deltagit i, inklusive snapshot av frågorna och varje deltagares resultat (rätt/total/tid). Live-duells visar tillfälligt din avatar och dina svar för motspelaren i realtid över WebSocket.</li>
+          <li><strong>AI-anslutningar</strong> (<em>McpToken</em>): om du kopplar din egen AI (till exempel Claude) till Glosan sparar vi anslutningens namn, behörighet (läsa, eller läsa och skapa), när den användes senast och en hashad nyckel. Du kopplar bort den på profilsidan.</li>
+          <li><strong>Plugga</strong> (för konton där det är påslaget): områden, genomgångar, kort, övningar och övningsprov som din AI skapat; dina svar, din pluggtid och dina resultat (&quot;Min plugg&quot;); och AI:ns återkoppling på lösningar du fotat — själva fotot når aldrig oss. Delar du ett område ser mottagarna innehållet men aldrig dina resultat. Går någon med via en delningslänk sparar länken vem som gått med.</li>
           <li><strong>Tekniska detaljer:</strong> en httpOnly-cookie med en hashad refresh-token som håller dig inloggad i upp till 7 dagar.</li>
         </ul>
       </section>
@@ -75,6 +77,11 @@ export default function Integritet() {
           Eftersom Anthropic är USA-baserat innebär det en överföring av personuppgifter utanför EU/EES.
           Vill du undvika det, använd inte AI-funktionerna — appens grundläggande funktioner (skapa glosor manuellt,
           quiz, flashkort, galge, ordfall) fungerar utan dem.
+        </p>
+        <p>
+          Kopplar du din egen AI till Glosan (en AI-anslutning) läser och ändrar den ditt innehåll när du ber den om
+          det. Det du skriver till din AI — och foton du visar den — hanteras av den tjänsten enligt dess villkor, inte
+          av oss. I Plugga anropar Glosan aldrig någon AI själv.
         </p>
       </section>
 
@@ -113,12 +120,20 @@ export default function Integritet() {
         <h2 style={{ marginTop: 0 }}>Hur länge sparas dina uppgifter?</h2>
         <p>
           Allt sparas tills du själv raderar det. Du kan när som helst radera enstaka glosor, listor och kompisar — eller
-          hela kontot från profilsidan.
+          hela kontot från profilsidan. Din plugghistorik (&quot;Min plugg&quot;) sparas också tills du raderar kontot, så att du
+          kan se vad du gjort under hela skoltiden.
+        </p>
+        <p>
+          Några saker städas bort automatiskt: borttagna kort och övningar i Plugga går att ångra i 180 dagar och raderas
+          sedan helt, lösta felrapporter raderas efter 180 dagar, delningslänkar 30 dagar efter att de gått ut och
+          bortkopplade AI-anslutningar efter 30 dagar.
         </p>
         <p>
           När du raderar ditt konto tas följande bort omedelbart: kontouppgifter, dina egna listor + glosor, kompis­
-          relationer, co-op-streaks, utmaningar du deltagit i, XP- och quiz-runda-historik samt aktiva engångskoder.
-          Du tas också automatiskt bort från andras "delade med dig"-sektion.
+          relationer, co-op-streaks, utmaningar du deltagit i, XP- och quiz-runda-historik, aktiva engångskoder,
+          dina AI-anslutningar, Plugga-områden du skapat (med allas progress på dem) och din plugghistorik.
+          Du tas också automatiskt bort från andras &quot;delade med dig&quot;-sektion. I andras plugghistorik från dina områden
+          ersätts områdets namn och frågornas text med &quot;Raderat område&quot; — deras egna resultat finns kvar.
         </p>
         <p className="t-hand muted" style={{ fontSize: 14 }}>
           Påverkan på andra: kompisar som hade dina delade listor förlorar tillgången, utmaningar mellan dig och dem
