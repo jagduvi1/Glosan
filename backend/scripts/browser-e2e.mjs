@@ -25,7 +25,7 @@ const CHROME = process.env.CHROME_PATH || {
 const errors = [];
 const watch = (page) => {
   page.on('pageerror', (e) => errors.push(`pageerror ${page.url()}: ${e.message}`));
-  // 401 från refresh-proben och 404 för favicon är väntade — inga fel i appen.
+  // 401 från refresh-proben (utloggad) är väntad — inget fel i appen.
   page.on('console', (m) => {
     if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`console ${page.url()}: ${m.text()}`);
   });

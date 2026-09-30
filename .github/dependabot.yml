@@ -4,7 +4,8 @@
 # Docker och webbläsartestet) avgör om de håller.
 #
 # Faller Docker-bygget i CI på `npm ci`, har Dependabots npm skrivit en låsfil
-# som imagens npm inte godtar — generera om den i containern (se CLAUDE.md).
+# som imagens npm inte godtar — generera om den i containern, i backend eller
+# frontend (kommandot finns under Common Commands i CLAUDE.md).
 # release.yml:s docker-actions körs bara vid en release: håll koll på första
 # releasen efter att en actions-uppdatering mergats.
 version: 2

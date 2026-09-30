@@ -34,8 +34,8 @@ function ico(pngs) {
   let offset = header.length;
   pngs.forEach(({ size, data }, i) => {
     const e = 6 + 16 * i;
-    header.writeUInt8(size, e);
-    header.writeUInt8(size, e + 1);
+    header.writeUInt8(size >= 256 ? 0 : size, e); // ICO skriver 256 som 0
+    header.writeUInt8(size >= 256 ? 0 : size, e + 1);
     header.writeUInt16LE(1, e + 4);
     header.writeUInt16LE(32, e + 6);
     header.writeUInt32LE(data.length, e + 8);
