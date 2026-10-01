@@ -11,10 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "katex": "^0.16.47",
+    "katex": "^0.18.9",
     "qrcode": "^1.5.4",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-helmet-async": "^3.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.4",
@@ -22,7 +22,7 @@
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
