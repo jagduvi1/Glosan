@@ -181,7 +181,7 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
                   <div className="stack" style={{ gap: 6 }}>
                     {othersInvites.map((i) => (
                       <div
-                        key={i.code}
+                        key={i._id}
                         className="row between"
                         style={{ padding: '8px 10px', border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--paper-deep)' }}
                       >
@@ -189,7 +189,8 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
                           <strong>via {i.via}</strong> · {i.usedCount}/{i.maxUses === 1000 ? '∞' : i.maxUses}
                           {' · går ut '}{new Date(i.expiresAt).toLocaleDateString('sv-SE')}
                         </span>
-                        <button className="btn btn-sm btn-ghost" onClick={() => onRevoke(i.code)} title="Avaktivera">
+                        {/* Andras länkar har ingen kod här — de stängs med länkens id. */}
+                        <button className="btn btn-sm btn-ghost" onClick={() => onRevoke(i._id)} title="Avaktivera">
                           Stäng av
                         </button>
                       </div>

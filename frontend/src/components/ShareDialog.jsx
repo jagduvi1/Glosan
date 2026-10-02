@@ -20,13 +20,11 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
   const ref = useModalFocus(onClose);
   const [friends, setFriends] = useState([]);
   const [shares, setShares] = useState([]); // de jag ser: alla (ägaren) eller de jag själv lagt till
-  const [friendsWithIt, setFriendsWithIt] = useState([]); // kompisar som redan har listan
   const [selectIds, setSelectIds] = useState(new Set()); // user-IDs valda för ny delning
   const [mode, setMode] = useState(initialMode);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [note, setNote] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,7 +36,6 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
       ]);
       setFriends(fs);
       setShares(data.shares || []);
-      setFriendsWithIt(data.friendsWithIt || []);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -61,13 +58,11 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
     if (selectIds.size === 0) return;
     setBusy(true);
     setError('');
-    setNote('');
     try {
-      const ids = Array.from(selectIds);
       // Läget skickas bara av ägaren — den som delar vidare ger alltid läsrätt.
-      const r = await shareList(apiFetch, listId, ids, isOwner ? mode : undefined);
-      const skipped = ids.length - (r.added ?? ids.length);
-      if (skipped > 0) setNote(`${skipped === 1 ? 'En' : skipped} av dem du valde fick inte listan.`);
+      // Hoppades någon över (hade redan listan, eller kan inte få den) säger vi
+      // inget om det — en blockering mellan ägaren och kompisen får inte märkas.
+      await shareList(apiFetch, listId, Array.from(selectIds), isOwner ? mode : undefined);
       await load();
       setSelectIds(new Set());
       onChanged?.();
@@ -97,7 +92,6 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
   const onRemove = async (userId) => {
     setBusy(true);
     setError('');
-    setNote('');
     try {
       const r = await unshareList(apiFetch, listId, userId);
       setShares(r.shares || shares.filter((s) => s._id !== userId));
@@ -109,11 +103,10 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
     }
   };
 
-  const have = new Set([...shares.map((s) => s._id), ...friendsWithIt]);
+  // Den som delar vidare ser bara dem hen själv lagt till — vilka andra som har
+  // listan (eller inte kan få den) syns aldrig, så alla andra kompisar erbjuds.
+  const have = new Set(shares.map((s) => s._id));
   const availableToShare = friends.filter((f) => !have.has(f._id));
-  // Kompisar som redan har listan på annat sätt (äger den, eller fått den av någon annan).
-  const shownIds = new Set(shares.map((s) => s._id));
-  const alreadyHave = friends.filter((f) => friendsWithIt.includes(f._id) && !shownIds.has(f._id));
 
   return (
     <div className="modal-backdrop" onClick={() => !busy && onClose()}>
@@ -135,7 +128,6 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
 
         <div className="modal-body stack" style={{ gap: 16 }}>
           {error && <p className="error">{error}</p>}
-          {note && <p className="t-hand muted" style={{ margin: 0 }}>{note}</p>}
 
           {isOwner ? (
             <div className="card" style={{ padding: 12, background: 'var(--paper-edge)' }}>
@@ -222,12 +214,6 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
             </div>
           )}
 
-          {alreadyHave.length > 0 && (
-            <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>
-              Har redan listan: {alreadyHave.map((f) => f.username).join(', ')}
-            </p>
-          )}
-
           {loading ? (
             <p className="t-hand muted">Glo hämtar dina kompisar…</p>
           ) : friends.length === 0 ? (
@@ -239,6 +225,11 @@ export default function ShareDialog({ listId, listTitle, initialMode = 'read', i
               <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>
                 Välj kompisar att dela med:
               </p>
+              {!isOwner && (
+                <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+                  Har en kompis redan listan händer inget när du delar den med hen.
+                </p>
+              )}
               <div className="stack" style={{ gap: 6 }}>
                 {availableToShare.map((f) => {
                   const selected = selectIds.has(f._id);

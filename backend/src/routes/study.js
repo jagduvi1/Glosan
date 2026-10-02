@@ -17,7 +17,6 @@ const {
   loadShareableUnits, shareUnitsWithFriends, listMyShareLinks, revokeMyShareLink, MAX_UNITS_PER_SHARE, MAX_UNITS_PER_LINK
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
-const { friendsWithIt } = require('../services/sharedVia');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
 const { practiceSheet, SHEET_MODES } = require('../services/study/sheet');
@@ -520,16 +519,13 @@ async function readableUnit(req, res) {
   return access.unit;
 }
 
-// GET /api/study/units/:id/shares → { recipients, links, isOwner, friendsWithIt }
-// (friendsWithIt = mina kompisar som redan har området, så Dela inte erbjuder dem)
+// GET /api/study/units/:id/shares → { recipients, links, isOwner }
 router.get('/units/:id/shares', async (req, res, next) => {
   try {
     const unit = await readableUnit(req, res);
     if (!unit) return;
-    const [recipients, links, friends] = await Promise.all([
-      listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id), friendsWithIt(unit, req.user.id)
-    ]);
-    res.json({ recipients, links, isOwner: String(unit.user) === String(req.user.id), friendsWithIt: friends });
+    const [recipients, links] = await Promise.all([listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id)]);
+    res.json({ recipients, links, isOwner: String(unit.user) === String(req.user.id) });
   } catch (err) {
     next(err);
   }
@@ -651,13 +647,13 @@ router.delete('/share-links/:code', async (req, res, next) => {
   }
 });
 
-// DELETE /api/study/units/:id/share-links/:code — stäng av en länk (sin egen;
-// skaparen av området även andras länkar till det)
-router.delete('/units/:id/share-links/:code', async (req, res, next) => {
+// DELETE /api/study/units/:id/share-links/:ref — stäng av en länk via koden
+// (sin egen) eller länkens id (skaparen av området stänger andras länkar till det)
+router.delete('/units/:id/share-links/:ref', async (req, res, next) => {
   try {
     const unit = await readableUnit(req, res);
     if (!unit) return;
-    if (!(await revokeShareLink(unit, req.params.code, req.user.id))) return res.status(404).json({ error: 'Länken hittades inte.' });
+    if (!(await revokeShareLink(unit, req.params.ref, req.user.id))) return res.status(404).json({ error: 'Länken hittades inte.' });
     res.json({ links: await listShareLinks(unit, req.user.id) });
   } catch (err) {
     next(err);

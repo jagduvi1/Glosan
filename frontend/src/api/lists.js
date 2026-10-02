@@ -62,9 +62,8 @@ export async function deleteList(apiFetch, id) {
   }
 }
 
-// → { shares: [{ _id, username, avatar, via }], isOwner, friendsWithIt: [id] }.
-// Ägaren ser alla som har listan (via = den som delade vidare), andra bara dem
-// de själva delat med; friendsWithIt = mina kompisar som redan har listan.
+// → { shares: [{ _id, username, avatar, via }], isOwner }. Ägaren ser alla som
+// har listan (via = den som delade vidare), andra bara dem de själva delat med.
 export async function fetchListShares(apiFetch, id) {
   const res = await apiFetch(`/api/lists/${id}/shares`);
   const data = await res.json();

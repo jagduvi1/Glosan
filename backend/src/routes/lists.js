@@ -7,7 +7,7 @@ const Glos = require('../models/Glos');
 const User = require('../models/User');
 const QuizRunEvent = require('../models/QuizRunEvent');
 const { listShares, shareListWithFriends, removeListRecipient, listForViewer } = require('../services/listSharing');
-const { sharerOf, profiles, canRemove, circleOf, friendsWithIt } = require('../services/sharedVia');
+const { sharerOf, profiles, canRemove, circleOf } = require('../services/sharedVia');
 const { periodRange } = require('../utils/localTime');
 
 const router = express.Router();
@@ -178,15 +178,10 @@ router.delete('/:id', loadOwnedList(), async (req, res) => {
 
 // GET /api/lists/:id/shares — vilka har listan? Alla som har listan kan dela
 // den vidare: ägaren ser alla (med `via` för dem någon annan lagt till), andra
-// bara dem de själva lagt till. `friendsWithIt` = mina kompisar som redan har
-// listan (så Dela inte erbjuder dem).
+// bara dem de själva lagt till.
 router.get('/:id/shares', loadReadableList(), async (req, res) => {
   try {
-    const [shares, friends] = await Promise.all([
-      listShares(req.list, req.user.id),
-      friendsWithIt(req.list, req.user.id)
-    ]);
-    res.json({ shares, isOwner: req.listIsOwner, friendsWithIt: friends });
+    res.json({ shares: await listShares(req.list, req.user.id), isOwner: req.listIsOwner });
   } catch (error) {
     console.error('List shares get error:', error);
     res.status(500).json({ error: 'Failed to fetch shares' });

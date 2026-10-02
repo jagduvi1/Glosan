@@ -17,14 +17,13 @@ import { LinkOptions, QrLinkCard, isActiveLink } from './shareBits';
 // ("via …" när någon annan delade) och alla länkar, och kan ta bort vem som
 // helst; den som delat vidare ser och tar bort dem hen själv lagt till.
 
-function FriendsTab({ friends, recipients, friendsWithIt, isOwner, busy, onShare, onRemove, onBlock }) {
+function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onBlock }) {
   const [selected, setSelected] = useState(() => new Set());
   const [confirmBlock, setConfirmBlock] = useState(null);
-  const have = new Set([...recipients.map((r) => r._id), ...friendsWithIt]);
+  // Den som delat vidare ser bara dem hen själv lagt till — vilka andra som har
+  // området (eller inte kan få det) syns aldrig, så alla andra kompisar erbjuds.
+  const have = new Set(recipients.map((r) => r._id));
   const available = friends.filter((f) => !have.has(f._id));
-  // Kompisar som redan har området på annat sätt (skapat det, eller fått det av någon annan).
-  const shown = new Set(recipients.map((r) => r._id));
-  const alreadyHave = friends.filter((f) => friendsWithIt.includes(f._id) && !shown.has(f._id));
   const toggle = (id) => setSelected((cur) => {
     const next = new Set(cur);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -70,12 +69,6 @@ function FriendsTab({ friends, recipients, friendsWithIt, isOwner, busy, onShare
         </div>
       )}
 
-      {alreadyHave.length > 0 && (
-        <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>
-          Har redan området: {alreadyHave.map((f) => f.username).join(', ')}
-        </p>
-      )}
-
       {friends.length === 0 ? (
         <p className="t-hand muted" style={{ margin: 0 }}>
           Du har inga kompisar i Glosan än. Lägg till dem på kompis-sidan — eller använd en QR-kod.
@@ -85,6 +78,11 @@ function FriendsTab({ friends, recipients, friendsWithIt, isOwner, busy, onShare
       ) : (
         <div>
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>Välj kompisar:</p>
+          {!isOwner && (
+            <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              Har en kompis redan området händer inget när du delar det med hen.
+            </p>
+          )}
           <div className="stack" style={{ gap: 6 }}>
             {available.map((f) => (
               <label
@@ -139,14 +137,15 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 6px' }}>Länkar andra har gjort till området:</p>
           <div className="stack" style={{ gap: 6 }}>
             {others.map((l) => (
-              <div key={l.code} className="row" style={{ gap: 8, padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10, flexWrap: 'wrap' }}>
+              <div key={l.id} className="row" style={{ gap: 8, padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10, flexWrap: 'wrap' }}>
                 <span className="grow" style={{ minWidth: 0 }}>
                   <strong>via {l.via}</strong>
                   <span className="t-hand muted" style={{ fontSize: 13, display: 'block' }}>
                     {l.usedCount}/{l.maxUses} har gått med · går ut {new Date(l.expiresAt).toLocaleDateString('sv-SE')}
                   </span>
                 </span>
-                <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => onRevoke(l.code)}>
+                {/* Andras länkar har ingen kod här — de stängs med länkens id. */}
+                <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => onRevoke(l.id)}>
                   Stäng av
                 </button>
               </div>
@@ -189,19 +188,16 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
   const [tab, setTab] = useState('friends');
   const [friends, setFriends] = useState([]);
   const [recipients, setRecipients] = useState([]);
-  const [friendsWithIt, setFriendsWithIt] = useState([]);
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [note, setNote] = useState('');
 
   const load = useCallback(async () => {
     try {
       const [fs, shares] = await Promise.all([fetchFriends(apiFetch), fetchUnitShares(apiFetch, unit.id)]);
       setFriends(fs);
       setRecipients(shares.recipients);
-      setFriendsWithIt(shares.friendsWithIt || []);
       setLinks(shares.links);
     } catch (e) {
       setError(e.message);
@@ -216,7 +212,6 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
   const run = async (fn) => {
     setBusy(true);
     setError('');
-    setNote('');
     try {
       const r = await fn();
       onChanged?.();
@@ -231,11 +226,9 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
 
   const onShare = (ids) => run(async () => {
     const r = await shareUnitWithFriends(apiFetch, unit.id, ids);
+    // Hoppades någon över (hade redan området, eller kan inte få det) säger vi
+    // inget om det — en blockering mellan skaparen och kompisen får inte märkas.
     setRecipients(r.recipients);
-    // Någon kan ha fått området på annat sätt under tiden (eller kan inte få
-    // det av skaparen) — säg det neutralt i stället för att tiga.
-    const skipped = ids.length - (r.added ?? ids.length);
-    if (skipped > 0) setNote(`${skipped === 1 ? 'En' : skipped} av dem du valde fick inte området.`);
     return r;
   });
   const onRemove = (userId) => run(async () => {
@@ -282,14 +275,12 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
             </button>
           </div>
           {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
-          {note && <p className="t-hand muted" style={{ margin: 0 }}>{note}</p>}
           {loading ? (
             <p className="t-hand muted" style={{ margin: 0 }}>Glo hämtar dina kompisar…</p>
           ) : tab === 'friends' ? (
             <FriendsTab
               friends={friends}
               recipients={recipients}
-              friendsWithIt={friendsWithIt}
               isOwner={unit.isOwner}
               busy={busy}
               onShare={onShare}

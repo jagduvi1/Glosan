@@ -9,7 +9,9 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
-const { createListInvite, listListInvites, revokeListInvite, inviteList } = require('../services/listSharing');
+const {
+  createListInvite, listListInvites, revokeListInvite, revokeListInviteById, inviteList
+} = require('../services/listSharing');
 
 const router = express.Router();
 
@@ -55,11 +57,16 @@ router.get('/lists/:id/share-links', requireAuth, loadReadableList(), async (req
   }
 });
 
-// DELETE /api/lists/:id/share-link/:code — revokera (mjukt — sätter revokedAt).
-// Sina egna länkar; ägaren alla länkar till listan.
-router.delete('/lists/:id/share-link/:code', requireAuth, loadReadableList(), async (req, res) => {
+// DELETE /api/lists/:id/share-link/:ref — revokera (mjukt — sätter revokedAt)
+// via koden eller länkens id (ägaren ser andras länkar bara med id). Sina
+// egna länkar; ägaren alla länkar till listan.
+router.delete('/lists/:id/share-link/:ref', requireAuth, loadReadableList(), async (req, res) => {
   try {
-    if (!(await revokeListInvite(req.user.id, req.list, req.params.code))) {
+    const ref = String(req.params.ref);
+    const closed = /^[a-f0-9]{24}$/i.test(ref)
+      ? await revokeListInviteById(req.user.id, req.list, ref)
+      : await revokeListInvite(req.user.id, req.list, ref);
+    if (!closed) {
       return res.status(404).json({ error: 'Invite hittades inte.' });
     }
     res.json({ message: 'Invite-länk avaktiverad.' });

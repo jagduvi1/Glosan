@@ -59,7 +59,6 @@ const studyUnitSchema = new mongoose.Schema({
 
 studyUnitSchema.index({ user: 1, code: 1 }, { unique: true });
 studyUnitSchema.index({ user: 1, subject: 1, term: 1 });
-studyUnitSchema.index({ 'sharedVia.by': 1 });
 
 studyUnitSchema.pre('save', function (next) {
   this.updatedAt = new Date();

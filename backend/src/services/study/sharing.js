@@ -109,15 +109,20 @@ async function shareUnitsWithFriends(sharerId, units, friendIds) {
   if (full) {
     return { error: `Ett område kan delas med högst ${MAX_RECIPIENTS} personer${units.length > 1 ? ` (${full.u.code})` : ''}.`, status: 409 };
   }
-  for (const p of plans.filter((x) => x.adds.length)) {
-    // Skaparens egna delningar behöver ingen rad (saknad rad = skaparen delade).
-    const via = ownerId(p.u) === String(sharerId)
-      ? {}
-      : { $push: { sharedVia: { $each: p.adds.map((id) => ({ user: oid(id), by: oid(sharerId) })) } } };
-    // eslint-disable-next-line no-await-in-loop
-    await StudyUnit.updateOne({ _id: p.u._id }, { $addToSet: { sharedWith: { $each: p.adds.map(oid) } }, ...via });
-  }
-  const added = plans.reduce((n, p) => n + p.adds.length, 0);
+  // En uppdatering per mottagare, bara om hen inte redan har området: delar två
+  // med samma person samtidigt vinner den första, och den andra skriver ingen
+  // egen rad (då skulle personen räknas som "via" fel person).
+  const ops = plans.flatMap((p) => p.adds.map((id) => ({
+    updateOne: {
+      filter: { _id: p.u._id, sharedWith: { $ne: oid(id) } },
+      update: {
+        $addToSet: { sharedWith: oid(id) },
+        // Skaparens egna delningar behöver ingen rad (saknad rad = skaparen delade).
+        ...(ownerId(p.u) === String(sharerId) ? {} : { $push: { sharedVia: { user: oid(id), by: oid(sharerId) } } })
+      }
+    }
+  })));
+  const added = ops.length ? (await StudyUnit.bulkWrite(ops, { ordered: false })).modifiedCount : 0;
   if (added) await grantStudyFeature([...new Set(plans.flatMap((p) => p.adds))]);
   return { units: units.length, friends: confirmed.length, added };
 }
@@ -178,17 +183,25 @@ function linkUnitIds(link) {
 /** Filter: länkar som gäller ett område — även länkar till flera. */
 const coversUnit = (unitId) => ({ $or: [{ unit: unitId }, { units: unitId }] });
 
-/** Ta bort områdena `dropIds` ur en länk; gäller den inget område efter det stängs den. */
+/**
+ * Ta bort områdena `dropIds` ur en länk; gäller den inget område efter det
+ * stängs den. Varje steg är en egen atomär uppdatering, så två som trimmar
+ * samma länk samtidigt aldrig skriver tillbaka ett område den andra tog bort.
+ */
 async function trimLink(link, dropIds) {
-  const drop = new Set(dropIds.map(String));
-  const rest = linkUnitIds(link).filter((id) => !drop.has(String(id)));
-  if (!rest.length) {
-    await StudyShareLink.updateOne({ _id: link._id }, { $set: { revokedAt: new Date() } });
-  } else if (rest.length === 1) {
-    await StudyShareLink.updateOne({ _id: link._id }, { $set: { unit: rest[0] }, $unset: { units: 1 } });
-  } else {
-    await StudyShareLink.updateOne({ _id: link._id }, { $set: { unit: rest[0], units: rest } });
-  }
+  const drop = dropIds.map(oid);
+  // 1. Ur listan över områden (en länk till ett område har ingen lista).
+  await StudyShareLink.updateOne({ _id: link._id }, { $pull: { units: { $in: drop } } });
+  // 2. Var det första området (`unit`) som togs bort: flytta det till det som nu står först.
+  await StudyShareLink.updateOne(
+    { _id: link._id, unit: { $in: drop }, 'units.0': { $exists: true } },
+    [{ $set: { unit: { $arrayElemAt: ['$units', 0] } } }]
+  );
+  // 3. Gäller länken inget område längre: stäng den.
+  await StudyShareLink.updateOne(
+    { _id: link._id, unit: { $in: drop }, 'units.0': { $exists: false }, revokedAt: null },
+    { $set: { revokedAt: new Date() } }
+  );
 }
 
 async function uniqueLinkCode() {
@@ -202,6 +215,7 @@ async function uniqueLinkCode() {
 
 function linkOut(l) {
   return {
+    id: String(l._id),
     code: l.code,
     title: l.title || '',
     unitCount: linkUnitIds(l).length,
@@ -248,34 +262,47 @@ async function createShareLink(creatorId, units, { ttlDays, maxUses, title } = {
   return { link: linkOut(link) };
 }
 
+/** Filter: länkar som fortfarande går att använda (inte avstängda, utgångna eller fulla). */
+const usable = () => ({
+  revokedAt: null,
+  expiresAt: { $gt: new Date() },
+  $expr: { $lt: [{ $size: '$usedBy' }, '$maxUses'] }
+});
+
 /**
- * Länkarna som gäller ett område (områdessidans Dela), nyast först. Skaparen
- * ser alla — även länkar andra gjort (med `via`) — andra bara sina egna.
- * Enheten måste ha `user` och `sharedWith`.
+ * De aktiva länkarna som gäller ett område (områdessidans Dela), nyast först.
+ * Skaparen ser alla — även länkar andra gjort (med `via`) — andra bara sina
+ * egna. Andras länkar lämnas ut med id, aldrig med koden: skaparen ska kunna
+ * stänga dem, inte använda eller sprida dem. Enheten måste ha `user` och `sharedWith`.
  */
 async function listShareLinks(unit, viewerId = ownerId(unit)) {
   const owner = ownerId(unit);
-  const isOwner = owner === String(viewerId);
-  const mine = isOwner ? {} : { creator: oid(viewerId) };
-  const links = (await StudyShareLink.find({ ...coversUnit(unit._id), ...mine }).sort({ createdAt: -1 }).limit(20).lean())
+  const viewer = String(viewerId);
+  const isOwner = owner === viewer;
+  const mine = isOwner ? {} : { creator: oid(viewer) };
+  const links = (await StudyShareLink.find({ ...coversUnit(unit._id), ...usable(), ...mine }).sort({ createdAt: -1 }).limit(100).lean())
     // En länk gäller bara så länge den som gjort den har området.
     .filter((l) => isMember(unit, l.creator));
   const names = isOwner ? await profiles(links.map((l) => l.creator).filter((c) => String(c) !== owner)) : new Map();
-  return links.map((l) => ({
-    ...linkOut(l),
-    via: isOwner && String(l.creator) !== owner ? names.get(String(l.creator))?.username || null : null
-  }));
+  return links.map((l) => {
+    if (String(l.creator) === viewer) return { ...linkOut(l), via: null };
+    const { code, ...out } = linkOut(l); // eslint-disable-line no-unused-vars
+    return { ...out, via: names.get(String(l.creator))?.username || 'ett raderat konto' };
+  });
 }
 
 /**
- * Stäng av en länk till området. Den som gjort länken stänger den helt
+ * Stäng av en länk till området — via koden (ens egna) eller länkens id (som
+ * skaparen ser andras länkar med). Den som gjort länken stänger den helt
  * ('closed'). Områdets skapare kan stänga andras länkar till sina områden: då
  * tas hens områden bort ur länken och andras områden på samma länk påverkas
  * inte ('trimmed'). false = ingen sådan länk man får stänga.
  */
-async function revokeShareLink(unit, code, viewerId = ownerId(unit)) {
+async function revokeShareLink(unit, ref, viewerId = ownerId(unit)) {
   const viewer = String(viewerId);
-  const link = await StudyShareLink.findOne({ ...coversUnit(unit._id), code: String(code || ''), revokedAt: null });
+  const key = String(ref || '');
+  const which = /^[a-f0-9]{24}$/i.test(key) ? { _id: oid(key) } : { code: key };
+  const link = await StudyShareLink.findOne({ ...coversUnit(unit._id), ...which, revokedAt: null });
   if (!link) return false;
   if (String(link.creator) === viewer) {
     await StudyShareLink.updateOne({ _id: link._id }, { $set: { revokedAt: new Date() } });

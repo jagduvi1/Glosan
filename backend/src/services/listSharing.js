@@ -39,12 +39,14 @@ function canEditWords(list, userId) {
 }
 
 /**
- * Listan som `userId` får se. Mottagare ser inte vilka andra som har den
- * (bara ägaren gör det) och får sitt eget läge: 'edit' bara om hen får ändra.
+ * Listan som `userId` får se. Mottagare ser inte vem som äger den (bara den
+ * som delade med dem, i `sharedBy`) eller vilka andra som har den — bara
+ * ägaren gör det — och får sitt eget läge: 'edit' bara om hen får ändra.
  */
 function listForViewer(list, userId) {
   const l = typeof list.toObject === 'function' ? list.toObject() : { ...list };
   if (ownerOf(l) === String(userId)) return l;
+  delete l.user;
   delete l.sharedWith;
   delete l.sharedVia;
   l.shareMode = canEditWords(list, userId) ? 'edit' : 'read';
@@ -75,17 +77,25 @@ async function shareListWithFriends(sharerId, list, friendIds, mode) {
   const owner = ownerOf(list);
   const blocked = await blockChecker([owner, ...confirmed]);
   const adds = confirmed.filter((id) => id !== owner && !hasList(list, id) && !blocked(owner, id));
-  const update = {};
-  if (adds.length) {
-    update.$addToSet = { sharedWith: { $each: adds.map(oid) } };
-    // Ägarens egna delningar behöver ingen rad (saknad rad = ägaren delade).
-    if (owner !== String(sharerId)) update.$push = { sharedVia: { $each: adds.map((id) => ({ user: oid(id), by: oid(sharerId) })) } };
+  // En uppdatering per mottagare, bara om hen inte redan har listan: delar två
+  // med samma person samtidigt vinner den första (annars kunde personen räknas
+  // som "via" fel person och tappa ändringsrätten ägaren gav).
+  const ops = adds.map((id) => ({
+    updateOne: {
+      filter: { _id: list._id, sharedWith: { $ne: oid(id) } },
+      update: {
+        $addToSet: { sharedWith: oid(id) },
+        // Ägarens egna delningar behöver ingen rad (saknad rad = ägaren delade).
+        ...(owner === String(sharerId) ? {} : { $push: { sharedVia: { user: oid(id), by: oid(sharerId) } } })
+      }
+    }
+  }));
+  const added = ops.length ? (await GlosList.bulkWrite(ops, { ordered: false })).modifiedCount : 0;
+  if (mode && owner === String(sharerId)) {
+    await GlosList.updateOne({ _id: list._id }, { $set: { shareMode: mode, updatedAt: new Date() } });
   }
-  if (mode && owner === String(sharerId)) update.$set = { shareMode: mode, updatedAt: new Date() };
-  const fresh = Object.keys(update).length
-    ? await GlosList.findOneAndUpdate({ _id: list._id }, update, { new: true })
-    : list;
-  return { shares: await listShares(fresh, sharerId), list: fresh, added: adds.length };
+  const fresh = (await GlosList.findById(list._id)) || list;
+  return { shares: await listShares(fresh, sharerId), list: fresh, added };
 }
 
 /** Stäng av (eller ta bort ur) länkar `creatorId` gjort till listan — hen har inte listan längre. */
@@ -171,20 +181,37 @@ async function createListInvite(creatorId, list, { ttlDays, maxUses, befriend = 
 }
 
 /**
- * Listans länkar, nyast först. Ägaren ser alla — även länkar andra gjort
- * (med `via`, så länge de har listan kvar) — andra bara sina egna.
+ * Listans länkar, nyast först: ens egna (även avstängda och utgångna, som
+ * appen visar som historik) och — för ägaren — andras länkar som fortfarande
+ * går att använda, med `via`, så länge de har listan kvar. Andras länkar
+ * lämnas ut med id, aldrig med koden: ägaren ska kunna stänga dem, inte
+ * använda eller sprida dem (en länk kan göra den som går med till kompis med
+ * den som gjort den).
  */
 async function listListInvites(list, viewerId = ownerOf(list)) {
   const owner = ownerOf(list);
-  const isOwner = owner === String(viewerId);
-  const invites = (await ListInvite.find({ list: list._id, ...(isOwner ? {} : { creator: oid(viewerId) }) })
-    .sort({ createdAt: -1 }).lean())
-    .filter((i) => hasList(list, i.creator));
-  const names = isOwner ? await profiles(invites.map((i) => i.creator).filter((c) => String(c) !== owner)) : new Map();
-  return invites.map((i) => ({
-    ...inviteOut(i),
-    via: isOwner && String(i.creator) !== owner ? names.get(String(i.creator))?.username || null : null
-  }));
+  const viewer = String(viewerId);
+  const [own, others] = await Promise.all([
+    ListInvite.find({ list: list._id, creator: oid(viewer) }).sort({ createdAt: -1 }).limit(30).lean(),
+    owner === viewer
+      ? ListInvite.find({
+        list: list._id,
+        creator: { $ne: oid(viewer) },
+        revokedAt: null,
+        expiresAt: { $gt: new Date() },
+        $expr: { $lt: [{ $size: '$usedBy' }, '$maxUses'] }
+      }).sort({ createdAt: -1 }).limit(100).lean()
+      : []
+  ]);
+  const live = others.filter((i) => hasList(list, i.creator));
+  const names = await profiles(live.map((i) => i.creator));
+  return [
+    ...own.map((i) => ({ ...inviteOut(i), via: null })),
+    ...live.map((i) => {
+      const { code, ...out } = inviteOut(i); // eslint-disable-line no-unused-vars
+      return { ...out, via: names.get(String(i.creator))?.username || 'ett raderat konto' };
+    })
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 /** Filter för länkar `viewerId` får stänga: sina egna, och ägaren alla till listan. */

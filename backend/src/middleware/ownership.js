@@ -121,6 +121,9 @@ async function loadEditableGlos(req, res, next) {
     if (!canEditWords(glos.list, req.user.id)) {
       return res.status(403).json({ error: 'Den här listan är read-only för dig.' });
     }
+    // Listan laddades bara för åtkomstkollen — svaret får aldrig bära med sig
+    // vilka andra som har den (sharedWith/sharedVia) till en mottagare.
+    glos.depopulate('list');
     req.glos = glos;
     req.listIsOwner = isOwner;
     next();

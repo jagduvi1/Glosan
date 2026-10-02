@@ -61,27 +61,32 @@ test('bad ids never reach the database', async () => {
   expect(StudyUnit.find).not.toHaveBeenCalled();
 });
 
-test("someone removed from a unit loses it from their links; other units on the link stay", async () => {
-  StudyShareLink.find.mockResolvedValueOnce([
-    { _id: 'L1', unit: UNIT_OF_A, units: [UNIT_OF_A, UNIT_OF_C] }, // två områden → ett kvar
-    { _id: 'L2', unit: UNIT_OF_A } // bara det här området → stängs
-  ]);
+test('someone removed from a unit loses it from their links, in atomic steps', async () => {
+  StudyShareLink.find.mockResolvedValueOnce([{ _id: 'L1', unit: UNIT_OF_A, units: [UNIT_OF_A, UNIT_OF_C] }]);
   await removeRecipient({ _id: UNIT_OF_A }, B);
-  const updates = StudyShareLink.updateOne.mock.calls;
-  expect(updates[0][0]._id).toBe('L1');
-  expect(String(updates[0][1].$set.unit)).toBe(UNIT_OF_C);
-  expect(updates[0][1].$unset).toEqual({ units: 1 });
-  expect(updates[1][0]._id).toBe('L2');
-  expect(updates[1][1].$set.revokedAt).toBeInstanceOf(Date);
+  const [pull, move, close] = StudyShareLink.updateOne.mock.calls;
+  // 1. ur listan över områden …
+  expect(pull[0]._id).toBe('L1');
+  expect(pull[1].$pull.units.$in.map(String)).toEqual([UNIT_OF_A]);
+  // 2. … det första området flyttas till det som nu står först (en pipeline,
+  //    så den läser länken som den är just då — inget skrivs tillbaka) …
+  expect(move[0].unit.$in.map(String)).toEqual([UNIT_OF_A]);
+  expect(move[0]['units.0']).toEqual({ $exists: true });
+  expect(move[1]).toEqual([{ $set: { unit: { $arrayElemAt: ['$units', 0] } } }]);
+  // 3. … och länken stängs bara om den inte gäller något område längre.
+  expect(close[0]['units.0']).toEqual({ $exists: false });
+  expect(close[1].$set.revokedAt).toBeInstanceOf(Date);
 });
 
 test('the creator of a unit can close a link someone else made to it — only for their own units', async () => {
   const unit = { _id: UNIT_OF_A, user: A, sharedWith: [B] };
   StudyShareLink.findOne.mockResolvedValueOnce({ _id: 'L1', creator: B, unit: UNIT_OF_A, units: [UNIT_OF_A, UNIT_OF_C] });
   StudyUnit.find.mockImplementation(() => ({ lean: async () => [{ _id: UNIT_OF_A }] }));
-  expect(await revokeShareLink(unit, 'ABCD1234', A)).toBe('trimmed');
-  const [, update] = StudyShareLink.updateOne.mock.calls[0];
-  expect(String(update.$set.unit)).toBe(UNIT_OF_C);
+  // Skaparen ser andras länkar med id (aldrig koden) och stänger dem så.
+  expect(await revokeShareLink(unit, '64b00000000000000000ff01', A)).toBe('trimmed');
+  expect(String(StudyShareLink.findOne.mock.calls[0][0]._id)).toBe('64b00000000000000000ff01');
+  const [, pull] = StudyShareLink.updateOne.mock.calls[0];
+  expect(pull.$pull.units.$in.map(String)).toEqual([UNIT_OF_A]);
 
   // Någon annan som har området kan inte stänga B:s länk.
   StudyShareLink.findOne.mockResolvedValueOnce({ _id: 'L1', creator: B, unit: UNIT_OF_A });
@@ -90,4 +95,5 @@ test('the creator of a unit can close a link someone else made to it — only fo
   // B stänger sin egen länk helt.
   StudyShareLink.findOne.mockResolvedValueOnce({ _id: 'L1', creator: B, unit: UNIT_OF_A, units: [UNIT_OF_A, UNIT_OF_C] });
   expect(await revokeShareLink(unit, 'ABCD1234', B)).toBe('closed');
+  expect(StudyShareLink.findOne.mock.calls[2][0].code).toBe('ABCD1234');
 });

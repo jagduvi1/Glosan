@@ -5,7 +5,6 @@
 // den som delat vidare ser och kan ta bort de hen själv lagt till.
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const Friendship = require('../models/Friendship');
 
 const oid = (v) => new mongoose.Types.ObjectId(String(v));
 const ownerOf = (doc) => String(doc.user?._id || doc.user);
@@ -43,7 +42,12 @@ async function profiles(ids) {
 /**
  * Mottagarna som `viewerId` får se: skaparen ser alla (med `via` = den som
  * lade till personen, om det inte var skaparen själv); andra ser bara dem de
- * själva lagt till. Sorterade på namn.
+ * själva lagt till. Sorterade på namn. Har den som delade vidare raderat sitt
+ * konto ligger personen kvar (skaparen kan ta bort hen), "via ett raderat konto".
+ *
+ * Man ser aldrig vilka av ens kompisar som redan har något på annat sätt:
+ * det skulle avslöja andra mottagare — och göra en blockering synlig, eftersom
+ * en kompis som "inte fick" det då bara kunde bero på den.
  */
 async function visibleRecipients(doc, viewerId) {
   const owner = ownerOf(doc);
@@ -58,21 +62,10 @@ async function visibleRecipients(doc, viewerId) {
         _id: id,
         username: names.get(id).username,
         avatar: names.get(id).avatar,
-        via: isOwner && by !== owner ? names.get(by)?.username || null : null
+        via: isOwner && by !== owner ? names.get(by)?.username || 'ett raderat konto' : null
       };
     })
     .sort((a, b) => a.username.localeCompare(b.username, 'sv'));
-}
-
-/**
- * Vilka av `viewerId`s kompisar har redan dokumentet (skapat det, eller fått
- * det av någon)? Så Dela inte erbjuder dem. Returnerar id-strängar.
- */
-async function friendsWithIt(doc, viewerId) {
-  const members = [ownerOf(doc), ...(doc.sharedWith || []).map(String)].filter((id) => id !== String(viewerId));
-  if (!members.length) return [];
-  const rows = await Friendship.find({ user: oid(viewerId), friend: { $in: members.map(oid) } }, 'friend').lean();
-  return rows.map((r) => String(r.friend));
 }
 
 /** Får `viewerId` ta bort `targetId`? Skaparen alla, andra bara dem de själva lagt till. */
@@ -97,6 +90,4 @@ function circleOf(doc, viewerId) {
     || (id !== owner && [mine, viewer].includes(sharerOf(doc, id))));
 }
 
-module.exports = {
-  oid, ownerOf, sharerOf, addedBy, blockChecker, profiles, visibleRecipients, friendsWithIt, canRemove, circleOf
-};
+module.exports = { oid, ownerOf, sharerOf, addedBy, blockChecker, profiles, visibleRecipients, canRemove, circleOf };

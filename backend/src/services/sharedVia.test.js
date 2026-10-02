@@ -64,12 +64,22 @@ test('a recipient never sees who else has a list, and gets their own mode', () =
 
 test('the creator sees everyone with via; a re-sharer sees only their own adds', async () => {
   const names = { [A]: 'anna', [B]: 'bo', [C]: 'cia', [D]: 'dan', [E]: 'eva' };
+  // Som databasen: ett raderat konto finns inte alls.
   User.find.mockImplementation((q) => ({
-    lean: async () => q._id.$in.map((id) => ({ _id: id, username: names[String(id)] }))
+    lean: async () => q._id.$in.filter((id) => names[String(id)]).map((id) => ({ _id: id, username: names[String(id)] }))
   }));
   const forA = await visibleRecipients(doc, A);
   expect(forA.map((r) => [r.username, r.via])).toEqual([['bo', null], ['cia', null], ['dan', 'bo'], ['eva', 'dan']]);
   const forB = await visibleRecipients(doc, B);
   expect(forB.map((r) => [r.username, r.via])).toEqual([['dan', null]]);
   expect(await visibleRecipients(doc, C)).toEqual([]);
+  // D raderade sitt konto: E finns kvar för skaparen, "via ett raderat konto".
+  delete names[D];
+  const afterD = await visibleRecipients(doc, A);
+  expect(afterD.find((r) => r.username === 'eva').via).toBe('ett raderat konto');
+});
+
+test('a recipient never gets the owner of a list either', () => {
+  expect(listForViewer(doc, D).user).toBeUndefined();
+  expect(listForViewer(doc, A).user).toBe(A);
 });

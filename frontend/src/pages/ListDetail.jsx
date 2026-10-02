@@ -681,7 +681,7 @@ export default function ListDetail() {
       {showLeaveConfirm && (
         <ConfirmDialog
           title="Lämna den delade listan?"
-          message={`${sharedBy?.username || 'Ägaren'} kan fortfarande dela listan med dig igen senare. Du tappar ingen XP du tjänat från quizen.`}
+          message={`${sharedBy?.username || 'Någon'} kan dela listan med dig igen senare. Du tappar ingen XP du tjänat från quizen.`}
           confirmLabel="Lämna"
           destructive
           onConfirm={onLeave}

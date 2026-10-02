@@ -208,20 +208,24 @@ level" only count steps the student earned.
     `shared_by` over MCP) — never the creator's name if someone else passed
     it on.
   - The **creator** sees everyone who has the unit, with "via …" for people
-    someone else added, and every link to it (others' links "via …" too, which
-    the creator can close but never gets the address of over MCP). The creator
-    can remove anyone and close any link — closing someone else's link takes
-    only the creator's units off it.
+    someone else added, and every active link to it. Others' links come with
+    "via …" and an id but never their code, in the app or over MCP: the
+    creator can close them, not use or spread them. The creator can remove
+    anyone and close any link — closing someone else's link takes only the
+    creator's units off it (atomically: `trimLink`).
   - Someone who **passed it on** sees and removes only the people they added,
-    and their own links.
+    and their own links. They never learn who else has the unit: the Dela
+    dialog offers all their friends, and sharing with someone who already has
+    it — or who can't get it because of a block — silently does nothing.
   - A link works only while its maker still has the units. Removing someone
     (or them leaving, unfriending, blocking) takes those units off their
     links, so an old link never wakes up again.
   - If the creator and the recipient have blocked each other, the unit never
     reaches the recipient, whoever shares it — silently, so no one learns of
     the block.
-- **Friends**: you share with your confirmed friends. Friends who already have
-  the unit are listed as such, not offered again.
+- **Friends**: you share with your confirmed friends. Two people sharing with
+  the same person at once can't both record it: each recipient is added with
+  its own conditional update (`sharedWith: { $ne }`).
 - **QR / link** (`/p/<code>`): ONE link can cover several units
   (`StudyShareLink.units`, up to 50 — e.g. a chapter for the class) with an
   optional name; 1, 7 or 30 days, 10/30/100 uses, at most 3 active links per

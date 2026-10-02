@@ -228,7 +228,7 @@ export default function PluggaUnit() {
       {confirming?.kind === 'leave' && (
         <ConfirmDialog
           title="Lämna området?"
-          message={`Du kan gå med igen om ${unit.sharedBy} delar det på nytt.`}
+          message={`Du kan gå med igen om ${unit.sharedBy || 'någon'} delar det på nytt.`}
           confirmLabel="Lämna"
           onConfirm={leave}
           onCancel={() => setConfirming(null)}

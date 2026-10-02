@@ -253,16 +253,16 @@ registerTool({
 registerTool({
   name: 'get_study_sharing',
   title: 'Who study units are shared with',
-  description: 'With unit (id or code): who has that unit and the active links that include it. For a unit the student created: everyone, with via = the person who passed it on when that was not the student, and links others made (made_by; close one with stop_sharing_study unit + link_code). For a unit shared with the student: only the people and links the student added. Without unit: all the student\'s own active study links and the units each one covers.',
+  description: 'With unit (id or code): who has that unit and the active links that include it. For a unit the student created: everyone, with via = the person who passed it on when that was not the student, and links others made (made_by and link_id, without their address; close one with stop_sharing_study unit + link_id). For a unit shared with the student: only the people and links the student added. Without unit: all the student\'s own active study links and the units each one covers.',
   scope: 'read',
   feature: FEATURE,
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: { unit: unitRef.optional() },
   handler: async (args, ctx) => {
     const linkOut = (l) => ({
-      code: l.code,
-      // Andras länkar lämnas ut utan adress — AI:n ska kunna stänga dem, inte sprida dem.
-      ...(l.via ? { made_by: l.via } : { url: studyLinkUrl(l.code) }),
+      // Andras länkar lämnas ut med id, utan kod och adress — AI:n ska kunna
+      // stänga dem, inte använda eller sprida dem.
+      ...(l.via ? { link_id: l.id, made_by: l.via } : { code: l.code, url: studyLinkUrl(l.code) }),
       ...(l.title ? { title: l.title } : {}),
       unit_count: l.unitCount,
       ...(l.units ? { units: l.units.map((u) => ({ unit_id: u.id, code: u.code, title: u.title })) } : {}),
@@ -335,6 +335,7 @@ registerTool({
     const r = await study.createShareLink(ctx.user.id, units.list, { ttlDays: args.days || 7, maxUses: args.max_uses || 30, title: args.title });
     if (r.error) return fail('conflict', 'Too many active links (at most 3 per unit and 30 in all) — close one with stop_sharing_study first (get_study_sharing shows them).');
     return ok(`Created a link for ${units.list.length} unit(s)`, {
+      link_id: r.link.id,
       code: r.link.code,
       url: studyLinkUrl(r.link.code),
       ...(r.link.title ? { title: r.link.title } : {}),
@@ -349,30 +350,35 @@ registerTool({
 registerTool({
   name: 'stop_sharing_study',
   title: 'Stop sharing study units',
-  description: 'Removes someone from a unit (unit + friend — also someone who joined by link; the student can remove anyone from units they created, and only the people they added themselves from units shared with them), or closes a link (link_code alone: one of the student\'s own links, for every unit it covers; unit + link_code: also a link someone else made to a unit the student created — it then stops covering the student\'s units). People removed lose the unit; their own results stay theirs.',
+  description: 'Removes someone from a unit (unit + friend — also someone who joined by link; the student can remove anyone from units they created, and only the people they added themselves from units shared with them), or closes a link: link_code alone closes one of the student\'s own links for every unit it covers; unit + link_id (from get_study_sharing) closes a link someone else made to a unit the student created — it then stops covering the student\'s units. People removed lose the unit; their own results stay theirs.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     unit: unitRef.optional(),
     friend: friendRef.optional().describe('Username or user_id of someone the unit is shared with'),
-    link_code: linkCode.optional()
+    link_code: linkCode.optional(),
+    link_id: objectId.optional().describe('A link_id from get_study_sharing (a link someone else made); pass unit too')
   },
   handler: async (args, ctx) => {
-    if (args.link_code) {
-      if (args.friend) return fail('invalid_input', 'Pass link_code (optionally with unit), or unit and friend.');
-      const code = args.link_code.toUpperCase();
+    if (args.link_code || args.link_id) {
+      if (args.friend || (args.link_code && args.link_id)) {
+        return fail('invalid_input', 'Pass link_code (optionally with unit), unit + link_id, or unit + friend.');
+      }
+      const ref = args.link_id || args.link_code.toUpperCase();
       if (args.unit) {
         const units = await resolveShareableUnits(ctx.user.id, [args.unit]);
         if (units.error) return units.error;
-        const closed = await study.revokeShareLink(units.list[0], code, ctx.user.id);
+        const closed = await study.revokeShareLink(units.list[0], ref, ctx.user.id);
         if (!closed) return fail('not_found', 'No such active link on this unit that the student may close — get_study_sharing shows them.');
-        return ok(closed === 'trimmed' ? 'The link no longer covers the student\'s units' : 'Closed the link', { ...unitOut(units.list[0]), link_code: code });
+        const which = args.link_id ? { link_id: args.link_id } : { link_code: ref };
+        return ok(closed === 'trimmed' ? 'The link no longer covers the student\'s units' : 'Closed the link', { ...unitOut(units.list[0]), ...which });
       }
-      if (!(await study.revokeMyShareLink(ctx.user.id, code))) {
-        return fail('not_found', 'No such active link of the student\'s — get_study_sharing shows them (for a link someone else made, pass unit too).');
+      if (args.link_id) return fail('invalid_input', 'Pass unit together with link_id.');
+      if (!(await study.revokeMyShareLink(ctx.user.id, ref))) {
+        return fail('not_found', 'No such active link of the student\'s — get_study_sharing shows them (for a link someone else made, pass unit + link_id).');
       }
-      return ok('Closed the link', { link_code: code });
+      return ok('Closed the link', { link_code: ref });
     }
     if (!args.unit || !args.friend) return fail('invalid_input', 'Pass link_code, or unit and friend.');
     const units = await resolveShareableUnits(ctx.user.id, [args.unit]);

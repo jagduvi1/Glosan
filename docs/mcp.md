@@ -87,11 +87,13 @@ The user can pass on what was shared with them too (lists and units), and
 `shared_by` is always the person who shared something with the user — not
 the creator, if someone else passed it on. On their own lists and units,
 `get_list_sharing` / `get_study_sharing` show everyone with `via` (who passed
-it on) and links others made as `made_by` **without** their address: the AI
-can close them (`stop_sharing_*`) but never spread them. On something shared
-with the user, the tools show and remove only the people and links the user
-added. A list passed on by someone other than the owner is always read-only
-for the people it reaches (`can_edit` is the owner's alone).
+it on) and links others made as `made_by` + `link_id`, **without** their code
+or address: the AI can close them (`stop_sharing_list` with `link_id`,
+`stop_sharing_study` with `unit` + `link_id`) but never use or spread them.
+On something shared with the user, the tools show and remove only the people
+and links the user added, and never say who else has it. A list passed on by
+someone other than the owner is always read-only for the people it reaches
+(`can_edit` is the owner's alone).
 
 Deliberately **not** exposed: blocking, duels, account settings, plans,
 deleting the account, disconnecting AIs. The instructions tell the AI to
