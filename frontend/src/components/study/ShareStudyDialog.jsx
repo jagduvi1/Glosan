@@ -9,10 +9,11 @@ import AvatarDisplay from '../AvatarDisplay';
 import { LinkOptions, QrLinkCard } from './shareBits';
 
 // Dela flera områden på en gång — från Plugga-sidorna (startsidan, ett ämne,
-// en mapp). Välj vilka av DINA områden som ska med och dela dem med kompisar,
+// en mapp). Välj vilka områden som ska med — egna och sådana du fått av någon
+// (alla som har ett område kan dela det vidare) — och dela dem med kompisar,
 // eller med EN länk/QR-kod (t.ex. ett helt kapitel till klassen). Den som inte
 // har något konto skapar ett via länken. Ingen får en kopia: alla övar med sin
-// egen statistik, och bara du (och din AI) kan ändra innehållet.
+// egen statistik, och bara skaparen (och skaparens AI) kan ändra innehållet.
 //
 // `units` = områdena på sidan (utelämnat → alla dina, alla terminer);
 // `initialSelected` = förvalda id:n; `title` = rubriken; `linkTitle` =
@@ -24,16 +25,17 @@ const unitLabel = (u) => `${u.code} ${u.title}`;
 const SHARE_MAX = 100;
 const LINK_MAX = 50;
 
-function UnitPicker({ own, othersCount, selected, onToggle, onAll }) {
-  const all = own.length > 0 && own.every((u) => selected.has(u.id));
+function UnitPicker({ shareable, selected, onToggle, onAll }) {
+  const all = shareable.length > 0 && shareable.every((u) => selected.has(u.id));
+  const picked = shareable.filter((u) => selected.has(u.id)).length;
   return (
     <div>
       <div className="row between" style={{ gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
-        <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>Vad vill du dela? ({selected.size} av {own.length})</p>
+        <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>Vad vill du dela? ({picked} av {shareable.length})</p>
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAll(!all)}>{all ? 'Avmarkera alla' : 'Välj alla'}</button>
       </div>
       <div className="stack" style={{ gap: 6, maxHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
-        {own.map((u) => (
+        {shareable.map((u) => (
           <label
             key={u.id}
             className="row"
@@ -43,16 +45,13 @@ function UnitPicker({ own, othersCount, selected, onToggle, onAll }) {
             <span aria-hidden="true">{u.emoji}</span>
             <span className="grow" style={{ minWidth: 0 }}>
               <strong>{unitLabel(u)}</strong>
-              <span className="t-hand muted" style={{ fontSize: 13, display: 'block' }}>{u.subjectLabel} · {u.termLabel}</span>
+              <span className="t-hand muted" style={{ fontSize: 13, display: 'block' }}>
+                {u.subjectLabel} · {u.termLabel}{u.sharedBy ? ` · delad av ${u.sharedBy}` : ''}
+              </span>
             </span>
           </label>
         ))}
       </div>
-      {othersCount > 0 && (
-        <p className="t-hand muted" style={{ fontSize: 13, margin: '6px 0 0' }}>
-          {othersCount} {othersCount === 1 ? 'område här har' : 'områden här har'} någon annan skapat — bara skaparen kan dela {othersCount === 1 ? 'det' : 'dem'}.
-        </p>
-      )}
     </div>
   );
 }
@@ -185,16 +184,16 @@ export default function ShareStudyDialog({ units: pageUnits, initialSelected = [
 
   useEffect(() => { load(); }, [load]);
 
-  const own = (units || []).filter((u) => u.isOwner);
-  const othersCount = (units || []).length - own.length;
-  const chosen = own.filter((u) => selected.has(u.id)).map((u) => u.id);
+  // Allt man har går att dela vidare — utom arkiverade områden.
+  const shareable = (units || []).filter((u) => !u.archived);
+  const chosen = shareable.filter((u) => selected.has(u.id)).map((u) => u.id);
 
   const toggle = (id) => setSelected((cur) => {
     const next = new Set(cur);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const setAll = (on) => setSelected(on ? new Set(own.map((u) => u.id)) : new Set());
+  const setAll = (on) => setSelected(on ? new Set(shareable.map((u) => u.id)) : new Set());
 
   const run = async (fn) => {
     setBusy(true);
@@ -239,13 +238,13 @@ export default function ShareStudyDialog({ units: pageUnits, initialSelected = [
         <div className="modal-body stack" style={{ gap: 14 }}>
           {loading ? (
             <p className="t-hand muted" style={{ margin: 0 }}>Glo hämtar dina områden och kompisar…</p>
-          ) : own.length === 0 ? (
+          ) : shareable.length === 0 ? (
             <p className="t-hand muted" style={{ margin: 0 }}>
-              Du har inga egna områden här. Bara den som skapat ett område kan dela det — be din AI skapa ett, eller be kompisen som gjort det om en QR-kod.
+              Du har inga områden här än — be din AI skapa ett, eller be en kompis som har ett om en QR-kod.
             </p>
           ) : (
             <>
-              <UnitPicker own={own} othersCount={othersCount} selected={selected} onToggle={toggle} onAll={setAll} />
+              <UnitPicker shareable={shareable} selected={selected} onToggle={toggle} onAll={setAll} />
               <div className="study-tabs" role="tablist">
                 <button type="button" role="tab" aria-selected={tab === 'friends'} className={`btn btn-sm ${tab === 'friends' ? 'btn-primary' : ''}`} onClick={() => setTab('friends')}>
                   👥 Kompisar

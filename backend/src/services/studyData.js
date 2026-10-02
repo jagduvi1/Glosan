@@ -14,6 +14,7 @@ const StudyShareLink = require('../models/StudyShareLink');
 const StudyTest = require('../models/StudyTest');
 const StudyTestAttempt = require('../models/StudyTestAttempt');
 const StudyItemDeletion = require('../models/StudyItemDeletion');
+const { sharerOf, profiles } = require('./sharedVia');
 
 const DELETED_UNIT = 'Raderat område';
 const DELETED_TEST = 'Raderat prov';
@@ -80,7 +81,7 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   await StudyShareLink.deleteMany({ creator: userId }, opts);
   await StudyShareLink.updateMany({ usedBy: userId }, { $pull: { usedBy: userId } }, opts);
   // Ur andras delningar, så jag inte ligger kvar som dangling ref.
-  await StudyUnit.updateMany({ sharedWith: userId }, { $pull: { sharedWith: userId } }, opts);
+  await StudyUnit.updateMany({ sharedWith: userId }, { $pull: { sharedWith: userId, sharedVia: { user: userId } } }, opts);
 }
 
 /** GDPR-export (Art. 20) av användarens Plugga-data. */
@@ -92,7 +93,7 @@ async function exportStudyData(userId) {
     unitIds.length ? StudyItem.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyTest.find({ unit: { $in: unitIds } }).lean() : [],
     unitIds.length ? StudyItemDeletion.find({ unit: { $in: unitIds } }).lean() : [],
-    StudyUnit.find({ sharedWith: userId }, 'title subject term user').populate('user', 'username').lean(),
+    StudyUnit.find({ sharedWith: userId }, 'title subject term user sharedVia').lean(),
     StudyFolder.find({ user: userId }).lean(),
     StudySession.find({ user: userId }).lean(),
     StudyAttempt.find({ user: userId }).lean(),
@@ -101,17 +102,21 @@ async function exportStudyData(userId) {
     StudyFlag.find({ reporter: userId }, 'item unit note status resolutionNote resolvedAt createdAt').lean(),
     StudyShareLink.find({ creator: userId }).lean()
   ]);
+  // Den som delade området med mig — inte skaparen, om det var någon annan.
+  const sharers = await profiles(sharedWithMe.map((u) => sharerOf(u, userId)));
   return {
     units: units.map((u) => ({
       ...u,
+      // Vilka som har mina områden (och vem som delade med vem) är andras data.
       sharedWith: undefined,
+      sharedVia: undefined,
       pages: pages.filter((p) => String(p.unit) === String(u._id)),
       items: items.filter((i) => String(i.unit) === String(u._id)),
       tests: tests.filter((t) => String(t.unit) === String(u._id)),
       deletedItems: deletions.filter((d) => String(d.unit) === String(u._id))
     })),
     sharedWithMe: sharedWithMe.map((u) => ({
-      title: u.title, subject: u.subject, term: u.term, ownerUsername: u.user?.username
+      title: u.title, subject: u.subject, term: u.term, sharedByUsername: sharers.get(sharerOf(u, userId))?.username || null
     })),
     folders,
     sessions,

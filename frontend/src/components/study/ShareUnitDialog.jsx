@@ -10,12 +10,18 @@ import { LinkOptions, QrLinkCard, isActiveLink } from './shareBits';
 
 // Dela ett område i Plugga — med kompisar (de ser det direkt) eller med en
 // länk/QR-kod till klasskompisar (de får området, men blir inte kompisar med dig).
-// Ingen får en kopia: alla övar med sin egen statistik, och bara du (och din
-// AI) kan ändra innehållet — rättar du något når det alla.
+// Ingen får en kopia: alla övar med sin egen statistik, och bara skaparen (och
+// skaparens AI) kan ändra innehållet — rättar hen något når det alla.
+//
+// Alla som har området kan dela det vidare. Skaparen ser alla som har det
+// ("via …" när någon annan delade) och alla länkar, och kan ta bort vem som
+// helst; den som delat vidare ser och tar bort dem hen själv lagt till.
 
-function FriendsTab({ friends, recipients, busy, onShare, onRemove, onBlock }) {
+function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onBlock }) {
   const [selected, setSelected] = useState(() => new Set());
   const [confirmBlock, setConfirmBlock] = useState(null);
+  // Den som delat vidare ser bara dem hen själv lagt till — vilka andra som har
+  // området (eller inte kan få det) syns aldrig, så alla andra kompisar erbjuds.
   const have = new Set(recipients.map((r) => r._id));
   const available = friends.filter((f) => !have.has(f._id));
   const toggle = (id) => setSelected((cur) => {
@@ -28,12 +34,17 @@ function FriendsTab({ friends, recipients, busy, onShare, onRemove, onBlock }) {
     <div className="stack" style={{ gap: 14 }}>
       {recipients.length > 0 && (
         <div>
-          <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>Pluggar redan på området:</p>
+          <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>
+            {isOwner ? 'Pluggar redan på området:' : 'Du har delat området med:'}
+          </p>
           <div className="stack" style={{ gap: 6 }}>
             {recipients.map((r) => (
               <div key={r._id} className="row" style={{ gap: 10, padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10, background: 'var(--plum-soft)' }}>
                 <AvatarDisplay avatar={r.avatar} username={r.username} size={32} />
-                <span className="grow" style={{ fontWeight: 700 }}>{r.username}</span>
+                <span className="grow" style={{ fontWeight: 700, minWidth: 0 }}>
+                  {r.username}
+                  {r.via && <span className="t-hand muted" style={{ fontWeight: 400, fontSize: 13 }}> · via {r.via}</span>}
+                </span>
                 {confirmBlock === r._id ? (
                   <>
                     <span className="t-hand" style={{ fontSize: 13 }}>Blockera? Allt ni delar tas bort.</span>
@@ -67,6 +78,11 @@ function FriendsTab({ friends, recipients, busy, onShare, onRemove, onBlock }) {
       ) : (
         <div>
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>Välj kompisar:</p>
+          {!isOwner && (
+            <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+              Har en kompis redan området händer inget när du delar det med hen.
+            </p>
+          )}
           <div className="stack" style={{ gap: 6 }}>
             {available.map((f) => (
               <label
@@ -100,7 +116,10 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
   const [maxUses, setMaxUses] = useState(30);
   const [shownCode, setShownCode] = useState(null);
 
-  const active = links.filter(isActiveLink);
+  // Egna länkar visas som QR-kod; länkar andra gjort (bara skaparen ser dem,
+  // med `via`) kan bara stängas av — de är inte ens egna att sprida.
+  const active = links.filter((l) => isActiveLink(l) && !l.via);
+  const others = links.filter((l) => isActiveLink(l) && l.via);
   const shown = active.find((l) => l.code === shownCode) || active[0] || null;
 
   return (
@@ -111,6 +130,28 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
         <p className="t-hand muted" style={{ margin: 0 }}>
           Skapa en QR-kod som klasskompisar kan scanna. De loggar in (eller skapar ett konto) och får området i sin Plugga — ingen AI behövs.
         </p>
+      )}
+
+      {others.length > 0 && (
+        <div>
+          <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 6px' }}>Länkar andra har gjort till området:</p>
+          <div className="stack" style={{ gap: 6 }}>
+            {others.map((l) => (
+              <div key={l.id} className="row" style={{ gap: 8, padding: 8, border: '1.5px solid var(--ink)', borderRadius: 10, flexWrap: 'wrap' }}>
+                <span className="grow" style={{ minWidth: 0 }}>
+                  <strong>via {l.via}</strong>
+                  <span className="t-hand muted" style={{ fontSize: 13, display: 'block' }}>
+                    {l.usedCount}/{l.maxUses} har gått med · går ut {new Date(l.expiresAt).toLocaleDateString('sv-SE')}
+                  </span>
+                </span>
+                {/* Andras länkar har ingen kod här — de stängs med länkens id. */}
+                <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} disabled={busy} onClick={() => onRevoke(l.id)}>
+                  Stäng av
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {active.length > 1 && (
@@ -185,6 +226,8 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
 
   const onShare = (ids) => run(async () => {
     const r = await shareUnitWithFriends(apiFetch, unit.id, ids);
+    // Hoppades någon över (hade redan området, eller kan inte få det) säger vi
+    // inget om det — en blockering mellan skaparen och kompisen får inte märkas.
     setRecipients(r.recipients);
     return r;
   });
@@ -219,7 +262,9 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
         </div>
         <div className="modal-body stack" style={{ gap: 14 }}>
           <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-            De du delar med övar med sin egen statistik — ingen AI behövs. Bara du kan ändra innehållet, så rättar din AI något når det alla.
+            {unit.isOwner
+              ? 'De du delar med övar med sin egen statistik — ingen AI behövs — och kan dela det vidare. Bara du kan ändra innehållet, så rättar din AI något når det alla.'
+              : 'De du delar med övar med sin egen statistik — ingen AI behövs. Bara den som skapade området kan ändra innehållet.'}
           </p>
           <div className="study-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'friends'} className={`btn btn-sm ${tab === 'friends' ? 'btn-primary' : ''}`} onClick={() => setTab('friends')}>
@@ -233,7 +278,15 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
           {loading ? (
             <p className="t-hand muted" style={{ margin: 0 }}>Glo hämtar dina kompisar…</p>
           ) : tab === 'friends' ? (
-            <FriendsTab friends={friends} recipients={recipients} busy={busy} onShare={onShare} onRemove={onRemove} onBlock={onBlock} />
+            <FriendsTab
+              friends={friends}
+              recipients={recipients}
+              isOwner={unit.isOwner}
+              busy={busy}
+              onShare={onShare}
+              onRemove={onRemove}
+              onBlock={onBlock}
+            />
           ) : (
             <LinkTab links={links} busy={busy} onCreate={onCreate} onRevoke={onRevoke} />
           )}

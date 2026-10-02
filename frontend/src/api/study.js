@@ -126,9 +126,11 @@ export async function revokeMyStudyShareLink(apiFetch, code) {
   return (await readJson(await apiFetch(`/api/study/share-links/${code}`, { method: 'DELETE' }), 'Kunde inte stänga av länken')).links;
 }
 
-// Publik (ingen inloggning): förhandsvisning av en delningslänk /p/<kod>.
-export async function fetchStudyInvitePreview(code) {
-  return readJson(await fetch(`/api/study-invite/${encodeURIComponent(code)}`), 'Kunde inte läsa länken');
+// Publik: förhandsvisning av en delningslänk /p/<kod>. Med apiFetch (inloggad)
+// visas samma urval som man får när man går med.
+export async function fetchStudyInvitePreview(code, apiFetch = null) {
+  const url = `/api/study-invite/${encodeURIComponent(code)}`;
+  return readJson(await (apiFetch ? apiFetch(url) : fetch(url)), 'Kunde inte läsa länken');
 }
 
 // POST → { unitId, unitIds, joined, own? } — kräver inloggning men inte Plugga-flaggan.

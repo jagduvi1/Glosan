@@ -4,8 +4,8 @@
 const mongoose = require('mongoose');
 const StudyUnit = require('../../models/StudyUnit');
 const StudyItem = require('../../models/StudyItem');
-const User = require('../../models/User');
 const { parseStudyCode, formatItemCode } = require('../../utils/studyCodes');
+const { sharerOf, profiles } = require('../sharedVia');
 
 const isId = (id) => mongoose.Types.ObjectId.isValid(String(id));
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
@@ -60,8 +60,8 @@ async function findItemByCode(userId, code, { ownOnly = false } = {}) {
   if (!items.length) return { error: 'not_found' };
   const unitById = new Map(units.map((u) => [String(u._id), u]));
   if (items.length > 1) {
-    const owners = new Map((await User.find({ _id: { $in: units.map((u) => u.user) } }, 'username').lean())
-      .map((o) => [String(o._id), o.username]));
+    // Den som delade området med eleven — samma namn som appen visar.
+    const names = await profiles(units.map((u) => sharerOf(u, userId)));
     return {
       error: 'ambiguous',
       candidates: items.map((i) => {
@@ -72,7 +72,7 @@ async function findItemByCode(userId, code, { ownOnly = false } = {}) {
           unit_id: String(u._id),
           unit_title: u.title,
           is_owner: own,
-          ...(own ? {} : { shared_by: owners.get(String(u.user)) || null }),
+          ...(own ? {} : { shared_by: names.get(sharerOf(u, userId))?.username || null }),
           prompt_excerpt: String(i.prompt || '').slice(0, 160)
         };
       })

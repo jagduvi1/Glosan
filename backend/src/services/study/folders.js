@@ -6,7 +6,7 @@ const StudyFolder = require('../../models/StudyFolder');
 const StudyUnit = require('../../models/StudyUnit');
 const { getSubject } = require('../../config/subjects');
 const { readableFilter, isId, oid } = require('./access');
-const { unitProgress, unitSummary } = require('./views');
+const { summarizeUnits } = require('./views');
 
 const MAX_FOLDERS_PER_USER = 50;
 const MAX_UNITS_PER_FOLDER = 200;
@@ -32,8 +32,7 @@ async function loadFolder(userId, folderId) {
 /** Mappens områden som användaren (fortfarande) kan läsa och som inte är arkiverade. */
 async function folderUnits(userId, folder) {
   if (!folder.units.length) return [];
-  const units = await StudyUnit.find({ _id: { $in: folder.units }, ...readableFilter(userId), archivedAt: null })
-    .populate('user', 'username').lean();
+  const units = await StudyUnit.find({ _id: { $in: folder.units }, ...readableFilter(userId), archivedAt: null }).lean();
   const order = new Map(folder.units.map((id, i) => [String(id), i]));
   return units.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id)));
 }
@@ -67,10 +66,9 @@ async function folderDetail(userId, folderId) {
   const folder = await loadFolder(userId, folderId);
   if (!folder) return null;
   const units = await folderUnits(userId, folder);
-  const progress = await unitProgress(userId, units.map((u) => u._id));
   return {
     folder: folderOut(folder, units),
-    units: units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), u.user?.username))
+    units: await summarizeUnits(userId, units)
   };
 }
 

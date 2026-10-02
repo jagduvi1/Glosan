@@ -12,13 +12,14 @@ jest.mock('../models/User', () => ({
 }));
 jest.mock('../models/Friendship', () => ({ deleteMany: jest.fn(async () => ({})) }));
 jest.mock('../models/CoopStreak', () => ({ deleteMany: jest.fn(async () => ({})) }));
-jest.mock('../models/GlosList', () => ({ updateMany: jest.fn(async () => ({})) }));
 jest.mock('../models/Duel', () => ({ deleteMany: jest.fn(async () => ({})) }));
 jest.mock('./study/sharing', () => ({ unshareBetween: jest.fn(async () => {}) }));
+jest.mock('./listSharing', () => ({ unshareListsBetween: jest.fn(async () => {}) }));
 
 const Duel = require('../models/Duel');
 const Friendship = require('../models/Friendship');
 const { unshareBetween } = require('./study/sharing');
+const { unshareListsBetween } = require('./listSharing');
 const { blockUser } = require('./blocks');
 
 const A = '64b000000000000000000001';
@@ -31,6 +32,8 @@ test("blocking removes only the pair's own pending challenges, never a group's",
   expect(filter.participants).toEqual({ $size: 2 });
   expect(filter['participants.status']).toBe('pending');
   expect(Friendship.deleteMany).toHaveBeenCalled();
+  // Listor och Plugga-områden, egna och vidaredelade, åt båda hållen.
+  expect(unshareListsBetween).toHaveBeenCalledWith(A, B);
   expect(unshareBetween).toHaveBeenCalledWith(A, B);
 });
 

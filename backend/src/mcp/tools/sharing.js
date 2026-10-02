@@ -76,24 +76,34 @@ function findPerson(people, ref) {
     || null;
 }
 
-/** Elevens egna (icke arkiverade) områden via id eller kod, i ordning — eller { error }. */
-async function resolveOwnUnits(userId, refs) {
+/**
+ * Områden eleven har — egna eller delade med hen, inte arkiverade — via id
+ * eller kod, i ordning, eller { error }. Koder är unika per skapare, så en kod
+ * kan peka på både ett eget och ett delat område: då väljer AI:n med id.
+ */
+async function resolveShareableUnits(userId, refs) {
   const wanted = [...new Set(refs.map((r) => (isHexId(r) ? r.toLowerCase() : r.toUpperCase())))];
   const found = await StudyUnit.find({
-    user: userId,
     archivedAt: null,
-    $or: [{ _id: { $in: wanted.filter(isHexId) } }, { code: { $in: wanted.filter((r) => !isHexId(r)) } }]
-  }, '_id code').lean();
-  const byRef = new Map();
-  for (const u of found) {
-    byRef.set(String(u._id), u);
-    byRef.set(u.code, u);
-  }
-  const missing = wanted.filter((r) => !byRef.has(r));
+    $and: [
+      { $or: [{ user: userId }, { sharedWith: userId }] },
+      { $or: [{ _id: { $in: wanted.filter(isHexId) } }, { code: { $in: wanted.filter((r) => !isHexId(r)) } }] }
+    ]
+  }, '_id code title user').lean();
+  const hits = (ref) => found.filter((u) => (isHexId(ref) ? String(u._id) === ref : u.code === ref));
+  const missing = wanted.filter((r) => !hits(r).length);
   if (missing.length) {
-    return { error: fail('not_found', 'Some of those are not the student\'s own units (or are archived) — only the creator can share a unit. See list_study_units.', { not_found: missing }) };
+    return { error: fail('not_found', 'Some of those are not units the student has (or are archived) — see list_study_units.', { not_found: missing }) };
   }
-  const list = await study.loadOwnedUnits(userId, [...new Set(wanted.map((r) => String(byRef.get(r)._id)))]);
+  const ambiguous = wanted.find((r) => hits(r).length > 1);
+  if (ambiguous) {
+    return {
+      error: fail('conflict', `Several units the student has use the code ${ambiguous} (their own and/or shared ones) — see candidates, then call again with unit ids.`, {
+        candidates: hits(ambiguous).slice(0, 10).map((u) => ({ ...unitOut(u), is_owner: String(u.user) === String(userId) }))
+      })
+    };
+  }
+  const list = await study.loadShareableUnits(userId, [...new Set(wanted.map((r) => String(hits(r)[0]._id)))]);
   if (!list) return { error: fail('not_found', 'Those units could not be loaded — see list_study_units.') };
   return { list };
 }
@@ -121,24 +131,26 @@ registerTool({
 registerTool({
   name: 'get_list_sharing',
   title: 'Who a list is shared with',
-  description: 'For a list the user owns: who it is shared with, whether they can edit, and its active share links (expiry, how many have used them). A link the user set to make joiners their friend is listed without its address — it stays in the app; close any link with its link_id.',
+  description: 'For a list the user has: who it is shared with and its active share links (expiry, how many have used them). For a list the user owns: everyone, with via = the person who passed it on when that was not the user, whether recipients can edit, and links others made (made_by). For a list shared with the user: only the people and links the user added. A link that makes joiners friends is listed without its address — it stays in the app; close any link with its link_id.',
   scope: 'read',
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: { list_id: objectId.describe('List id from list_lists') },
   handler: async (args, ctx) => {
-    const access = await resolveList(ctx.user.id, args.list_id, 'owner');
+    const access = await resolveList(ctx.user.id, args.list_id, 'read');
     if (access.error) return access.error;
-    const { list } = access;
-    const [shares, invites] = await Promise.all([listShares(list), listListInvites(list)]);
-    return ok(`Shared with ${shares.length} person(s), ${invites.filter(isActive).length} active link(s)`, {
+    const { list, isOwner } = access;
+    const [shares, invites] = await Promise.all([listShares(list, ctx.user.id), listListInvites(list, ctx.user.id)]);
+    return ok(`${isOwner ? 'Shared' : 'The user shared it'} with ${shares.length} person(s), ${invites.filter(isActive).length} active link(s)`, {
       list_id: String(list._id),
-      can_edit: list.shareMode === 'edit',
-      shared_with: shares.map(personOut),
-      // En länk som gör den som går med till kompis lämnas aldrig ut till
-      // AI:n: en manipulerad AI skulle annars kunna sprida den.
+      is_owner: isOwner,
+      ...(isOwner ? { can_edit: list.shareMode === 'edit' } : {}),
+      shared_with: shares.map((p) => ({ ...personOut(p), ...(p.via ? { via: p.via } : {}) })),
+      // En länk som gör den som går med till kompis — eller som någon annan
+      // gjort — lämnas aldrig ut till AI:n: en manipulerad AI skulle annars
+      // kunna sprida den.
       links: invites.filter(isActive).map((i) => ({
         link_id: String(i._id),
-        ...(i.befriend ? { befriends: true } : { code: i.code, url: listLinkUrl(i.code) }),
+        ...(i.via ? { made_by: i.via } : i.befriend ? { befriends: true } : { code: i.code, url: listLinkUrl(i.code) }),
         expires_at: i.expiresAt,
         used: i.usedCount,
         max_uses: i.maxUses
@@ -150,17 +162,20 @@ registerTool({
 registerTool({
   name: 'share_list',
   title: 'Share a list with friends',
-  description: 'Gives friends one of the user\'s lists — the original, not a copy: they see it under "delade med dig" and practise it. can_edit: true lets them add and delete words, and applies to everyone the list is shared with. ' + ON_REQUEST,
+  description: 'Gives friends a list the user has — their own or one shared with them — the original, not a copy: they see it under "delade med dig" and practise it. can_edit (only for the user\'s own lists): true lets the people the user shares with add and delete words, and applies to all of them; people who got the list passed on by someone else can never edit. ' + ON_REQUEST,
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   inputSchema: {
     list_id: objectId.describe('List id from list_lists'),
     friends: friendsInput,
-    can_edit: z.boolean().optional().describe('true = recipients can add and delete words (everyone on this list). Omit to keep the current setting')
+    can_edit: z.boolean().optional().describe('Own lists only. true = recipients can add and delete words (everyone the user shared it with). Omit to keep the current setting')
   },
   handler: async (args, ctx) => {
-    const access = await resolveList(ctx.user.id, args.list_id, 'owner');
+    const access = await resolveList(ctx.user.id, args.list_id, 'read');
     if (access.error) return access.error;
+    if (args.can_edit !== undefined && !access.isOwner) {
+      return fail('forbidden', 'Only the owner decides whether recipients can edit — omit can_edit to pass this list on read-only.');
+    }
     const { ids, missing } = await resolveFriends(ctx.user.id, args.friends);
     if (missing.length) return fail('not_found', NOT_FRIENDS, { not_friends: missing });
     const mode = args.can_edit === undefined ? undefined : args.can_edit ? 'edit' : 'read';
@@ -168,7 +183,7 @@ registerTool({
     if (r.error) return fail('invalid_input', NOT_FRIENDS);
     return ok(`Shared the list with ${ids.length} friend(s) (${r.added} new)`, {
       list_id: String(access.list._id),
-      can_edit: access.list.shareMode === 'edit',
+      ...(access.isOwner ? { can_edit: r.list.shareMode === 'edit' } : {}),
       shared_with: r.shares.map(personOut)
     });
   }
@@ -177,18 +192,18 @@ registerTool({
 registerTool({
   name: 'create_list_link',
   title: 'Create a share link for a list',
-  description: 'Makes a link to one of the user\'s lists (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list; a link you make never makes them the user\'s friend. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
+  description: 'Makes a link to a list the user has — their own or one shared with them (the app can show it as a QR code). Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. They get their OWN COPY of the list; a link you make never makes them the user\'s friend. Give the user the url to pass on; never post it anywhere yourself, and suggest a short validity. At most 3 active links per list. ' + ON_REQUEST,
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   inputSchema: { list_id: objectId.describe('List id from list_lists'), days: daysInput, max_uses: usesInput },
   handler: async (args, ctx) => {
     const bad = badLinkOptions(args);
     if (bad) return bad;
-    const access = await resolveList(ctx.user.id, args.list_id, 'owner');
+    const access = await resolveList(ctx.user.id, args.list_id, 'read');
     if (access.error) return access.error;
     // Länkar från AI:n gör aldrig någon till kompis (se ListInvite.befriend).
     const r = await createListInvite(ctx.user.id, access.list, { ttlDays: args.days || 7, maxUses: args.max_uses || 30, befriend: false });
-    if (r.error) return fail('conflict', 'This list already has 3 active links — close one with stop_sharing_list first (get_list_sharing shows them).');
+    if (r.error) return fail('conflict', 'The user already has 3 active links to this list — close one with stop_sharing_list first (get_list_sharing shows them).');
     return ok('Created a share link for the list', {
       code: r.invite.code,
       url: listLinkUrl(r.invite.code),
@@ -202,7 +217,7 @@ registerTool({
 registerTool({
   name: 'stop_sharing_list',
   title: 'Stop sharing a list',
-  description: 'For a list the user owns: removes one person from it (friend), or closes a share link (link_id from get_list_sharing, or the link_code of a link you made). Copies people already made through a link are theirs and stay.',
+  description: 'Removes one person from a list (friend), or closes a share link (link_id from get_list_sharing, or the link_code of a link you made). On the user\'s own lists anyone and any link; on a list shared with the user only the people and links the user added. Copies people already made through a link are theirs and stay.',
   scope: 'write',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: {
@@ -215,18 +230,19 @@ registerTool({
     if ([args.friend, args.link_id, args.link_code].filter(Boolean).length !== 1) {
       return fail('invalid_input', 'Pass exactly one of friend, link_id or link_code.');
     }
-    const access = await resolveList(ctx.user.id, args.list_id, 'owner');
+    const access = await resolveList(ctx.user.id, args.list_id, 'read');
     if (access.error) return access.error;
     const { list } = access;
     if (args.link_id || args.link_code) {
       const closed = args.link_id
         ? await revokeListInviteById(ctx.user.id, list, args.link_id)
         : await revokeListInvite(ctx.user.id, list, args.link_code.toUpperCase());
-      if (!closed) return fail('not_found', 'No such link on this list — get_list_sharing shows its links.');
+      if (!closed) return fail('not_found', 'No such link on this list that the user may close — get_list_sharing shows them.');
       return ok('Closed the link', { list_id: String(list._id), ...(args.link_id ? { link_id: args.link_id } : { link_code: args.link_code.toUpperCase() }) });
     }
-    const person = findPerson(await listShares(list), args.friend);
-    if (!person) return fail('not_found', 'That person does not have this list — get_list_sharing shows who does.');
+    // Bara de man ser kan man ta bort: ägaren alla, andra dem de själva lagt till.
+    const person = findPerson(await listShares(list, ctx.user.id), args.friend);
+    if (!person) return fail('not_found', 'That person is not someone the user can remove from this list — get_list_sharing shows who is.');
     await removeListRecipient(list, person._id);
     return ok('Stopped sharing the list with one person', { list_id: String(list._id), removed: personOut(person) });
   }
@@ -237,15 +253,16 @@ registerTool({
 registerTool({
   name: 'get_study_sharing',
   title: 'Who study units are shared with',
-  description: 'With unit (id or code): who that unit of the student\'s is shared with, and the active links that include it. Without unit: all the student\'s active study links and the units each one covers.',
+  description: 'With unit (id or code): who has that unit and the active links that include it. For a unit the student created: everyone, with via = the person who passed it on when that was not the student, and links others made (made_by and link_id, without their address; close one with stop_sharing_study unit + link_id). For a unit shared with the student: only the people and links the student added. Without unit: all the student\'s own active study links and the units each one covers.',
   scope: 'read',
   feature: FEATURE,
   annotations: { readOnlyHint: true, openWorldHint: false },
   inputSchema: { unit: unitRef.optional() },
   handler: async (args, ctx) => {
     const linkOut = (l) => ({
-      code: l.code,
-      url: studyLinkUrl(l.code),
+      // Andras länkar lämnas ut med id, utan kod och adress — AI:n ska kunna
+      // stänga dem, inte använda eller sprida dem.
+      ...(l.via ? { link_id: l.id, made_by: l.via } : { code: l.code, url: studyLinkUrl(l.code) }),
       ...(l.title ? { title: l.title } : {}),
       unit_count: l.unitCount,
       ...(l.units ? { units: l.units.map((u) => ({ unit_id: u.id, code: u.code, title: u.title })) } : {}),
@@ -257,13 +274,15 @@ registerTool({
       const links = await study.listMyShareLinks(ctx.user.id);
       return ok(`${links.length} active link(s)`, { links: links.map(linkOut) });
     }
-    const units = await resolveOwnUnits(ctx.user.id, [args.unit]);
+    const units = await resolveShareableUnits(ctx.user.id, [args.unit]);
     if (units.error) return units.error;
     const unit = units.list[0];
-    const [recipients, links] = await Promise.all([study.listRecipients(unit), study.listShareLinks(unit)]);
-    return ok(`Shared with ${recipients.length} person(s), ${links.filter(isActive).length} active link(s)`, {
+    const [recipients, links] = await Promise.all([study.listRecipients(unit, ctx.user.id), study.listShareLinks(unit, ctx.user.id)]);
+    const isOwner = String(unit.user) === String(ctx.user.id);
+    return ok(`${isOwner ? 'Shared' : 'The student shared it'} with ${recipients.length} person(s), ${links.filter(isActive).length} active link(s)`, {
       ...unitOut(unit),
-      shared_with: recipients.map(personOut),
+      is_owner: isOwner,
+      shared_with: recipients.map((p) => ({ ...personOut(p), ...(p.via ? { via: p.via } : {}) })),
       links: links.filter(isActive).map(linkOut)
     });
   }
@@ -272,16 +291,16 @@ registerTool({
 registerTool({
   name: 'share_study_units',
   title: 'Share study units with friends',
-  description: 'Gives friends one or more of the student\'s units (e.g. a whole chapter): they appear in the friends\' Plugga at once, and each practises with their own progress — no copy, so your corrections reach everyone. Friends without Plugga get it switched on. ' + ON_REQUEST,
+  description: 'Gives friends one or more units the student has — their own or ones shared with them (e.g. a whole chapter): they appear in the friends\' Plugga at once, and each practises with their own progress — no copy, so the creator\'s corrections reach everyone. Friends without Plugga get it switched on. ' + ON_REQUEST,
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   inputSchema: {
-    units: z.array(unitRef).min(1).max(50).describe('The student\'s own units, by id or code'),
+    units: z.array(unitRef).min(1).max(50).describe('Units the student has (own or shared with them), by id or code'),
     friends: friendsInput
   },
   handler: async (args, ctx) => {
-    const units = await resolveOwnUnits(ctx.user.id, args.units);
+    const units = await resolveShareableUnits(ctx.user.id, args.units);
     if (units.error) return units.error;
     const { ids, missing } = await resolveFriends(ctx.user.id, args.friends);
     if (missing.length) return fail('not_found', NOT_FRIENDS, { not_friends: missing });
@@ -298,12 +317,12 @@ registerTool({
 registerTool({
   name: 'create_study_link',
   title: 'Create a share link for study units',
-  description: 'Makes ONE link (the app shows it as a QR code) to one or more of the student\'s units — e.g. a whole chapter for the class. Anyone with it can join until it expires or is used up — also people without a Glosan account, who sign up through it. They get the units in their Plugga (no copy, their own progress) and do NOT become the student\'s friend. Give the student the url to pass on; never post it anywhere yourself, and suggest a short validity. ' + ON_REQUEST,
+  description: 'Makes ONE link (the app shows it as a QR code) to one or more units the student has — their own or ones shared with them, e.g. a whole chapter for the class. Anyone with it can join until it expires or is used up — also people without a Glosan account, who sign up through it. They get the units in their Plugga (no copy, their own progress) and do NOT become the student\'s friend. Give the student the url to pass on; never post it anywhere yourself, and suggest a short validity. ' + ON_REQUEST,
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   inputSchema: {
-    units: z.array(unitRef).min(1).max(50).describe('The student\'s own units, by id or code'),
+    units: z.array(unitRef).min(1).max(50).describe('Units the student has (own or shared with them), by id or code'),
     title: z.string().trim().max(100).optional().describe('What joiners see, e.g. "Kapitel 4 — Procent"'),
     days: daysInput,
     max_uses: usesInput
@@ -311,11 +330,12 @@ registerTool({
   handler: async (args, ctx) => {
     const bad = badLinkOptions(args);
     if (bad) return bad;
-    const units = await resolveOwnUnits(ctx.user.id, args.units);
+    const units = await resolveShareableUnits(ctx.user.id, args.units);
     if (units.error) return units.error;
     const r = await study.createShareLink(ctx.user.id, units.list, { ttlDays: args.days || 7, maxUses: args.max_uses || 30, title: args.title });
     if (r.error) return fail('conflict', 'Too many active links (at most 3 per unit and 30 in all) — close one with stop_sharing_study first (get_study_sharing shows them).');
     return ok(`Created a link for ${units.list.length} unit(s)`, {
+      link_id: r.link.id,
       code: r.link.code,
       url: studyLinkUrl(r.link.code),
       ...(r.link.title ? { title: r.link.title } : {}),
@@ -330,29 +350,43 @@ registerTool({
 registerTool({
   name: 'stop_sharing_study',
   title: 'Stop sharing study units',
-  description: 'Removes someone from one of the student\'s units (unit + friend — also someone who joined by link), or closes a link (link_code — closes it for every unit it covers; see get_study_sharing). People removed lose the unit; their own results stay theirs.',
+  description: 'Removes someone from a unit (unit + friend — also someone who joined by link; the student can remove anyone from units they created, and only the people they added themselves from units shared with them), or closes a link: link_code alone closes one of the student\'s own links for every unit it covers; unit + link_id (from get_study_sharing) closes a link someone else made to a unit the student created — it then stops covering the student\'s units. People removed lose the unit; their own results stay theirs.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     unit: unitRef.optional(),
     friend: friendRef.optional().describe('Username or user_id of someone the unit is shared with'),
-    link_code: linkCode.optional()
+    link_code: linkCode.optional(),
+    link_id: objectId.optional().describe('A link_id from get_study_sharing (a link someone else made); pass unit too')
   },
   handler: async (args, ctx) => {
-    if (args.link_code) {
-      if (args.unit || args.friend) return fail('invalid_input', 'Pass link_code alone, or unit and friend.');
-      if (!(await study.revokeMyShareLink(ctx.user.id, args.link_code.toUpperCase()))) {
-        return fail('not_found', 'No such active link — get_study_sharing shows them.');
+    if (args.link_code || args.link_id) {
+      if (args.friend || (args.link_code && args.link_id)) {
+        return fail('invalid_input', 'Pass link_code (optionally with unit), unit + link_id, or unit + friend.');
       }
-      return ok('Closed the link', { link_code: args.link_code.toUpperCase() });
+      const ref = args.link_id || args.link_code.toUpperCase();
+      if (args.unit) {
+        const units = await resolveShareableUnits(ctx.user.id, [args.unit]);
+        if (units.error) return units.error;
+        const closed = await study.revokeShareLink(units.list[0], ref, ctx.user.id);
+        if (!closed) return fail('not_found', 'No such active link on this unit that the student may close — get_study_sharing shows them.');
+        const which = args.link_id ? { link_id: args.link_id } : { link_code: ref };
+        return ok(closed === 'trimmed' ? 'The link no longer covers the student\'s units' : 'Closed the link', { ...unitOut(units.list[0]), ...which });
+      }
+      if (args.link_id) return fail('invalid_input', 'Pass unit together with link_id.');
+      if (!(await study.revokeMyShareLink(ctx.user.id, ref))) {
+        return fail('not_found', 'No such active link of the student\'s — get_study_sharing shows them (for a link someone else made, pass unit + link_id).');
+      }
+      return ok('Closed the link', { link_code: ref });
     }
     if (!args.unit || !args.friend) return fail('invalid_input', 'Pass link_code, or unit and friend.');
-    const units = await resolveOwnUnits(ctx.user.id, [args.unit]);
+    const units = await resolveShareableUnits(ctx.user.id, [args.unit]);
     if (units.error) return units.error;
     const unit = units.list[0];
-    const person = findPerson(await study.listRecipients(unit), args.friend);
-    if (!person) return fail('not_found', 'That person does not have this unit — get_study_sharing shows who does.');
+    // Bara de man ser kan man ta bort: skaparen alla, andra dem de själva lagt till.
+    const person = findPerson(await study.listRecipients(unit, ctx.user.id), args.friend);
+    if (!person) return fail('not_found', 'That person is not someone the student can remove from this unit — get_study_sharing shows who is.');
     await study.removeRecipient(unit, person._id);
     return ok('Removed one person from the unit', { ...unitOut(unit), removed: personOut(person) });
   }

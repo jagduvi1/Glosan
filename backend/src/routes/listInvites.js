@@ -3,13 +3,15 @@ const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
 const { isBlockedBetween } = require('../services/blocks');
-const { loadOwnedList } = require('../middleware/ownership');
+const { loadReadableList } = require('../middleware/ownership');
 const ListInvite = require('../models/ListInvite');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
-const { createListInvite, listListInvites, revokeListInvite } = require('../services/listSharing');
+const {
+  createListInvite, listListInvites, revokeListInvite, revokeListInviteById, inviteList
+} = require('../services/listSharing');
 
 const router = express.Router();
 
@@ -25,11 +27,12 @@ const createLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: 'För många nya invites — vänta lite.' })
 });
 
-// POST /api/lists/:id/share-link — kräver ägarskap
+// POST /api/lists/:id/share-link — alla som har listan (egen eller delad med en)
 // Body: { ttlDays: 1|7|30, maxUses: number, befriend?: boolean }
-router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList(), async (req, res) => {
+router.post('/lists/:id/share-link', requireAuth, createLimiter, loadReadableList(), async (req, res) => {
   try {
-    // Den som går med blir kompis bara om skaparen kryssat i det (av som standard).
+    // Den som går med blir kompis med den som gjort länken bara om hen kryssat
+    // i det (av som standard).
     const result = await createListInvite(req.user.id, req.list, {
       ttlDays: req.body?.ttlDays,
       maxUses: req.body?.maxUses,
@@ -43,20 +46,27 @@ router.post('/lists/:id/share-link', requireAuth, createLimiter, loadOwnedList()
   }
 });
 
-// GET /api/lists/:id/share-links — lista mina aktiva invites för listan
-router.get('/lists/:id/share-links', requireAuth, loadOwnedList(), async (req, res) => {
+// GET /api/lists/:id/share-links — listans invites: ägaren ser alla (även
+// andras, med `via`), andra bara sina egna
+router.get('/lists/:id/share-links', requireAuth, loadReadableList(), async (req, res) => {
   try {
-    res.json({ invites: await listListInvites(req.list) });
+    res.json({ invites: await listListInvites(req.list, req.user.id) });
   } catch (err) {
     console.error('List share-links error:', err);
     res.status(500).json({ error: 'Kunde inte hämta invite-länkar.' });
   }
 });
 
-// DELETE /api/lists/:id/share-link/:code — revokera (mjukt — sätter revokedAt)
-router.delete('/lists/:id/share-link/:code', requireAuth, loadOwnedList(), async (req, res) => {
+// DELETE /api/lists/:id/share-link/:ref — revokera (mjukt — sätter revokedAt)
+// via koden eller länkens id (ägaren ser andras länkar bara med id). Sina
+// egna länkar; ägaren alla länkar till listan.
+router.delete('/lists/:id/share-link/:ref', requireAuth, loadReadableList(), async (req, res) => {
   try {
-    if (!(await revokeListInvite(req.user.id, req.list, req.params.code))) {
+    const ref = String(req.params.ref);
+    const closed = /^[a-f0-9]{24}$/i.test(ref)
+      ? await revokeListInviteById(req.user.id, req.list, ref)
+      : await revokeListInvite(req.user.id, req.list, ref);
+    if (!closed) {
       return res.status(404).json({ error: 'Invite hittades inte.' });
     }
     res.json({ message: 'Invite-länk avaktiverad.' });
@@ -74,8 +84,9 @@ router.get('/list-invite/:code', async (req, res) => {
     if (!invite || !invite.isActive()) {
       return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });
     }
+    // Den som gjort länken måste fortfarande ha listan (hen kan ha delat den vidare).
     const [list, creator] = await Promise.all([
-      GlosList.findById(invite.list, 'title description sourceLang targetLang').lean(),
+      inviteList(invite),
       User.findById(invite.creator, 'username avatar').lean()
     ]);
     if (!list || !creator) {
@@ -121,9 +132,18 @@ router.post('/list-invite/:code/accept', requireAuth, async (req, res) => {
     if (invite.usedBy.some((u) => u.toString() === req.user.id)) {
       return res.status(400).json({ error: 'Du har redan använt den här länken.' });
     }
-    // Blockerad åt något håll → länken ser bara ut att inte fungera.
+    // Blockerad åt något håll — med den som gjort länken eller med listans
+    // ägare — eller har den som gjort länken inte listan kvar → länken ser
+    // bara ut att inte fungera.
     if (await isBlockedBetween(req.user.id, invite.creator)) {
       return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });
+    }
+    const shared = await inviteList(invite, req.user.id);
+    if (!shared) {
+      return res.status(404).json({ error: 'Den här länken är ogiltig eller har gått ut.' });
+    }
+    if (shared.user.toString() === req.user.id) {
+      return res.status(400).json({ error: 'Det här är din egen lista.' });
     }
     // Ta en plats atomärt, så två samtidiga klick aldrig spräcker maxUses.
     const uid = new mongoose.Types.ObjectId(req.user.id);

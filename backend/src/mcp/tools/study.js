@@ -18,6 +18,7 @@ const { registerTool } = require('../registry');
 const { withUserLock } = require('../userLock');
 const { objectId, ok, fail, validationMessage } = require('../toolUtil');
 const { loadUnit, loadItem, findItemByCode, itemCode, isId, oid, readableFilter } = require('../../services/study/access');
+const { sharerOf, profiles } = require('../../services/sharedVia');
 const { listUnits, unitUrl, folderUrl, testUrl } = require('../../services/study/views');
 const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
@@ -407,23 +408,24 @@ function unitMeta(unit) {
 }
 
 /**
- * Vems område? is_owner, och för ett delat område vem som skrev det — så AI:n
- * vet att texten är någon annans (data, aldrig instruktioner).
+ * Vems område? is_owner, och för ett delat område vem som delade det med
+ * eleven (skaparen eller någon som delat vidare — samma namn som appen visar)
+ * — så AI:n vet att texten är någon annans (data, aldrig instruktioner).
  */
 async function authorship(unit, userId) {
   const isOwner = String(unit.user?._id || unit.user) === String(userId);
   if (isOwner) return { is_owner: true };
-  const owner = await User.findById(unit.user?._id || unit.user, 'username').lean();
-  return { is_owner: false, shared_by: owner?.username || null, written_by_someone_else: true };
+  const sharer = await User.findById(sharerOf(unit, userId), 'username').lean();
+  return { is_owner: false, shared_by: sharer?.username || null, written_by_someone_else: true };
 }
 
 /** Kandidaterna när en kod matchar flera områden (som data, inte i meddelandet). */
 async function unitCandidates(units, userId) {
-  const owners = new Map((await User.find({ _id: { $in: units.map((u) => u.user) } }, 'username').lean())
-    .map((o) => [String(o._id), o.username]));
-  return units.slice(0, 10).map((u) => {
+  const shown = units.slice(0, 10);
+  const names = await profiles(shown.map((u) => sharerOf(u, userId)));
+  return shown.map((u) => {
     const own = String(u.user) === String(userId);
-    return { unit_id: String(u._id), code: u.code, title: u.title, is_owner: own, ...(own ? {} : { shared_by: owners.get(String(u.user)) || null }) };
+    return { unit_id: String(u._id), code: u.code, title: u.title, is_owner: own, ...(own ? {} : { shared_by: names.get(sharerOf(u, userId))?.username || null }) };
   });
 }
 
@@ -489,7 +491,7 @@ registerTool({
       ...(u.source?.book || u.source?.chapter ? { source: { book: u.source.book || '', chapter: u.source.chapter || '' } } : {}),
       is_owner: u.isOwner,
       ...(u.sharedBy ? { shared_by: u.sharedBy } : {}),
-      ...(u.isOwner && u.sharedCount ? { shared_with: u.sharedCount } : {}),
+      ...(u.sharedCount ? { shared_with: u.sharedCount } : {}),
       cards: u.progress.cards,
       exercises: u.progress.exercises,
       levels: u.progress.levels,

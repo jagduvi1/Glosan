@@ -50,6 +50,14 @@ const glosListSchema = new mongoose.Schema({
     ref: 'User',
     index: true
   }],
+  // Vem som lade till vem — alla som ser en lista kan dela den vidare. Den som
+  // fått listan av någon annan än ägaren ser den personen som "Delad av",
+  // aldrig ägarens namn. Saknas raden har ägaren delat (äldre delningar).
+  sharedVia: [{
+    _id: false,
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  }],
   // 'read' = bara ägaren får ändra glosor. 'edit' = även mottagare får
   // lägga till och radera glosor. Titel, kategori, riktning och radering
   // av hela listan är alltid bara ägarens. Per-glos-mastery (stats.correct/

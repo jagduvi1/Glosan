@@ -91,7 +91,7 @@ export default function PluggaFolder() {
           {!editing && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setName(folder.name); setEditing(true); }}>Byt namn</button>
           )}
-          {units.some((u) => u.isOwner) && (
+          {units.length > 0 && (
             <button type="button" className="btn btn-sm" onClick={() => setSharing(true)} title="Dela mappens områden med kompisar eller med en QR-kod">👥 Dela mappen</button>
           )}
           <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} onClick={() => setConfirmDelete(true)}>Ta bort mappen</button>
@@ -135,7 +135,7 @@ export default function PluggaFolder() {
       {sharing && (
         <ShareStudyDialog
           units={units}
-          initialSelected={units.filter((u) => u.isOwner).map((u) => u.id)}
+          initialSelected={units.map((u) => u.id)}
           title={folder.name}
           linkTitle=""
           onClose={() => setSharing(false)}

@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const { z } = require('zod');
 const GlosList = require('../models/GlosList');
 const { issuer } = require('../services/mcpOAuth');
+const { canEditWords } = require('../services/listSharing');
 
 /** zod-form för Mongo-id:n i verktygens input. */
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, 'must be a 24-hex id');
@@ -40,7 +41,8 @@ function listUrl(listId) {
 /**
  * Ladda en lista och avgör anroparens åtkomst. `level`:
  *   'read'  — ägare eller mottagare (sharedWith)          ≈ loadReadableList
- *   'edit'  — ägare, eller mottagare när shareMode 'edit'  ≈ loadEditableList
+ *   'edit'  — ägare, eller mottagare när shareMode 'edit' och ägaren delade
+ *             med dem (canEditWords)                        ≈ loadEditableList
  *   'owner' — bara ägaren                                  ≈ loadOwnedList
  * Returnerar { list, isOwner } eller { error, code } (error = ett färdigt
  * fail()-kuvert, code = dess felkod).
@@ -55,7 +57,7 @@ async function resolveList(userId, listId, level = 'read') {
   if (level === 'owner' && !isOwner) {
     return denied('forbidden', 'Only the owner of this list can do that — it was shared with you. Copy it in the Glosan app to get your own editable version.');
   }
-  if (level === 'edit' && !isOwner && list.shareMode !== 'edit') {
+  if (level === 'edit' && !canEditWords(list, userId)) {
     return denied('forbidden', 'This list was shared with you read-only; you cannot change its words.');
   }
   return { list, isOwner };

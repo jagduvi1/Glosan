@@ -113,7 +113,7 @@ export default function PluggaSubject() {
             <span aria-hidden="true">{subjectInfo.emoji}</span> {subjectInfo.label}
           </h1>
         </div>
-        {units.some((u) => u.isOwner) && (
+        {units.length > 0 && (
           <button type="button" className="btn" onClick={() => setSharing(true)} title="Dela områden med kompisar eller med en QR-kod">
             👥 Dela
           </button>
@@ -137,9 +137,7 @@ export default function PluggaSubject() {
                 {selected.length > 0 && (
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                     <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Lägg i mapp</button>
-                    {units.some((u) => u.isOwner && selected.includes(u.id)) && (
-                      <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>👥 Dela</button>
-                    )}
+                    <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>👥 Dela</button>
                   </div>
                 )}
               </div>

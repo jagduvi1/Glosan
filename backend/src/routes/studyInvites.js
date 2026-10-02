@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { previewInvite, acceptInvite } = require('../services/study/sharing');
 
 // Delningslänkar till områden i Plugga (/p/<kod>, QR-koden). Förhandsvisningen
@@ -13,10 +13,11 @@ const router = express.Router();
 
 const GONE = 'Den här länken är ogiltig eller har gått ut.';
 
-// GET /api/study-invite/:code — publik förhandsvisning
-router.get('/study-invite/:code', async (req, res, next) => {
+// GET /api/study-invite/:code — publik förhandsvisning. Inloggad visas samma
+// urval som man får när man går med (utan områden man inte kan få).
+router.get('/study-invite/:code', optionalAuth, async (req, res, next) => {
   try {
-    const preview = await previewInvite(req.params.code);
+    const preview = await previewInvite(req.params.code, req.user?.id);
     if (!preview) return res.status(404).json({ error: GONE });
     res.json(preview);
   } catch (err) {
