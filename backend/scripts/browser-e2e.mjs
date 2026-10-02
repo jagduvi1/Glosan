@@ -173,6 +173,33 @@ async function main() {
     await page.keyboard.press('Escape');
     ok('the subject page has its own Dela button');
 
+    // ── dela vidare: den som fått något kan dela det ────────────────────────
+    assert.equal((await api(`/api/lists/${listId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id] } })).status, 200);
+    const bctx = await browser.createBrowserContext();
+    const bpage = await bctx.newPage();
+    current = bpage;
+    watch(bpage);
+    await bpage.setViewport({ width: 390, height: 844 });
+    await bpage.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
+    await login(bpage, B);
+    await bpage.goto(`${BASE}/plugga/omrade/${unitIds[1]}`, { waitUntil: 'networkidle0' });
+    await waitForText(bpage, `delad av ${A.name}`);
+    await clickText(bpage, 'button', 'Dela');
+    await bpage.waitForSelector('#share-unit-title');
+    await waitForText(bpage, 'Bara den som skapade området kan ändra innehållet');
+    await clickText(bpage, '.modal button[role="tab"]', 'QR-kod');
+    await clickText(bpage, '.modal button', 'Skapa QR-kod');
+    await bpage.waitForSelector('.modal img[alt^="QR"]');
+    const viaB = (await api(`/api/study/units/${unitIds[1]}/shares`, A.token)).body.links.find((l) => l.via === B.name);
+    assert.ok(viaB, 'the creator sees the link B made');
+    await bpage.goto(`${BASE}/lists/${listId}`, { waitUntil: 'networkidle0' });
+    await waitForText(bpage, `delad av ${A.name}`);
+    await clickText(bpage, 'button', 'Dela med kompis');
+    await waitForText(bpage, 'Bara den som äger listan kan ändra den');
+    await bctx.close();
+    current = page;
+    ok('a friend who got a unit or a list can pass it on (Dela on the unit and list pages); the creator sees their link "via" them');
+
     // ── kortets baksida: en enkel radbrytning ska synas (inte flyta ihop) ────
     await page.goto(`${BASE}/plugga/ova?units=${unitIds[0]}`, { waitUntil: 'networkidle0' });
     await clickText(page, 'button', 'Vänd kortet');

@@ -1,49 +1,124 @@
 // Dela glos-listor — med kompisar (de får tillgång till originalet, att läsa
 // eller redigera) eller via en länk (den som går med får en KOPIA av listan, och
-// blir kompis med skaparen bara om skaparen kryssat i det i appen). Samma regler
-// för appen (routes/lists.js, routes/listInvites.js) och användarens AI
-// (mcp/tools/sharing.js).
+// blir kompis med den som gjort länken bara om hen kryssat i det i appen).
+// Samma regler för appen (routes/lists.js, routes/listInvites.js) och
+// användarens AI (mcp/tools/sharing.js).
+//
+// Alla som har en lista kan dela den vidare (services/sharedVia.js): med sina
+// kompisar eller med en egen länk. Ägaren ser alla som har listan ("via …")
+// och kan ta bort vem som helst; den som delat vidare ser bara dem hen själv
+// lagt till. Ändra glosor får bara de ägaren själv delat med (när listan är
+// 'edit') — den som fått listan vidare av någon annan får läsa och öva.
+// Har ägaren och mottagaren blockerat varandra kommer listan aldrig fram.
 const mongoose = require('mongoose');
+const GlosList = require('../models/GlosList');
 const ListInvite = require('../models/ListInvite');
 const Friendship = require('../models/Friendship');
-const User = require('../models/User');
 const { randomCode } = require('../utils/friendCode');
+const { oid, ownerOf, sharerOf, blockChecker, profiles, visibleRecipients } = require('./sharedVia');
 
 const INVITE_CODE_LENGTH = 8;
 const MAX_ACTIVE_INVITES_PER_LIST = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Mottagarna av en lista (bara för ägaren). */
-async function listShares(list) {
-  return User.find({ _id: { $in: list.sharedWith } }, 'username avatar friendCode').lean();
+const isId = (id) => mongoose.Types.ObjectId.isValid(String(id));
+
+/** Har `userId` listan — äger den eller har fått den delad? */
+function hasList(list, userId) {
+  return ownerOf(list) === String(userId) || (list.sharedWith || []).some((id) => String(id) === String(userId));
 }
 
 /**
- * Dela med kompisar. Varje id måste vara en bekräftad kompis. `mode`
- * ('read' | 'edit', valfritt) gäller listan — alla mottagare, nya som gamla.
- * Returnerar { shares, list, added } eller { error, status }.
+ * Får `userId` ändra glosorna? Ägaren alltid. En mottagare bara när listan
+ * är 'edit' och det var ägaren som delade med hen — den som fått listan
+ * vidare av någon annan har ägaren aldrig valt.
  */
-async function shareListWithFriends(ownerId, list, friendIds, mode) {
-  const validIds = (friendIds || []).map(String).filter((id) => mongoose.Types.ObjectId.isValid(id));
-  if (!validIds.length) return { error: 'Inga giltiga ID:n', status: 400 };
-  const friendships = await Friendship.find({ user: ownerId, friend: { $in: validIds } }, 'friend').lean();
-  const confirmed = new Set(friendships.map((f) => f.friend.toString()));
-  const toAdd = validIds.filter((id) => confirmed.has(id));
-  if (!toAdd.length) return { error: 'Du måste vara kompis för att kunna dela listan.', status: 400 };
-  const members = new Set(list.sharedWith.map(String));
-  const added = toAdd.filter((id) => !members.has(id)).length;
-  for (const id of toAdd) members.add(id);
-  list.sharedWith = Array.from(members);
-  if (mode) list.shareMode = mode;
-  await list.save();
-  return { shares: await listShares(list), list, added };
+function canEditWords(list, userId) {
+  if (ownerOf(list) === String(userId)) return true;
+  return list.shareMode === 'edit' && hasList(list, userId) && sharerOf(list, userId) === ownerOf(list);
 }
 
-/** Ta bort en mottagare. */
+/**
+ * Listan som `userId` får se. Mottagare ser inte vilka andra som har den
+ * (bara ägaren gör det) och får sitt eget läge: 'edit' bara om hen får ändra.
+ */
+function listForViewer(list, userId) {
+  const l = typeof list.toObject === 'function' ? list.toObject() : { ...list };
+  if (ownerOf(l) === String(userId)) return l;
+  delete l.sharedWith;
+  delete l.sharedVia;
+  l.shareMode = canEditWords(list, userId) ? 'edit' : 'read';
+  return l;
+}
+
+/**
+ * Vilka har listan? Ägaren ser alla (med `via` för dem någon annan lagt
+ * till); den som delat vidare ser bara dem hen själv lagt till.
+ */
+async function listShares(list, viewerId = ownerOf(list)) {
+  return visibleRecipients(list, viewerId);
+}
+
+/**
+ * Dela med kompisar. Varje id måste vara en bekräftad kompis till den som
+ * delar. Den som redan har listan, är ägaren eller har blockerat ägaren (eller
+ * blockerats av hen) hoppas tyst över. `mode` ('read' | 'edit', bara ägaren)
+ * gäller listan — alla ägaren delat med, nya som gamla.
+ * Returnerar { shares, list, added } eller { error, status }.
+ */
+async function shareListWithFriends(sharerId, list, friendIds, mode) {
+  const validIds = [...new Set((friendIds || []).map(String).filter(isId))];
+  if (!validIds.length) return { error: 'Inga giltiga ID:n', status: 400 };
+  const friendships = await Friendship.find({ user: sharerId, friend: { $in: validIds } }, 'friend').lean();
+  const confirmed = friendships.map((f) => f.friend.toString());
+  if (!confirmed.length) return { error: 'Du måste vara kompis för att kunna dela listan.', status: 400 };
+  const owner = ownerOf(list);
+  const blocked = await blockChecker([owner, ...confirmed]);
+  const adds = confirmed.filter((id) => id !== owner && !hasList(list, id) && !blocked(owner, id));
+  const update = {};
+  if (adds.length) {
+    update.$addToSet = { sharedWith: { $each: adds.map(oid) } };
+    // Ägarens egna delningar behöver ingen rad (saknad rad = ägaren delade).
+    if (owner !== String(sharerId)) update.$push = { sharedVia: { $each: adds.map((id) => ({ user: oid(id), by: oid(sharerId) })) } };
+  }
+  if (mode && owner === String(sharerId)) update.$set = { shareMode: mode, updatedAt: new Date() };
+  const fresh = Object.keys(update).length
+    ? await GlosList.findOneAndUpdate({ _id: list._id }, update, { new: true })
+    : list;
+  return { shares: await listShares(fresh, sharerId), list: fresh, added: adds.length };
+}
+
+/** Stäng av (eller ta bort ur) länkar `creatorId` gjort till listan — hen har inte listan längre. */
+async function revokeInvitesBy(listId, creatorId) {
+  await ListInvite.updateMany({ list: listId, creator: oid(creatorId), revokedAt: null }, { $set: { revokedAt: new Date() } });
+}
+
+/** Ta bort en mottagare — och stäng hens länkar till listan. Returnerar listan (uppdaterad). */
 async function removeListRecipient(list, userId) {
-  list.sharedWith = list.sharedWith.filter((id) => id.toString() !== String(userId));
-  await list.save();
-  return list;
+  if (!isId(userId)) return list;
+  const fresh = await GlosList.findOneAndUpdate(
+    { _id: list._id },
+    { $pull: { sharedWith: oid(userId), sharedVia: { user: oid(userId) } } },
+    { new: true }
+  );
+  await revokeInvitesBy(list._id, userId);
+  return fresh || list;
+}
+
+/**
+ * Två personer slutar dela med varandra (blockering): inga listor åt något
+ * håll — varken den enas egna eller det den ena delat vidare till den andra.
+ */
+async function unshareListsBetween(a, b) {
+  if (!isId(a) || !isId(b)) return;
+  for (const [giver, recipient] of [[oid(a), oid(b)], [oid(b), oid(a)]]) {
+    // eslint-disable-next-line no-await-in-loop
+    const lists = await GlosList.find({
+      sharedWith: recipient,
+      $or: [{ user: giver }, { sharedVia: { $elemMatch: { user: recipient, by: giver } } }]
+    }, '_id').lean();
+    for (const l of lists) await removeListRecipient(l, recipient); // eslint-disable-line no-await-in-loop
+  }
 }
 
 async function uniqueInviteCode() {
@@ -70,21 +145,23 @@ function inviteOut(i) {
 }
 
 /**
- * Skapa en länk (/j/<kod>) till en egen lista: 1–30 dagar, 1–1000
- * användningar, högst 3 aktiva per lista. `befriend: true` = den som går med
- * blir kompis med skaparen (bara när skaparen kryssat i det i appen).
- * Returnerar { invite } eller { error, status }.
+ * Skapa en länk (/j/<kod>) till en lista man har (egen eller delad med en):
+ * 1–30 dagar, 1–1000 användningar, högst 3 aktiva per person och lista.
+ * `befriend: true` = den som går med blir kompis med den som gjort länken
+ * (bara när hen kryssat i det i appen). Returnerar { invite } eller { error, status }.
  */
-async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = false } = {}) {
+async function createListInvite(creatorId, list, { ttlDays, maxUses, befriend = false } = {}) {
   const ttl = Math.min(Math.max(Number(ttlDays) || 7, 1), 30);
   const uses = Math.min(Math.max(Number(maxUses) || 30, 1), 1000);
-  const active = await ListInvite.countDocuments({ list: list._id, revokedAt: null, expiresAt: { $gt: new Date() } });
+  const active = await ListInvite.countDocuments({
+    list: list._id, creator: oid(creatorId), revokedAt: null, expiresAt: { $gt: new Date() }
+  });
   if (active >= MAX_ACTIVE_INVITES_PER_LIST) {
     return { error: `Du har redan ${active} aktiva invites för den här listan. Avaktivera någon först.`, status: 429 };
   }
   const invite = await ListInvite.create({
     list: list._id,
-    creator: ownerId,
+    creator: creatorId,
     code: await uniqueInviteCode(),
     expiresAt: new Date(Date.now() + ttl * DAY_MS),
     maxUses: uses,
@@ -93,42 +170,75 @@ async function createListInvite(ownerId, list, { ttlDays, maxUses, befriend = fa
   return { invite: inviteOut(invite) };
 }
 
-/** Listans länkar, nyast först. */
-async function listListInvites(list) {
-  const invites = await ListInvite.find({ list: list._id }).sort({ createdAt: -1 }).lean();
-  return invites.map(inviteOut);
+/**
+ * Listans länkar, nyast först. Ägaren ser alla — även länkar andra gjort
+ * (med `via`, så länge de har listan kvar) — andra bara sina egna.
+ */
+async function listListInvites(list, viewerId = ownerOf(list)) {
+  const owner = ownerOf(list);
+  const isOwner = owner === String(viewerId);
+  const invites = (await ListInvite.find({ list: list._id, ...(isOwner ? {} : { creator: oid(viewerId) }) })
+    .sort({ createdAt: -1 }).lean())
+    .filter((i) => hasList(list, i.creator));
+  const names = isOwner ? await profiles(invites.map((i) => i.creator).filter((c) => String(c) !== owner)) : new Map();
+  return invites.map((i) => ({
+    ...inviteOut(i),
+    via: isOwner && String(i.creator) !== owner ? names.get(String(i.creator))?.username || null : null
+  }));
+}
+
+/** Filter för länkar `viewerId` får stänga: sina egna, och ägaren alla till listan. */
+function closableBy(list, viewerId) {
+  return ownerOf(list) === String(viewerId) ? { list: list._id } : { list: list._id, creator: oid(viewerId) };
+}
+
+async function revoke(invite) {
+  if (!invite) return false;
+  if (!invite.revokedAt) {
+    invite.revokedAt = new Date();
+    await invite.save();
+  }
+  return true;
 }
 
 /** Stäng av en länk (mjukt). false = hittades inte; redan avstängd räknas som klar. */
-async function revokeListInvite(ownerId, list, code) {
-  const invite = await ListInvite.findOne({ code: String(code || ''), list: list._id, creator: ownerId });
-  if (!invite) return false;
-  if (!invite.revokedAt) {
-    invite.revokedAt = new Date();
-    await invite.save();
-  }
-  return true;
+async function revokeListInvite(viewerId, list, code) {
+  return revoke(await ListInvite.findOne({ code: String(code || ''), ...closableBy(list, viewerId) }));
 }
 
 /** Stäng av en länk via dess id (för AI:n, som inte får se adressen till appens länkar). */
-async function revokeListInviteById(ownerId, list, id) {
-  if (!mongoose.Types.ObjectId.isValid(String(id))) return false;
-  const invite = await ListInvite.findOne({ _id: id, list: list._id, creator: ownerId });
-  if (!invite) return false;
-  if (!invite.revokedAt) {
-    invite.revokedAt = new Date();
-    await invite.save();
+async function revokeListInviteById(viewerId, list, id) {
+  if (!isId(id)) return false;
+  return revoke(await ListInvite.findOne({ _id: id, ...closableBy(list, viewerId) }));
+}
+
+/**
+ * En länk gäller bara så länge den som gjort den har listan kvar — och aldrig
+ * för den som har blockerat listans ägare (eller blockerats av hen).
+ * Returnerar listan eller null.
+ */
+async function inviteList(invite, joinerId = null) {
+  const list = await GlosList.findById(invite.list);
+  if (!list || !hasList(list, invite.creator)) return null;
+  if (joinerId && String(joinerId) !== ownerOf(list)) {
+    const blocked = await blockChecker([ownerOf(list), String(joinerId)]);
+    if (blocked(ownerOf(list), joinerId)) return null;
   }
-  return true;
+  return list;
 }
 
 module.exports = {
   MAX_ACTIVE_INVITES_PER_LIST,
+  hasList,
+  canEditWords,
+  listForViewer,
   listShares,
   shareListWithFriends,
   removeListRecipient,
+  unshareListsBetween,
   createListInvite,
   listListInvites,
   revokeListInvite,
-  revokeListInviteById
+  revokeListInviteById,
+  inviteList
 };

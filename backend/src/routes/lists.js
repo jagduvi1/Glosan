@@ -6,30 +6,39 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const User = require('../models/User');
 const QuizRunEvent = require('../models/QuizRunEvent');
-const { listShares, shareListWithFriends, removeListRecipient } = require('../services/listSharing');
+const { listShares, shareListWithFriends, removeListRecipient, listForViewer } = require('../services/listSharing');
+const { sharerOf, profiles, canRemove, circleOf, friendsWithIt } = require('../services/sharedVia');
 const { periodRange } = require('../utils/localTime');
 
 const router = express.Router();
 
 router.use(requireAuth);
 
+/** Den som delade listan med `userId` (ägaren eller någon som delat vidare): { username, avatar } eller null. */
+async function sharedByOf(list, userId) {
+  const p = (await profiles([sharerOf(list, userId)])).get(sharerOf(list, userId));
+  return p ? { username: p.username, avatar: p.avatar } : null;
+}
+
 // GET /api/lists — egna listor + listor någon har delat med mig. Mottagar-
-// listor markeras med `isShared: true` + ägarens username så frontend kan
-// gruppera och visa "delad av X".
+// listor markeras med `isShared: true` + namnet på den som delade dem med mig
+// (inte ägarens, om det var någon annan) så frontend kan gruppera och visa
+// "delad av X".
 router.get('/', async (req, res) => {
   try {
     const owned = await GlosList.find({ user: req.user.id }).sort({ updatedAt: -1 }).lean();
-    const shared = await GlosList.find({ sharedWith: req.user.id })
-      .sort({ updatedAt: -1 })
-      .populate('user', 'username avatar')
-      .lean();
+    const shared = await GlosList.find({ sharedWith: req.user.id }).sort({ updatedAt: -1 }).lean();
+    const names = await profiles(shared.map((l) => sharerOf(l, req.user.id)));
     res.json({
       lists: owned,
-      sharedLists: shared.map((l) => ({
-        ...l,
-        isShared: true,
-        sharedBy: l.user ? { username: l.user.username, avatar: l.user.avatar } : null
-      }))
+      sharedLists: shared.map((l) => {
+        const by = names.get(sharerOf(l, req.user.id));
+        return {
+          ...listForViewer(l, req.user.id),
+          isShared: true,
+          sharedBy: by ? { username: by.username, avatar: by.avatar } : null
+        };
+      })
     });
   } catch (error) {
     console.error('List index error:', error);
@@ -66,17 +75,12 @@ router.post('/', async (req, res) => {
 router.get('/:id', loadReadableList(), async (req, res) => {
   try {
     const glosor = await Glos.find({ list: req.list._id }).sort({ createdAt: 1 });
-    // För mottagare: berika svaret med ägar-info och flagga icke-ägar-läge.
-    let sharedBy = null;
-    if (!req.listIsOwner) {
-      const owner = await User.findById(req.list.user, 'username avatar').lean();
-      if (owner) sharedBy = { username: owner.username, avatar: owner.avatar };
-    }
+    // För mottagare: vem som delade listan med dem, utan vilka andra som har den.
     res.json({
-      list: req.list,
+      list: listForViewer(req.list, req.user.id),
       glosor,
       isOwner: req.listIsOwner,
-      sharedBy
+      sharedBy: req.listIsOwner ? null : await sharedByOf(req.list, req.user.id)
     });
   } catch (error) {
     console.error('List get error:', error);
@@ -172,11 +176,17 @@ router.delete('/:id', loadOwnedList(), async (req, res) => {
   }
 });
 
-// GET /api/lists/:id/shares — vilka kompisar har access till listan?
-// Bara ägaren får se delningar.
-router.get('/:id/shares', loadOwnedList(), async (req, res) => {
+// GET /api/lists/:id/shares — vilka har listan? Alla som har listan kan dela
+// den vidare: ägaren ser alla (med `via` för dem någon annan lagt till), andra
+// bara dem de själva lagt till. `friendsWithIt` = mina kompisar som redan har
+// listan (så Dela inte erbjuder dem).
+router.get('/:id/shares', loadReadableList(), async (req, res) => {
   try {
-    res.json({ shares: await listShares(req.list) });
+    const [shares, friends] = await Promise.all([
+      listShares(req.list, req.user.id),
+      friendsWithIt(req.list, req.user.id)
+    ]);
+    res.json({ shares, isOwner: req.listIsOwner, friendsWithIt: friends });
   } catch (error) {
     console.error('List shares get error:', error);
     res.status(500).json({ error: 'Failed to fetch shares' });
@@ -185,20 +195,24 @@ router.get('/:id/shares', loadOwnedList(), async (req, res) => {
 
 // POST /api/lists/:id/share — body { friendIds: [string], mode?: 'read'|'edit' }.
 // Lägger till user-ID:n i sharedWith. Varje ID måste vara en bekräftad kompis
-// (finns i Friendship-tabellen). Om mode anges uppdateras list.shareMode för
-// alla nuvarande + nya mottagare (en mode per lista).
-router.post('/:id/share', loadOwnedList(), async (req, res) => {
+// till den som delar (finns i Friendship-tabellen). Alla som har listan får
+// dela den vidare; mode (bara ägaren) uppdaterar list.shareMode för alla
+// nuvarande + nya mottagare (en mode per lista).
+router.post('/:id/share', loadReadableList(), async (req, res) => {
   const { friendIds, mode } = req.body;
-  if (!Array.isArray(friendIds) || friendIds.length === 0) {
+  if (!Array.isArray(friendIds) || friendIds.length === 0 || friendIds.length > 100) {
     return res.status(400).json({ error: 'friendIds måste vara en lista med minst ett ID' });
   }
   if (mode !== undefined && mode !== 'read' && mode !== 'edit') {
     return res.status(400).json({ error: 'mode måste vara "read" eller "edit"' });
   }
+  if (mode !== undefined && !req.listIsOwner) {
+    return res.status(403).json({ error: 'Bara den som äger listan bestämmer vad mottagarna får göra.' });
+  }
   try {
     const result = await shareListWithFriends(req.user.id, req.list, friendIds, mode);
     if (result.error) return res.status(result.status).json({ error: result.error });
-    res.json({ shares: result.shares, list: result.list });
+    res.json({ shares: result.shares, list: listForViewer(result.list, req.user.id), added: result.added });
   } catch (error) {
     console.error('List share error:', error);
     res.status(500).json({ error: 'Failed to share list' });
@@ -259,16 +273,19 @@ router.post('/:id/copy', loadReadableList(), async (req, res) => {
   }
 });
 
-// DELETE /api/lists/:id/share/:userId — ta bort en enskild mottagare.
-// Endast ägaren får anropa det.
-router.delete('/:id/share/:userId', loadOwnedList(), async (req, res) => {
+// DELETE /api/lists/:id/share/:userId — ta bort en enskild mottagare. Ägaren
+// får ta bort vem som helst, andra bara dem de själva delat listan med.
+router.delete('/:id/share/:userId', loadReadableList(), async (req, res) => {
   const { userId } = req.params;
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(400).json({ error: 'Invalid user id' });
   }
+  if (!canRemove(req.list, req.user.id, userId)) {
+    return res.status(404).json({ error: 'Personen hittades inte.' });
+  }
   try {
-    await removeListRecipient(req.list, userId);
-    res.json({ list: req.list });
+    const fresh = await removeListRecipient(req.list, userId);
+    res.json({ list: listForViewer(fresh, req.user.id), shares: await listShares(fresh, req.user.id) });
   } catch (error) {
     console.error('List unshare error:', error);
     res.status(500).json({ error: 'Failed to unshare list' });
@@ -283,8 +300,8 @@ router.post('/:id/leave', loadReadableList(), async (req, res) => {
     return res.status(400).json({ error: 'Du äger den här listan — använd radera istället.' });
   }
   try {
-    req.list.sharedWith = req.list.sharedWith.filter((id) => id.toString() !== req.user.id);
-    await req.list.save();
+    // De jag delat listan vidare med behåller den (ägaren kan ta bort dem).
+    await removeListRecipient(req.list, req.user.id);
     res.json({ message: 'Du har lämnat listan' });
   } catch (error) {
     console.error('List leave error:', error);
@@ -293,14 +310,16 @@ router.post('/:id/leave', loadReadableList(), async (req, res) => {
 });
 
 // GET /api/lists/:id/weekly-records — bästa quiz-rond denna vecka per
-// deltagare (ägare + alla i sharedWith). Bara users som faktiskt gjort
-// minst en rond denna vecka tas med.
+// deltagare. Ägaren ser alla; andra ser den som delade listan med dem, de
+// andra samma person delade med och dem de själva delat vidare till — aldrig
+// främlingar längre bort i kedjan (sharedVia.circleOf). Bara users som
+// faktiskt gjort minst en rond denna vecka tas med.
 router.get('/:id/weekly-records', loadReadableList(), async (req, res) => {
   try {
     // Veckan börjar måndag 00.00 svensk tid (inte serverns UTC).
     const weekStart = periodRange('week').from;
 
-    const participants = [req.list.user, ...(req.list.sharedWith || [])];
+    const participants = circleOf(req.list, req.user.id).map((id) => new mongoose.Types.ObjectId(id));
     // Aggregera bästa ratio per deltagare. Tie-break: senast.
     const agg = await QuizRunEvent.aggregate([
       { $match: { list: req.list._id, user: { $in: participants }, createdAt: { $gte: weekStart } } },

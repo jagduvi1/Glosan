@@ -25,8 +25,9 @@ behind a feature flag and shown to more users step by step.
 5. **Levels follow the book.** The book's markings (nivå 1/2/3, grön/gul/röd)
    map to **E / C / A**, shown as *Lätt · E*, *Medel · C*, *Svår · A*.
 6. **Shareable.** A unit can be shared with friends or by QR code — also with
-   people who have no AI. Everyone practises with their **own** progress; only
-   the creator's AI changes the content, so corrections reach everyone.
+   people who have no AI — and everyone who has it can pass it on. Everyone
+   practises with their **own** progress; only the creator's AI changes the
+   content, so corrections reach everyone.
 7. **Study XP counts** toward the same XP and streak as the vocabulary quizzes.
 8. **Everything is tracked** so the student can show a parent what they have
    done: today / this week / this month / this term ("Min plugg").
@@ -193,25 +194,51 @@ level" only count steps the student earned.
 
 - **Where**: "👥 Dela" on a unit's page (that unit), and on the Plugga start
   page, a subject page (also for a selection or a chapter) and a folder —
-  one dialog (`ShareStudyDialog`) where you pick any of your own units and
-  share them together. The student's AI can do the same (`share_study_units`,
-  `create_study_link`, `get_study_sharing`, `stop_sharing_study`; docs/mcp.md).
-- **Friends**: the creator shares with confirmed friends.
+  one dialog (`ShareStudyDialog`) where you pick any of the units you have
+  and share them together. The student's AI can do the same
+  (`share_study_units`, `create_study_link`, `get_study_sharing`,
+  `stop_sharing_study`; docs/mcp.md).
+- **Anyone who has a unit can pass it on** — their own, or one shared with
+  them — with their friends or with their own link. `StudyUnit.sharedVia`
+  records who added whom (`{ user, by }`); access is still `sharedWith`, and
+  no row means the creator shared it (all shares from before v0.1.37).
+  Shared helpers for this and for vocabulary lists live in
+  `services/sharedVia.js`.
+  - The recipient sees **who shared it with them** ("delad av …" in the app,
+    `shared_by` over MCP) — never the creator's name if someone else passed
+    it on.
+  - The **creator** sees everyone who has the unit, with "via …" for people
+    someone else added, and every link to it (others' links "via …" too, which
+    the creator can close but never gets the address of over MCP). The creator
+    can remove anyone and close any link — closing someone else's link takes
+    only the creator's units off it.
+  - Someone who **passed it on** sees and removes only the people they added,
+    and their own links.
+  - A link works only while its maker still has the units. Removing someone
+    (or them leaving, unfriending, blocking) takes those units off their
+    links, so an old link never wakes up again.
+  - If the creator and the recipient have blocked each other, the unit never
+    reaches the recipient, whoever shares it — silently, so no one learns of
+    the block.
+- **Friends**: you share with your confirmed friends. Friends who already have
+  the unit are listed as such, not offered again.
 - **QR / link** (`/p/<code>`): ONE link can cover several units
   (`StudyShareLink.units`, up to 50 — e.g. a chapter for the class) with an
   optional name; 1, 7 or 30 days, 10/30/100 uses, at most 3 active links per
-  unit and 30 per creator; a public preview (titles, subject, term and counts —
-  not årskurs, book or description). People without an account sign up
-  through the link and get every unit. Joining does **not** make you the creator's
-  friend (a link can be passed on). Joining is idempotent and claims a use
-  atomically. Links are deleted 30 days after they expire.
+  unit and 30 per person; a public preview (titles, subject, term and counts —
+  not årskurs, book or description) showing the person who made the link.
+  People without an account sign up through the link and get every unit.
+  Joining does **not** make you the link maker's friend (a link can be passed
+  on). Joining is idempotent and claims a use atomically. Links are deleted 30
+  days after they expire.
 - Nobody gets a copy: recipients join `sharedWith`, practise with their own
-  progress and see corrections at once. They can leave, and report "fel i
-  facit" to the creator's AI. Only the creator shares, edits and deletes.
-  When the creator archives a unit it disappears for the recipients too.
-- **Unfriending** ends every share between the two, both ways — also units
-  joined by link — and takes those units out of their folders and their open
-  reports (`unshareBetween`).
+  progress and see corrections at once. They can leave (the people they passed
+  it on to keep it), and report "fel i facit" to the creator's AI. Only the
+  creator edits and deletes. When the creator archives a unit it disappears
+  for the recipients too.
+- **Unfriending** ends every share between the two, both ways — the creator's
+  units, units joined by link, and what one passed on to the other — and takes
+  those units out of their folders and their open reports (`unshareBetween`).
 - **Blocking** (Kompisar page, or a unit's share list for someone who joined
   by link) does the same and more: it also ends list shares, the co-op streak
   and pending challenges, and stops the other from adding you by code or
@@ -305,7 +332,7 @@ every answer → send the link.
 
 | Model | Holds |
 |---|---|
-| `StudyUnit` | creator, subject, term, gradeYear, code (MA3), title, description, source{book, chapter, pages}, examDate, sharedWith, archivedAt |
+| `StudyUnit` | creator, subject, term, gradeYear, code (MA3), title, description, source{book, chapter, pages}, examDate, sharedWith, sharedVia (who passed it on to whom), archivedAt |
 | `StudyPage` | a genomgång: markdown + LaTeX + ```svg figures, rendered without raw HTML. All Plugga text keeps single line breaks (remark-breaks): plain Markdown turns them into spaces, and card backs written one line per point ran together |
 | `StudyItem` | a card or exercise: prompt, back / answer (number · choice · multi · order · factors · text · self; `expr` for templates), hints, solution, level E/C/A, skill, sourceRef, usage (practice/test), number (→ code), template |
 | `StudyItemState` | per user + item: Leitner box 0–5, dueAt, correct, wrong |

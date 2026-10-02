@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const Category = require('../models/Category');
+const { canEditWords } = require('../services/listSharing');
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -52,7 +53,8 @@ function loadReadableList(paramName = 'id') {
 
 // Owner ELLER mottagare när list.shareMode === 'edit'. Används för glos-
 // CRUD: lägg till, redigera och radera glosor. Owner får alltid; mottagare
-// får om listan är i edit-mode.
+// får om listan är i edit-mode och ägaren själv delade med dem (den som fått
+// listan vidare av någon annan får bara läsa — services/listSharing.js).
 function loadEditableList(paramName = 'id') {
   return async (req, res, next) => {
     const id = req.params[paramName];
@@ -66,7 +68,7 @@ function loadEditableList(paramName = 'id') {
       });
       if (!list) return res.status(404).json({ error: 'List not found' });
       const isOwner = list.user.toString() === req.user.id;
-      if (!isOwner && list.shareMode !== 'edit') {
+      if (!canEditWords(list, req.user.id)) {
         return res.status(403).json({ error: 'Den här listan är read-only för dig.' });
       }
       req.list = list;
@@ -97,17 +99,17 @@ async function loadOwnedGlos(req, res, next) {
   }
 }
 
-// Owner of parent list, OR a sharedWith-user when list.shareMode === 'edit'.
-// `req.listIsOwner` sätts så routes kan skydda stats-uppdatering (bara
-// owner kan röra per-glos-mastery; mottagare som vill spara egna stats
-// kopierar listan).
+// Owner of parent list, OR a sharedWith-user when list.shareMode === 'edit'
+// and the owner shared it with them (canEditWords). `req.listIsOwner` sätts så
+// routes kan skydda stats-uppdatering (bara owner kan röra per-glos-mastery;
+// mottagare som vill spara egna stats kopierar listan).
 async function loadEditableGlos(req, res, next) {
   const id = req.params.id;
   if (!isValidObjectId(id)) {
     return res.status(400).json({ error: 'Invalid glos id' });
   }
   try {
-    const glos = await Glos.findById(id).populate('list', 'user sharedWith shareMode');
+    const glos = await Glos.findById(id).populate('list', 'user sharedWith sharedVia shareMode');
     if (!glos || !glos.list) {
       return res.status(404).json({ error: 'Glos not found' });
     }
@@ -116,7 +118,7 @@ async function loadEditableGlos(req, res, next) {
     if (!isOwner && !isShared) {
       return res.status(404).json({ error: 'Glos not found' });
     }
-    if (!isOwner && glos.list.shareMode !== 'edit') {
+    if (!canEditWords(glos.list, req.user.id)) {
       return res.status(403).json({ error: 'Den här listan är read-only för dig.' });
     }
     req.glos = glos;

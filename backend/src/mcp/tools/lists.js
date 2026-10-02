@@ -11,6 +11,8 @@ const {
 } = require('../toolUtil');
 const { wordInput, langCode, MAX_WORDS_PER_CALL, MAX_WORDS_PER_LIST } = require('./schemas');
 const { withUserLock } = require('../userLock');
+const { sharerOf, profiles } = require('../../services/sharedVia');
+const { canEditWords } = require('../../services/listSharing');
 
 // get_list returnerar hela listan i ett svar; större listor än så här är i
 // praktiken ett misstag och skulle bara spräcka modellens kontext.
@@ -51,8 +53,10 @@ registerTool({
       GlosList.find({ user: userId }).sort({ updatedAt: -1 }).lean(),
       args.include_shared === false
         ? []
-        : GlosList.find({ sharedWith: userId }).sort({ updatedAt: -1 }).populate('user', 'username').lean()
+        : GlosList.find({ sharedWith: userId }).sort({ updatedAt: -1 }).lean()
     ]);
+    // Den som delade listan med användaren — samma namn som appen visar.
+    const sharers = await profiles(shared.map((l) => sharerOf(l, userId)));
     const all = [...owned, ...shared];
     const counts = all.length
       ? await Glos.aggregate([
@@ -66,8 +70,8 @@ registerTool({
       ...shared.map((l) => listSummary(l, {
         word_count: countBy.get(String(l._id)) || 0,
         is_owner: false,
-        shared_by: l.user?.username || null,
-        share_mode: l.shareMode
+        shared_by: sharers.get(sharerOf(l, userId))?.username || null,
+        share_mode: canEditWords(l, userId) ? 'edit' : 'read'
       }))
     ];
     return ok(`${owned.length} own list(s), ${shared.length} shared with the user`, data);
@@ -94,13 +98,13 @@ registerTool({
     const truncated = words.length > GET_LIST_WORD_CAP;
     let sharedBy = null;
     if (!isOwner) {
-      const owner = await User.findById(list.user, 'username').lean();
-      sharedBy = owner?.username || null;
+      const sharer = await User.findById(sharerOf(list, ctx.user.id), 'username').lean();
+      sharedBy = sharer?.username || null;
     }
     const data = {
       ...listSummary(list, {
         is_owner: isOwner,
-        ...(isOwner ? {} : { shared_by: sharedBy, share_mode: list.shareMode })
+        ...(isOwner ? {} : { shared_by: sharedBy, share_mode: canEditWords(list, ctx.user.id) ? 'edit' : 'read' })
       }),
       word_count: truncated ? `${GET_LIST_WORD_CAP}+` : words.length,
       words: words.slice(0, GET_LIST_WORD_CAP).map((g) => wordSummary(g, { withStats: args.include_stats !== false }))

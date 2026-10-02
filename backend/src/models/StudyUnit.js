@@ -39,6 +39,15 @@ const studyUnitSchema = new mongoose.Schema({
   },
   examDate: { type: Date, default: null },
   sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true }],
+  // Vem som lade till vem — alla som ser ett område kan dela det vidare.
+  // Den som fått det av någon annan än skaparen ser den personen som "Delat
+  // av", aldrig skaparens namn. Saknas raden har skaparen delat (äldre
+  // delningar). Tillgången ges fortfarande av sharedWith.
+  sharedVia: [{
+    _id: false,
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  }],
   // Löpnummer för områdets kort/övningar (MA3-1, MA3-2 …). Räknas upp
   // atomärt när uppgifter läggs till och går aldrig bakåt — en raderad
   // uppgifts nummer återanvänds inte, så en kod på ett papper pekar alltid rätt.
@@ -50,6 +59,7 @@ const studyUnitSchema = new mongoose.Schema({
 
 studyUnitSchema.index({ user: 1, code: 1 }, { unique: true });
 studyUnitSchema.index({ user: 1, subject: 1, term: 1 });
+studyUnitSchema.index({ 'sharedVia.by': 1 });
 
 studyUnitSchema.pre('save', function (next) {
   this.updatedAt = new Date();

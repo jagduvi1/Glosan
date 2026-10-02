@@ -11,6 +11,8 @@ const QuizRunEvent = require('../models/QuizRunEvent');
 const McpToken = require('../models/McpToken');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
 const { exportStudyData, deleteStudyDataForUser } = require('../services/studyData');
+const { sharerOf, profiles } = require('../services/sharedVia');
+const { canEditWords } = require('../services/listSharing');
 const { startOfDay, tickStreak, tickCoopStreaks, subjectXpTotal } = require('../services/gamification');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
@@ -353,9 +355,11 @@ router.get('/export', async (req, res) => {
     const InviteCode = require('../models/InviteCode');
 
     const [ownedLists, sharedLists] = await Promise.all([
-      GlosList.find({ user: userId }).lean(),
-      GlosList.find({ sharedWith: userId }).populate('user', 'username').lean()
+      GlosList.find({ user: userId }, { sharedVia: 0 }).lean(),
+      GlosList.find({ sharedWith: userId }).lean()
     ]);
+    // Den som delade listan med mig — inte ägaren, om det var någon annan.
+    const sharers = await profiles(sharedLists.map((l) => sharerOf(l, userId)));
     const ownedListIds = ownedLists.map((l) => l._id);
     const [
       glosor,
@@ -396,8 +400,8 @@ router.get('/export', async (req, res) => {
         sharedWithMe: sharedLists.map((l) => ({
           _id: l._id,
           title: l.title,
-          ownerUsername: l.user?.username,
-          shareMode: l.shareMode,
+          sharedByUsername: sharers.get(sharerOf(l, userId))?.username || null,
+          shareMode: canEditWords(l, userId) ? 'edit' : 'read',
           addedAt: l.createdAt
         }))
       },
@@ -493,7 +497,7 @@ router.delete('/', async (req, res) => {
     // som dangling ref i deras "delade med dig"-sektion).
     await GlosList.updateMany(
       { sharedWith: userId },
-      { $pull: { sharedWith: userId } },
+      { $pull: { sharedWith: userId, sharedVia: { user: userId } } },
       opts
     );
     await Friendship.deleteMany({ $or: [{ user: userId }, { friend: userId }] }, opts);

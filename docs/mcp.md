@@ -83,6 +83,16 @@ by the AI never do (`ListInvite.befriend`), and the AI never sees the
 address of one that does — so a manipulated AI can't bring strangers into a
 child's friend list. A unit link gives access without friendship. The tools return the url for the user to pass on.
 
+The user can pass on what was shared with them too (lists and units), and
+`shared_by` is always the person who shared something with the user — not
+the creator, if someone else passed it on. On their own lists and units,
+`get_list_sharing` / `get_study_sharing` show everyone with `via` (who passed
+it on) and links others made as `made_by` **without** their address: the AI
+can close them (`stop_sharing_*`) but never spread them. On something shared
+with the user, the tools show and remove only the people and links the user
+added. A list passed on by someone other than the owner is always read-only
+for the people it reaches (`can_edit` is the owner's alone).
+
 Deliberately **not** exposed: blocking, duels, account settings, plans,
 deleting the account, disconnecting AIs. The instructions tell the AI to
 point the user at the web app for those.

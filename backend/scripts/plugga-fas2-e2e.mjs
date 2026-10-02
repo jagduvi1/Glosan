@@ -70,7 +70,7 @@ async function main() {
     const bUnits = await api('/api/study/units?allTerms=1', B.token);
     assert.deepEqual(bUnits.body.units.map((u) => u.code), ['MA1']);
     assert.equal(bUnits.body.units[0].sharedBy, A.name);
-    assert.equal(bUnits.body.units[0].sharedCount, null, 'recipients never see who else has it');
+    assert.equal(bUnits.body.units[0].sharedCount, 0, 'recipients never see who else has it — only how many they passed it on to');
     const notFriend = await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } });
     assert.equal(notFriend.status, 400);
     const bSession = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [unitId], mode: 'exercises' } });
@@ -147,8 +147,7 @@ async function main() {
     assert.equal((await api(`/api/study-invite/${code}`)).status, 404);
     assert.equal((await api(`/api/study/units/${unitId}/leave`, C.token, { method: 'POST' })).status, 200);
     assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
-    assert.equal((await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: {} })).status, 403);
-    ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave; only the creator shares${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
+    ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
 
     // ── Dela flera på en gång (Plugga-sidornas Dela: ett kapitel, en mapp) ──
     const histId = hist.data.unit_id;
@@ -165,12 +164,14 @@ async function main() {
     for (const id of [unitId, histId]) assert.equal((await api(`/api/study/units/${id}`, D.token)).status, 200);
     const mine = await api('/api/study/share-links', A.token);
     assert.ok(mine.body.links.some((l) => l.code === multi.body.link.code && l.units.length === 2));
-    // Dela ett urval med en kompis på en gång; någon annans område går inte.
+    // Dela ett urval med en kompis på en gång; ett område man inte har går inte.
     const both = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId], friendIds: [B.id] } });
     assert.equal(both.status, 200);
     assert.equal(both.body.units, 2);
     assert.equal((await api(`/api/study/units/${histId}`, B.token)).status, 200);
-    assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } })).status, 404);
+    assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: ['64b000000000000000000009'], friendIds: [A.id] } })).status, 404);
+    const toOwner = await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } });
+    assert.equal(toOwner.body.added, 0, 'passing a unit back to its creator changes nothing');
     assert.equal((await api(`/api/study/share-links/${multi.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
     assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
     // Raderas länkens FÖRSTA område lever länken vidare för resten.
@@ -182,7 +183,115 @@ async function main() {
     assert.equal(survived.status, 200, 'the link still works for the unit that is left');
     assert.deepEqual(survived.body.units.map((u) => u.title), ['Industriella revolutionen']);
     await api(`/api/study/share-links/${chain.body.link.code}`, A.token, { method: 'DELETE' });
-    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only your own units; deleting the first unit keeps the link');
+    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only units you have; deleting the first unit keeps the link');
+
+    // ── Dela vidare ─────────────────────────────────────────────────────────
+    // Alla som har ett område kan dela det vidare. Mottagaren ser den som
+    // delade med hen — aldrig skaparen om det var någon annan; skaparen ser
+    // alla ("via …") och kan ta bort vem som helst.
+    const befriend = async (x, y) => {
+      const c = (await api('/api/me/invite-codes', x.token, { method: 'POST' })).body.inviteCode.code;
+      assert.ok((await api('/api/me/friends/by-code', y.token, { method: 'POST', body: { code: c } })).status < 300);
+    };
+    await befriend(B, C);
+    const onward = await api(`/api/study/units/${unitId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } });
+    assert.equal(onward.status, 200, JSON.stringify(onward.body));
+    assert.deepEqual(onward.body.recipients.map((r) => r.username), [C.name], 'B sees only the people B added');
+    const cSees = (await api('/api/study/units?allTerms=1', C.token)).body.units.find((u) => u.id === unitId);
+    assert.equal(cSees.sharedBy, B.name, 'C sees who shared it — not the creator');
+    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).body.unit.sharedBy, B.name);
+    const aView = await api(`/api/study/units/${unitId}/shares`, A.token);
+    const viaOf = Object.fromEntries(aView.body.recipients.map((r) => [r.username, r.via]));
+    assert.equal(viaOf[C.name], B.name, 'the creator sees C via B');
+    assert.equal(viaOf[B.name], null);
+    assert.equal(viaOf[D.name], null, 'D joined through the creator\'s own link');
+    const bView = await api(`/api/study/units/${unitId}/shares`, B.token);
+    assert.equal(bView.body.isOwner, false);
+    assert.deepEqual(bView.body.recipients.map((r) => r.username), [C.name]);
+    assert.ok(bView.body.friendsWithIt.includes(A.id), 'the dialog knows which friends already have it');
+    // Ta bort: skaparen vem som helst, andra bara dem de själva lagt till.
+    assert.equal((await api(`/api/study/units/${unitId}/share/${D.id}`, B.token, { method: 'DELETE' })).status, 404);
+    assert.equal((await api(`/api/study/units/${unitId}/share/${B.id}`, C.token, { method: 'DELETE' })).status, 404);
+    // B:s egen länk: den som går med ser B; skaparen ser länken och kan stänga den.
+    const bLink = await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal(bLink.status, 201, JSON.stringify(bLink.body));
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`)).body.creator.username, B.name);
+    const E = await signUp('p2onward');
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}/accept`, E.token, { method: 'POST' })).body.joined, true);
+    assert.equal((await api(`/api/study/units/${unitId}`, E.token)).body.unit.sharedBy, B.name);
+    const aAll = (await api(`/api/study/units/${unitId}/shares`, A.token)).body;
+    assert.equal(aAll.links.find((l) => l.code === bLink.body.link.code)?.via, B.name);
+    assert.equal(aAll.recipients.find((r) => r.username === E.name)?.via, B.name);
+    assert.equal((await api(`/api/study/units/${unitId}/share-links/${bLink.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`)).status, 404, 'the creator closed B\'s link');
+    assert.equal((await api(`/api/study/units/${unitId}/share/${C.id}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404, 'the creator removed C, whom B added');
+    // Har skaparen blockerat någon kommer området aldrig fram — vem som än delar.
+    const F = await signUp('p2blocked');
+    await befriend(B, F);
+    assert.equal((await api('/api/me/blocks', A.token, { method: 'POST', body: { userId: F.id } })).status, 200);
+    const toBlocked = await api(`/api/study/units/${unitId}/share`, B.token, { method: 'POST', body: { friendIds: [F.id] } });
+    assert.equal(toBlocked.status, 200);
+    assert.equal(toBlocked.body.added, 0);
+    const bLink2 = await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}/accept`, F.token, { method: 'POST' })).status, 404);
+    assert.ok(!(await api(`/api/study/units/${unitId}/shares`, A.token)).body.recipients.some((r) => r.username === F.name));
+    await api(`/api/study/units/${unitId}/share-links/${bLink2.body.link.code}`, B.token, { method: 'DELETE' });
+    assert.equal((await api(`/api/me/blocks/${F.id}`, A.token, { method: 'DELETE' })).status, 200);
+    // Slutar två vara kompisar försvinner det den ena delat vidare till den andra.
+    assert.equal((await api(`/api/study/units/${histId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } })).body.added, 1);
+    assert.equal((await api(`/api/study/units/${histId}`, C.token)).status, 200);
+    assert.equal((await api(`/api/me/friends/${B.id}`, C.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study/units/${histId}`, C.token)).status, 404);
+    // Via AI:n: B:s AI delar vidare; skaparens AI ser länken utan adress och stänger den.
+    const bAi = await connectMcp(B.token);
+    const bAiLink = await call(bAi, 'create_study_link', { units: [unitId], days: 1, max_uses: 10 });
+    assert.equal(bAiLink.isError, false, JSON.stringify(bAiLink));
+    assert.equal((await call(bAi, 'get_study_sharing', { unit: unitId })).data.is_owner, false);
+    await bAi.close();
+    const seenByA = (await call(claude, 'get_study_sharing', { unit: unitId })).data;
+    const bAiSeen = seenByA.links.find((l) => l.code === bAiLink.data.code);
+    assert.ok(bAiSeen && bAiSeen.made_by === B.name && !bAiSeen.url, 'another person\'s link without its address');
+    assert.equal(seenByA.shared_with.find((p) => p.username === E.name)?.via, B.name);
+    assert.equal((await call(claude, 'stop_sharing_study', { unit: unitId, link_code: bAiLink.data.code })).isError, false);
+    assert.equal((await api(`/api/study-invite/${bAiLink.data.code}`)).status, 404);
+    ok('pass it on: a recipient shares with friends and by link; "delad av" is the sharer; the creator sees everyone via whom, removes anyone and closes their links; blocks and unfriending reach re-shares; the same via MCP');
+
+    // Glos-listor: samma regler. A delar med B (får ändra); B delar vidare med
+    // C, som bara får läsa och öva — ägaren valde aldrig C.
+    await befriend(B, C);
+    const rList = await api('/api/lists', A.token, { method: 'POST', body: { title: 'Vidare-test', sourceLang: 'sv', targetLang: 'en' } });
+    const rListId = rList.body.list._id;
+    assert.equal((await api(`/api/lists/${rListId}/glosor`, A.token, { method: 'POST', body: { source: 'hus', target: 'house' } })).status, 201);
+    assert.equal((await api(`/api/lists/${rListId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id], mode: 'edit' } })).status, 200);
+    assert.equal((await api(`/api/lists/${rListId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id], mode: 'edit' } })).status, 403, 'only the owner sets the mode');
+    const bListShare = await api(`/api/lists/${rListId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } });
+    assert.equal(bListShare.status, 200, JSON.stringify(bListShare.body));
+    assert.equal(bListShare.body.list.sharedWith, undefined, 'B never sees who else has the list');
+    const cList = await api(`/api/lists/${rListId}`, C.token);
+    assert.equal(cList.body.sharedBy.username, B.name);
+    assert.equal(cList.body.list.shareMode, 'read', 'passed on = read-only');
+    assert.equal(cList.body.list.sharedWith, undefined);
+    assert.equal((await api(`/api/lists/${rListId}/glosor`, C.token, { method: 'POST', body: { source: 'katt', target: 'cat' } })).status, 403);
+    assert.equal((await api(`/api/lists/${rListId}/glosor`, B.token, { method: 'POST', body: { source: 'katt', target: 'cat' } })).status, 201, 'the owner chose B');
+    assert.equal((await api('/api/lists', C.token)).body.sharedLists.find((l) => l._id === rListId)?.sharedBy.username, B.name);
+    const aListShares = await api(`/api/lists/${rListId}/shares`, A.token);
+    assert.deepEqual(aListShares.body.shares.map((s) => `${s.username}<${s.via}`).sort(), [`${B.name}<null`, `${C.name}<${B.name}`].sort());
+    assert.deepEqual((await api(`/api/lists/${rListId}/shares`, B.token)).body.shares.map((s) => s.username), [C.name]);
+    assert.equal((await api(`/api/lists/${rListId}/share/${B.id}`, C.token, { method: 'DELETE' })).status, 404);
+    // B:s länk ger en kopia; ägaren ser den. Tas B bort slutar B:s länk gälla.
+    const bListLink = await api(`/api/lists/${rListId}/share-link`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal(bListLink.status, 201, JSON.stringify(bListLink.body));
+    assert.equal((await api(`/api/list-invite/${bListLink.body.invite.code}`)).body.creator.username, B.name);
+    assert.equal((await api(`/api/lists/${rListId}/share-links`, A.token)).body.invites.find((i) => i.code === bListLink.body.invite.code)?.via, B.name);
+    assert.equal((await api(`/api/list-invite/${bListLink.body.invite.code}/accept`, A.token, { method: 'POST' })).status, 400, 'the owner needs no copy');
+    assert.equal((await api(`/api/lists/${rListId}/share/${B.id}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/list-invite/${bListLink.body.invite.code}`)).status, 404, 'B no longer has the list, so B\'s link is closed');
+    assert.equal((await api(`/api/lists/${rListId}`, C.token)).status, 200, 'C keeps it until the owner removes C too');
+    assert.equal((await api(`/api/lists/${rListId}/share/${C.id}`, A.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/lists/${rListId}`, C.token)).status, 404);
+    assert.equal((await api(`/api/me/friends/${B.id}`, C.token, { method: 'DELETE' })).status, 200);
+    ok('lists pass on too: read-only for those the owner never chose, "delad av" the sharer, the owner sees everyone via whom and removes anyone; a removed sharer\'s link stops');
 
     // ── Dela via AI:n ───────────────────────────────────────────────────────
     const aiShare = await call(claude, 'share_study_units', { units: [unitId, histId], friends: [B.name] });

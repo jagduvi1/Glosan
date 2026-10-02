@@ -203,11 +203,11 @@ export default function PluggaUnit() {
         )}
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Mapp</button>
-          {unit.isOwner ? (
-            <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>
-              👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
-            </button>
-          ) : (
+          {/* Alla som har området kan dela det vidare — skaparen ser alla som har det. */}
+          <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>
+            👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
+          </button>
+          {!unit.isOwner && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirming({ kind: 'leave' })}>Lämna området</button>
           )}
         </div>

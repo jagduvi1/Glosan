@@ -34,8 +34,9 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
     try {
       const list = await fetchListInvites(apiFetch, listId);
       setInvites(list);
-      // Visa senaste aktiva som default-QR
-      const active = list.find((i) => !i.revoked && new Date(i.expiresAt) > new Date());
+      // Visa senaste aktiva egna som default-QR (länkar andra gjort — bara
+      // ägaren ser dem, med `via` — kan bara stängas av)
+      const active = list.find((i) => !i.via && !i.revoked && new Date(i.expiresAt) > new Date());
       if (active) setSelectedCode(active.code);
     } catch (err) {
       setError(err.message);
@@ -87,6 +88,9 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
 
   const selectedInvite = invites.find((i) => i.code === selectedCode);
   const fullUrl = selectedCode ? `${window.location.origin}/j/${selectedCode}` : '';
+  const isLive = (i) => !i.revoked && new Date(i.expiresAt) >= new Date() && i.usedCount < i.maxUses;
+  const ownInvites = invites.filter((i) => !i.via);
+  const othersInvites = invites.filter((i) => i.via && isLive(i));
 
   const copyUrl = () => navigator.clipboard?.writeText(fullUrl).catch(() => {});
 
@@ -171,11 +175,34 @@ export default function QrShareModal({ listId, listTitle, onClose }) {
                 </div>
               </details>
 
-              {invites.length > 1 && (
+              {othersInvites.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div className="t-hand muted" style={{ fontSize: 14, marginBottom: 8 }}>Länkar andra har gjort till listan:</div>
+                  <div className="stack" style={{ gap: 6 }}>
+                    {othersInvites.map((i) => (
+                      <div
+                        key={i.code}
+                        className="row between"
+                        style={{ padding: '8px 10px', border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--paper-deep)' }}
+                      >
+                        <span style={{ fontSize: 14 }}>
+                          <strong>via {i.via}</strong> · {i.usedCount}/{i.maxUses === 1000 ? '∞' : i.maxUses}
+                          {' · går ut '}{new Date(i.expiresAt).toLocaleDateString('sv-SE')}
+                        </span>
+                        <button className="btn btn-sm btn-ghost" onClick={() => onRevoke(i.code)} title="Avaktivera">
+                          Stäng av
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {ownInvites.length > 1 && (
                 <div>
                   <div className="t-hand muted" style={{ fontSize: 14, marginBottom: 8 }}>Dina invite-länkar:</div>
                   <div className="stack" style={{ gap: 6 }}>
-                    {invites.map((i) => {
+                    {ownInvites.map((i) => {
                       const expired = new Date(i.expiresAt) < new Date();
                       const inactive = i.revoked || expired || i.usedCount >= i.maxUses;
                       return (

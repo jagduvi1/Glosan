@@ -350,25 +350,22 @@ export default function ListDetail() {
             )}
           </div>
           <div className="list-actions">
-            {isOwner && (
-              <>
-                <button
-                  className="btn"
-                  onClick={() => setShowShare(true)}
-                  title="Dela listan med en kompis"
-                >
-                  Dela med kompis
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => setShowQrShare(true)}
-                  title="Generera en QR-kod så hela klassen kan scanna"
-                  style={{ background: 'var(--mustard-soft)' }}
-                >
-                  📱 QR-kod för klassen
-                </button>
-              </>
-            )}
+            {/* Alla som har listan kan dela den vidare — ägaren ser alla som har den. */}
+            <button
+              className="btn"
+              onClick={() => setShowShare(true)}
+              title="Dela listan med en kompis"
+            >
+              Dela med kompis
+            </button>
+            <button
+              className="btn"
+              onClick={() => setShowQrShare(true)}
+              title="Generera en QR-kod så hela klassen kan scanna"
+              style={{ background: 'var(--mustard-soft)' }}
+            >
+              📱 QR-kod för klassen
+            </button>
             <button
               className="btn"
               onClick={() => setShowChallenge(true)}
@@ -660,6 +657,7 @@ export default function ListDetail() {
           listId={id}
           listTitle={list.title}
           initialMode={list.shareMode || 'read'}
+          isOwner={isOwner}
           onClose={() => setShowShare(false)}
           onChanged={load}
         />

@@ -10,6 +10,7 @@ const User = require('../../models/User');
 const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm, termLabel } = require('../../utils/term');
 const { readableFilter, oid, loadUnit } = require('./access');
+const { sharerOf, profiles } = require('../sharedVia');
 const { publicItem } = require('./practice');
 const { testsForUnit } = require('./tests');
 const { issuer } = require('../mcpOAuth');
@@ -71,7 +72,12 @@ function testUrl(testId) {
   return `${issuer()}/plugga/prov/${testId}`;
 }
 
-function unitSummary(u, userId, progress, ownerName) {
+/**
+ * Ett område i listor och på områdessidan. `sharerName` = den som delade
+ * området med användaren (skaparen eller någon som delat vidare) — mottagaren
+ * ser aldrig skaparens namn om det var någon annan som delade.
+ */
+function unitSummary(u, userId, progress, sharerName) {
   const isOwner = String(u.user?._id || u.user) === String(userId);
   const subject = getSubject(u.subject);
   return {
@@ -88,9 +94,12 @@ function unitSummary(u, userId, progress, ownerName) {
     examDate: u.examDate || null,
     source: u.source || {},
     isOwner,
-    sharedBy: isOwner ? null : ownerName || null,
-    // Hur många skaparen delat med — bara skaparen får veta det.
-    sharedCount: isOwner ? (u.sharedWith || []).length : null,
+    sharedBy: isOwner ? null : sharerName || null,
+    // Hur många som har området — skaparen ser alla, den som delat vidare
+    // bara dem hen själv lagt till.
+    sharedCount: isOwner
+      ? (u.sharedWith || []).length
+      : (u.sharedVia || []).filter((v) => String(v.by) === String(userId)).length,
     progress,
     url: unitUrl(u),
     archived: Boolean(u.archivedAt),
@@ -107,9 +116,17 @@ async function listUnits(userId, { subject, group, term, allTerms, includeArchiv
   if (SUBJECT_KEYS.includes(subject)) filter.subject = subject;
   else if (group === 'no' || group === 'so') filter.subject = { $in: subjectsInGroup(group) };
   if (isValidTerm(term) && !allTerms) filter.term = term;
-  const units = await StudyUnit.find(filter).sort({ createdAt: -1 }).populate('user', 'username').lean();
-  const progress = await unitProgress(userId, units.map((u) => u._id));
-  return units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), u.user?.username));
+  const units = await StudyUnit.find(filter).sort({ createdAt: -1 }).lean();
+  return summarizeUnits(userId, units);
+}
+
+/** Sammanfattningar av områden (lean, med sharedVia) för en användare: egen progress och vem som delade. */
+async function summarizeUnits(userId, units) {
+  const [progress, names] = await Promise.all([
+    unitProgress(userId, units.map((u) => u._id)),
+    profiles(units.filter((u) => String(u.user?._id || u.user) !== String(userId)).map((u) => sharerOf(u, userId)))
+  ]);
+  return units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), names.get(sharerOf(u, userId))?.username));
 }
 
 /**
@@ -120,10 +137,10 @@ async function unitDetail(userId, unitId) {
   const access = await loadUnit(userId, unitId, 'read');
   if (access.error) return access;
   const { unit } = access;
-  const [pages, items, owner] = await Promise.all([
+  const [pages, items, sharer] = await Promise.all([
     StudyPage.find({ unit: unit._id }).sort({ order: 1, createdAt: 1 }).lean(),
     StudyItem.find({ unit: unit._id, usage: 'practice' }).sort({ number: 1 }).lean(),
-    User.findById(unit.user, 'username').lean()
+    access.isOwner ? null : User.findById(sharerOf(unit, userId), 'username').lean()
   ]);
   const itemIds = items.map((i) => i._id);
   const [states, papers, progress, tests, deletedCount] = await Promise.all([
@@ -148,7 +165,7 @@ async function unitDetail(userId, unitId) {
   }
   const u = unit.toObject();
   return {
-    unit: unitSummary(u, userId, progress.get(String(unit._id)), owner?.username),
+    unit: unitSummary(u, userId, progress.get(String(unit._id)), sharer?.username),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
     tests,
     levelProgress,
@@ -165,5 +182,5 @@ async function unitDetail(userId, unitId) {
   };
 }
 
-module.exports = { unitProgress, listUnits, unitDetail, unitSummary, unitUrl, folderUrl, testUrl, MASTERED_BOX };
+module.exports = { unitProgress, listUnits, unitDetail, unitSummary, summarizeUnits, unitUrl, folderUrl, testUrl, MASTERED_BOX };
 

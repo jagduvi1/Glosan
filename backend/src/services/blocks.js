@@ -5,9 +5,11 @@
 //   - tar bort vänskapen, co-op-streaken och pågående utmaningar mellan bara er
 //     två (gruppens utmaningar är de andras också och får vara kvar),
 //   - tar bort allt ni delat med varandra (glos-listor och Plugga-områden,
-//     även de den andra gick med i via länk) — åt båda hållen,
-//   - hindrar att ni blir kompisar igen (kod eller länk till en lista) och att
-//     den andra går med i det du delar via länk (och tvärtom).
+//     även de den andra gick med i via länk och det ni delat vidare till
+//     varandra) — åt båda hållen,
+//   - hindrar att ni blir kompisar igen (kod eller länk till en lista), att
+//     den andra går med i det du delar via länk (och tvärtom) och att någon
+//     annan delar vidare det du skapat till den andra (och tvärtom).
 //
 // Blockeringen syns inte för den blockerade: en kod eller länk ser bara ut att
 // inte fungera. Den som blockerat kan häva det under Kompisar.
@@ -15,7 +17,6 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Friendship = require('../models/Friendship');
 const CoopStreak = require('../models/CoopStreak');
-const GlosList = require('../models/GlosList');
 const Duel = require('../models/Duel');
 
 const MAX_BLOCKED = 500;
@@ -60,9 +61,8 @@ async function blockUser(userId, targetId) {
   await Friendship.deleteMany({ $or: [{ user: me, friend: them }, { user: them, friend: me }] });
   await CoopStreak.deleteMany({ users: { $all: [me, them] } });
   await Duel.deleteMany({ participants: { $size: 2 }, 'participants.user': { $all: [me, them] }, 'participants.status': 'pending' });
-  await GlosList.updateMany({ user: me, sharedWith: them }, { $pull: { sharedWith: them } });
-  await GlosList.updateMany({ user: them, sharedWith: me }, { $pull: { sharedWith: me } });
-  // Sent: sharing.js behöver inte känna till blockeringar vid laddning.
+  // Sent: delningstjänsterna behöver inte känna till blockeringar vid laddning.
+  await require('./listSharing').unshareListsBetween(userId, targetId);
   await require('./study/sharing').unshareBetween(userId, targetId);
   return { blocked: await listBlocked(userId) };
 }
