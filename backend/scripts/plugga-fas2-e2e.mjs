@@ -237,6 +237,8 @@ async function main() {
     assert.equal(toBlocked.status, 200);
     assert.equal(toBlocked.body.added, 0);
     const bLink2 = await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}`)).status, 200, 'the public preview works');
+    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}`, F.token)).status, 404, 'logged in, F\'s preview shows what F would get: nothing');
     assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}/accept`, F.token, { method: 'POST' })).status, 404);
     assert.ok(!(await api(`/api/study/units/${unitId}/shares`, A.token)).body.recipients.some((r) => r.username === F.name));
     await api(`/api/study/units/${unitId}/share-links/${bLink2.body.link.code}`, B.token, { method: 'DELETE' });

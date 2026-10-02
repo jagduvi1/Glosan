@@ -221,8 +221,13 @@ level" only count steps the student earned.
     (or them leaving, unfriending, blocking) takes those units off their
     links, so an old link never wakes up again.
   - If the creator and the recipient have blocked each other, the unit never
-    reaches the recipient, whoever shares it — silently, so no one learns of
-    the block.
+    reaches the recipient, whoever shares it. Nobody is told why — but a
+    friend in between who keeps trying can notice that one particular person
+    never shows up in their list. Hiding even that (say, a row only the sharer
+    sees) would be a product decision; not done.
+  - Logged in, the link preview shows exactly the units you would get
+    (`previewInvite` with `optionalAuth`): a unit whose creator has a block
+    with you is left out there too.
 - **Friends**: you share with your confirmed friends. Two people sharing with
   the same person at once can't both record it: each recipient is added with
   its own conditional update (`sharedWith: { $ne }`).

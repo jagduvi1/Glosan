@@ -191,7 +191,9 @@ async function createListInvite(creatorId, list, { ttlDays, maxUses, befriend = 
 async function listListInvites(list, viewerId = ownerOf(list)) {
   const owner = ownerOf(list);
   const viewer = String(viewerId);
-  const [own, others] = await Promise.all([
+  const [ownActive, ownHistory, others] = await Promise.all([
+    // De aktiva (högst 3 per person och lista) kommer alltid med, hur lång historiken än är.
+    ListInvite.find({ list: list._id, creator: oid(viewer), revokedAt: null, expiresAt: { $gt: new Date() } }).lean(),
     ListInvite.find({ list: list._id, creator: oid(viewer) }).sort({ createdAt: -1 }).limit(30).lean(),
     owner === viewer
       ? ListInvite.find({
@@ -205,6 +207,7 @@ async function listListInvites(list, viewerId = ownerOf(list)) {
   ]);
   const live = others.filter((i) => hasList(list, i.creator));
   const names = await profiles(live.map((i) => i.creator));
+  const own = [...new Map([...ownActive, ...ownHistory].map((i) => [String(i._id), i])).values()];
   return [
     ...own.map((i) => ({ ...inviteOut(i), via: null })),
     ...live.map((i) => {

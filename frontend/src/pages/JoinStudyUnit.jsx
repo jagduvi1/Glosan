@@ -23,12 +23,25 @@ export default function JoinStudyUnit() {
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
   const tried = useRef(false);
+  // Inloggad hämtas förhandsvisningen med inloggningen: då visas bara det man
+  // faktiskt får. Hämtas om när man loggat in (samma id → ingen ny hämtning).
+  const userId = user?._id || user?.id || null;
 
   useEffect(() => {
-    fetchStudyInvitePreview(code)
-      .then((data) => { setPreview(data); setStatus('preview'); })
-      .catch((e) => { setError(e.message); setStatus('error'); });
-  }, [code]);
+    let alive = true;
+    fetchStudyInvitePreview(code, userId ? apiFetch : null)
+      .then((data) => {
+        if (!alive) return;
+        setPreview(data);
+        setStatus((s) => (s === 'joined' ? s : 'preview'));
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(e.message);
+        setStatus((s) => (s === 'joined' ? s : 'error'));
+      });
+    return () => { alive = false; };
+  }, [code, userId, apiFetch]);
 
   // Vidarebefordran efter "Du är med!" — städas om sidan lämnas innan dess.
   const redirectTimer = useRef(null);
@@ -147,7 +160,7 @@ export default function JoinStudyUnit() {
             {user ? (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  Du övar med din egen statistik. Rättar @{preview.creator.username} något ser du det direkt.
+                  Du övar med din egen statistik. Rättas något i {multi ? 'områdena' : 'området'} ser du det direkt.
                 </p>
                 <button type="button" className="btn btn-primary btn-lg btn-block" onClick={join} disabled={joining}>
                   {joining ? 'Lägger till…' : multi ? `Lägg till alla ${units.length} i min Plugga` : 'Lägg till i min Plugga'}

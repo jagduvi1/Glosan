@@ -369,14 +369,24 @@ async function linkUnits(link, fields) {
  * beskrivning, som säger mer om skaparen (ofta ett barn) än om innehållet.
  * `unit` = det första området (för en länk till ett område), `units` = alla.
  */
-async function previewInvite(code) {
+async function previewInvite(code, viewerId = null) {
   const link = await loadActiveLink(code);
   if (!link) return null;
-  const [units, creator] = await Promise.all([
-    linkUnits(link, 'code title subject term'),
+  const [linked, creator] = await Promise.all([
+    linkUnits(link, 'user code title subject term'),
     User.findById(link.creator, 'username avatar').lean()
   ]);
-  if (!units.length || !creator) return null;
+  if (!linked.length || !creator) return null;
+  // Inloggad: samma urval som när man går med (acceptInvite) — så det man ser
+  // är det man får. Blockerad med den som delar → länken ser död ut; områden
+  // vars skapare man har en blockering med visas inte.
+  let units = linked;
+  if (viewerId && isId(viewerId) && String(viewerId) !== String(link.creator)) {
+    if (await isBlockedBetween(viewerId, link.creator)) return null;
+    const blocked = await blockChecker([String(viewerId), ...linked.map(ownerId)]);
+    units = linked.filter((u) => !blocked(ownerId(u), viewerId));
+    if (!units.length) return null;
+  }
   const unitIds = units.map((u) => u._id);
   const [pages, kinds] = await Promise.all([
     StudyPage.aggregate([{ $match: { unit: { $in: unitIds } } }, { $group: { _id: '$unit', n: { $sum: 1 } } }]),
