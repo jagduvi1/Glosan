@@ -9,11 +9,10 @@ import AvatarDisplay from '../AvatarDisplay';
 import { LinkOptions, QrLinkCard } from './shareBits';
 
 // Dela flera områden på en gång — från Plugga-sidorna (startsidan, ett ämne,
-// en mapp). Välj vilka områden som ska med — egna och sådana du fått av någon
-// (alla som har ett område kan dela det vidare) — och dela dem med kompisar,
-// eller med EN länk/QR-kod (t.ex. ett helt kapitel till klassen). Den som inte
-// har något konto skapar ett via länken. Ingen får en kopia: alla övar med sin
-// egen statistik, och bara skaparen (och skaparens AI) kan ändra innehållet.
+// en mapp). Välj vilka områden som ska med — egna och sådana du fått av någon —
+// och dela dem med kompisar, eller med EN länk/QR-kod (t.ex. ett helt kapitel
+// till klassen). Den som inte har något konto skapar ett via länken. Alla får
+// en egen kopia; delar du igen får de bara det nya (services/study/copies.js).
 //
 // `units` = områdena på sidan (utelämnat → alla dina, alla terminer);
 // `initialSelected` = förvalda id:n; `title` = rubriken; `linkTitle` =
@@ -112,7 +111,7 @@ function LinkTab({ count, defaultTitle, links, busy, onCreate, onRevoke }) {
       {shown && <QrLinkCard link={shown} busy={busy} onRevoke={onRevoke} />}
       <div className="card stack" style={{ background: 'var(--bg-elev)', gap: 10 }}>
         <p className="t-hand muted" style={{ margin: 0, fontSize: 14 }}>
-          EN QR-kod för allt du valt — scanna, logga in (eller skapa ett konto) och allt hamnar i deras Plugga. Ingen AI behövs.
+          EN QR-kod för allt du valt — scanna, logga in (eller skapa ett konto) och allt hamnar i deras Plugga som en egen kopia. Ingen AI behövs.
         </p>
         <label className="field" style={{ margin: 0 }}>
           <span className="field-label">Namn på länken (valfritt)</span>
@@ -214,7 +213,7 @@ export default function ShareStudyDialog({ units: pageUnits, initialSelected = [
   const onShare = (friendIds) => run(async () => {
     const r = await shareUnitsWithFriends(apiFetch, chosen, friendIds);
     setDone(r.added
-      ? `Klart! ${r.friends} ${r.friends === 1 ? 'kompis har' : 'kompisar har'} nu ${r.units === 1 ? 'området' : `de ${r.units} områdena`} i sin Plugga.`
+      ? `Klart! ${r.friends} ${r.friends === 1 ? 'kompis har' : 'kompisar har'} nu ${r.units === 1 ? 'området' : `de ${r.units} områdena`} i sin Plugga — som en egen kopia.`
       : 'De hade redan allt du valde.');
     return r;
   });

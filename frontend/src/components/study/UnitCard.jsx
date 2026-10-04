@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ProgressBar, daysUntil } from './StudyBits';
+import { copyFromLabel } from './copyLabel';
 
 // Ett område som kort i en lista (ämnessidan, en mapp). Med `onToggle` får
 // kortet en kryssruta för att välja det; `showSubject` visar ämne och termin
@@ -38,6 +39,7 @@ export default function UnitCard({ unit, selected = false, onToggle, showSubject
           <p className="t-hand muted" style={{ margin: '4px 0 8px', fontSize: 14 }}>
             {meta}
             {unit.sharedBy ? `${meta ? ' · ' : ''}delad av ${unit.sharedBy}` : ''}
+            {unit.isCopy && copyFromLabel(unit) ? `${meta ? ' · ' : ''}${copyFromLabel(unit)}` : ''}
           </p>
           <p className="t-hand" style={{ margin: '0 0 8px', fontSize: 14 }}>
             {unit.progress.cards} kort · {unit.progress.exercises} övningar

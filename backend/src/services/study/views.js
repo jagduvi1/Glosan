@@ -6,11 +6,11 @@ const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
-const User = require('../../models/User');
 const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm, termLabel } = require('../../utils/term');
 const { readableFilter, oid, loadUnit } = require('./access');
 const { sharerOf, profiles } = require('../sharedVia');
+const { copyCounts } = require('./copies');
 const { publicItem } = require('./practice');
 const { testsForUnit } = require('./tests');
 const { issuer } = require('../mcpOAuth');
@@ -73,12 +73,15 @@ function testUrl(testId) {
 }
 
 /**
- * Ett område i listor och på områdessidan. `sharerName` = den som delade
- * området med användaren (skaparen eller någon som delat vidare) — mottagaren
- * ser aldrig skaparens namn om det var någon annan som delade.
+ * Ett område i listor och på områdessidan. `who.sharer` = den som delade ett
+ * original användaren följer (aldrig skaparens namn om någon annan delade),
+ * `who.from` = den som gav användaren kopian, `who.alsoFrom` = de som delat
+ * det med användaren sedan (det nya från dem finns i kopian), `who.copies` =
+ * hur många användaren själv gett en kopia av området.
  */
-function unitSummary(u, userId, progress, sharerName) {
+function unitSummary(u, userId, progress, who = {}) {
   const isOwner = String(u.user?._id || u.user) === String(userId);
+  const isCopy = isOwner && Boolean(u.copiedFrom);
   const subject = getSubject(u.subject);
   return {
     id: String(u._id),
@@ -94,12 +97,17 @@ function unitSummary(u, userId, progress, sharerName) {
     examDate: u.examDate || null,
     source: u.source || {},
     isOwner,
-    sharedBy: isOwner ? null : sharerName || null,
-    // Hur många som har området — skaparen ser alla, den som delat vidare
-    // bara dem hen själv lagt till.
-    sharedCount: isOwner
+    // En egen kopia som någon delat ("från X"): ägaren kan ta bort den i appen.
+    isCopy,
+    copiedFrom: isCopy ? who.from || null : null,
+    alsoFrom: isCopy ? who.alsoFrom || [] : [],
+    sharedBy: isOwner ? null : who.sharer || null,
+    // Hur många användaren delat området med: de som följer originalet (från
+    // före kopiorna — skaparen ser alla, andra dem de själva lagt till) och de
+    // som fått en kopia av hen.
+    sharedCount: (isOwner
       ? (u.sharedWith || []).length
-      : (u.sharedVia || []).filter((v) => String(v.by) === String(userId)).length,
+      : (u.sharedVia || []).filter((v) => String(v.by) === String(userId)).length) + (who.copies || 0),
     progress,
     url: unitUrl(u),
     archived: Boolean(u.archivedAt),
@@ -120,13 +128,34 @@ async function listUnits(userId, { subject, group, term, allTerms, includeArchiv
   return summarizeUnits(userId, units);
 }
 
-/** Sammanfattningar av områden (lean, med sharedVia) för en användare: egen progress och vem som delade. */
+/**
+ * Sammanfattningar av områden (lean, med sharedVia och copiedFrom) för en
+ * användare: egen progress, vem som delade och hur många hen gett en kopia.
+ */
 async function summarizeUnits(userId, units) {
-  const [progress, names] = await Promise.all([
+  const mine = (u) => String(u.user?._id || u.user) === String(userId);
+  const [progress, names, given] = await Promise.all([
     unitProgress(userId, units.map((u) => u._id)),
-    profiles(units.filter((u) => String(u.user?._id || u.user) !== String(userId)).map((u) => sharerOf(u, userId)))
+    profiles([
+      ...units.filter((u) => !mine(u)).map((u) => sharerOf(u, userId)),
+      ...units.filter((u) => mine(u) && u.copiedFrom).flatMap((u) => [u.copiedFrom.by, ...(u.copiedFrom.givers || [])])
+    ].filter(Boolean)),
+    copyCounts(units, userId)
   ]);
-  return units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), names.get(sharerOf(u, userId))?.username));
+  return units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), {
+    sharer: names.get(sharerOf(u, userId))?.username,
+    ...giversOf(u, names),
+    copies: given.get(String(u._id)) || 0
+  }));
+}
+
+/** Kopians givare som namn: den som gav den (from) och de som delat det med en sedan (alsoFrom). */
+function giversOf(u, names) {
+  const by = u.copiedFrom?.by ? String(u.copiedFrom.by) : null;
+  return {
+    from: by ? names.get(by)?.username || null : null,
+    alsoFrom: (u.copiedFrom?.givers || []).map(String).filter((g) => g !== by).map((g) => names.get(g)?.username).filter(Boolean)
+  };
 }
 
 /**
@@ -137,10 +166,15 @@ async function unitDetail(userId, unitId) {
   const access = await loadUnit(userId, unitId, 'read');
   if (access.error) return access;
   const { unit } = access;
-  const [pages, items, sharer] = await Promise.all([
+  // Den som delade originalet med en, eller de som gett en kopian.
+  const people = access.isOwner
+    ? (unit.copiedFrom ? [unit.copiedFrom.by, ...(unit.copiedFrom.givers || [])] : [])
+    : [sharerOf(unit, userId)];
+  const [pages, items, names, given] = await Promise.all([
     StudyPage.find({ unit: unit._id }).sort({ order: 1, createdAt: 1 }).lean(),
     StudyItem.find({ unit: unit._id, usage: 'practice' }).sort({ number: 1 }).lean(),
-    access.isOwner ? null : User.findById(sharerOf(unit, userId), 'username').lean()
+    profiles(people.filter(Boolean)),
+    copyCounts([unit], userId)
   ]);
   const itemIds = items.map((i) => i._id);
   const [states, papers, progress, tests, deletedCount] = await Promise.all([
@@ -165,7 +199,11 @@ async function unitDetail(userId, unitId) {
   }
   const u = unit.toObject();
   return {
-    unit: unitSummary(u, userId, progress.get(String(unit._id)), sharer?.username),
+    unit: unitSummary(u, userId, progress.get(String(unit._id)), {
+      sharer: access.isOwner ? null : names.get(String(sharerOf(unit, userId)))?.username,
+      ...giversOf(u, names),
+      copies: given.get(String(unit._id)) || 0
+    }),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),
     tests,
     levelProgress,

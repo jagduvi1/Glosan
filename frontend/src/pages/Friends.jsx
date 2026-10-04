@@ -649,7 +649,7 @@ export default function Friends() {
       {pendingBlock && (
         <ConfirmDialog
           title={`Blockera ${pendingBlock.username}?`}
-          message={`Ni slutar vara kompisar, och allt ni delat med varandra — listor${hasFeature(user, 'study') ? ' och Plugga-områden' : ''} — tas bort, liksom pågående utmaningar och co-op-streak. ${pendingBlock.username} kan inte lägga till dig igen, dela med dig eller gå med i det du delar via länk, och får inget besked om att du blockerat. Du kan häva blockeringen här senare.`}
+          message={`Ni slutar vara kompisar, och listor ni delat med varandra tas bort, liksom pågående utmaningar och co-op-streak.${hasFeature(user, 'study') ? ' Kopior av Plugga-områden som redan getts bort är den andras och finns kvar.' : ''} ${pendingBlock.username} kan inte lägga till dig igen, dela med dig eller gå med i det du delar via länk, och får inget besked om att du blockerat. Du kan häva blockeringen här senare.`}
           confirmLabel="Blockera"
           destructive
           onConfirm={onBlockConfirmed}
@@ -660,7 +660,7 @@ export default function Friends() {
       {pendingRemove && (
         <ConfirmDialog
           title="Ta bort kompisen?"
-          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s.${hasFeature(user, 'study') ? ' Områden ni delat med varandra i Plugga slutar också delas.' : ''} Ni kan alltid lägga till varandra igen.`}
+          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s.${hasFeature(user, 'study') ? ' Kopior av Plugga-områden ni gett varandra är era egna och finns kvar; områden ni följer hos varandra sedan förr slutar delas.' : ''} Ni kan alltid lägga till varandra igen.`}
           confirmLabel="Ta bort"
           destructive
           onConfirm={onRemoveConfirmed}

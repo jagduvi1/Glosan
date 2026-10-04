@@ -8,22 +8,23 @@ import { useModalFocus } from '../../utils/modalFocus';
 import AvatarDisplay from '../AvatarDisplay';
 import { LinkOptions, QrLinkCard, isActiveLink } from './shareBits';
 
-// Dela ett område i Plugga — med kompisar (de ser det direkt) eller med en
-// länk/QR-kod till klasskompisar (de får området, men blir inte kompisar med dig).
-// Ingen får en kopia: alla övar med sin egen statistik, och bara skaparen (och
-// skaparens AI) kan ändra innehållet — rättar hen något når det alla.
+// Dela ett område i Plugga — med kompisar eller med en länk/QR-kod till
+// klasskompisar (de blir inte kompisar med dig). Alla får en EGEN KOPIA: de
+// kan ta bort det de inte vill ha och ändra med sin egen AI. Delar du igen
+// senare får de bara det nya (services/study/copies.js).
 //
-// Alla som har området kan dela det vidare. Skaparen ser alla som har det
-// ("via …" när någon annan delade) och alla länkar, och kan ta bort vem som
-// helst; den som delat vidare ser och tar bort dem hen själv lagt till.
+// De som fick området före kopiorna följer originalet: de syns här och kan tas
+// bort (skaparen: alla; den som delat vidare: dem hen själv lagt till).
 
-function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onBlock }) {
+function FriendsTab({ friends, copies, recipients, isOwner, gaveMe, busy, onShare, onRemove, onBlock }) {
   const [selected, setSelected] = useState(() => new Set());
   const [confirmBlock, setConfirmBlock] = useState(null);
-  // Den som delat vidare ser bara dem hen själv lagt till — vilka andra som har
-  // området (eller inte kan få det) syns aldrig, så alla andra kompisar erbjuds.
-  const have = new Set(recipients.map((r) => r._id));
-  const available = friends.filter((f) => !have.has(f._id));
+  // De som följer originalet har det redan, och den som gav dig kopian har sitt
+  // eget. Den som fått en kopia av dig kan väljas igen — då får hen bara det
+  // nya. Vilka andra som har området syns aldrig.
+  const following = new Set(recipients.map((r) => r._id));
+  const hasCopy = new Set(copies.map((c) => c._id));
+  const available = friends.filter((f) => !following.has(f._id) && f.username !== gaveMe);
   const toggle = (id) => setSelected((cur) => {
     const next = new Set(cur);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -32,10 +33,16 @@ function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onB
 
   return (
     <div className="stack" style={{ gap: 14 }}>
+      {copies.length > 0 && (
+        <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>
+          Har fått en kopia av dig: {copies.map((c) => c.username).join(', ')}
+        </p>
+      )}
+
       {recipients.length > 0 && (
         <div>
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>
-            {isOwner ? 'Pluggar redan på området:' : 'Du har delat området med:'}
+            {isOwner ? 'Följer ditt original (från före kopiorna):' : 'Följer originalet — du delade med:'}
           </p>
           <div className="stack" style={{ gap: 6 }}>
             {recipients.map((r) => (
@@ -78,11 +85,9 @@ function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onB
       ) : (
         <div>
           <p className="t-hand muted" style={{ fontSize: 14, margin: '0 0 8px' }}>Välj kompisar:</p>
-          {!isOwner && (
-            <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
-              Har en kompis redan området händer inget när du delar det med hen.
-            </p>
-          )}
+          <p className="t-hand muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+            Har en kompis redan en kopia får hen bara det nya.
+          </p>
           <div className="stack" style={{ gap: 6 }}>
             {available.map((f) => (
               <label
@@ -92,7 +97,10 @@ function FriendsTab({ friends, recipients, isOwner, busy, onShare, onRemove, onB
               >
                 <input type="checkbox" checked={selected.has(f._id)} onChange={() => toggle(f._id)} style={{ width: 18, height: 18 }} />
                 <AvatarDisplay avatar={f.avatar} username={f.username} size={32} />
-                <span className="grow" style={{ fontWeight: 700 }}>{f.username}</span>
+                <span className="grow" style={{ fontWeight: 700, minWidth: 0 }}>
+                  {f.username}
+                  {hasCopy.has(f._id) && <span className="t-hand muted" style={{ fontWeight: 400, fontSize: 13 }}> · har en kopia av dig</span>}
+                </span>
               </label>
             ))}
           </div>
@@ -120,7 +128,10 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
   // med `via`) kan bara stängas av — de är inte ens egna att sprida.
   const active = links.filter((l) => isActiveLink(l) && !l.via);
   const others = links.filter((l) => isActiveLink(l) && l.via);
-  const shown = active.find((l) => l.code === shownCode) || active[0] || null;
+  // En full länk tar ingen ny (de som redan gått med hämtar det nya med den) —
+  // visa den aldrig av sig själv som QR-koden att sätta upp.
+  const isFull = (l) => l.usedCount >= l.maxUses;
+  const shown = active.find((l) => l.code === shownCode) || active.find((l) => !isFull(l)) || null;
 
   return (
     <div className="stack" style={{ gap: 14 }}>
@@ -128,7 +139,7 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
         <QrLinkCard link={shown} busy={busy} onRevoke={onRevoke} />
       ) : (
         <p className="t-hand muted" style={{ margin: 0 }}>
-          Skapa en QR-kod som klasskompisar kan scanna. De loggar in (eller skapar ett konto) och får området i sin Plugga — ingen AI behövs.
+          Skapa en QR-kod som klasskompisar kan scanna. De loggar in (eller skapar ett konto) och får en egen kopia av området i sin Plugga — ingen AI behövs.
         </p>
       )}
 
@@ -154,11 +165,11 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
         </div>
       )}
 
-      {active.length > 1 && (
+      {active.length > (shown ? 1 : 0) && (
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
           {active.map((l) => (
             <button key={l.code} type="button" className="chip" aria-pressed={shown?.code === l.code} onClick={() => setShownCode(l.code)}>
-              {l.title || l.code} · {l.usedCount}/{l.maxUses}{l.unitCount > 1 ? ` · ${l.unitCount} områden` : ''}
+              {l.title || l.code} · {isFull(l) ? 'full' : `${l.usedCount}/${l.maxUses}`}{l.unitCount > 1 ? ` · ${l.unitCount} områden` : ''}
             </button>
           ))}
         </div>
@@ -187,16 +198,19 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
   const ref = useModalFocus(onClose);
   const [tab, setTab] = useState('friends');
   const [friends, setFriends] = useState([]);
-  const [recipients, setRecipients] = useState([]);
+  const [copies, setCopies] = useState([]); // fått en kopia av mig
+  const [recipients, setRecipients] = useState([]); // följer originalet (från före kopiorna)
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [done, setDone] = useState('');
 
   const load = useCallback(async () => {
     try {
       const [fs, shares] = await Promise.all([fetchFriends(apiFetch), fetchUnitShares(apiFetch, unit.id)]);
       setFriends(fs);
+      setCopies(shares.copies || []);
       setRecipients(shares.recipients);
       setLinks(shares.links);
     } catch (e) {
@@ -212,6 +226,7 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
   const run = async (fn) => {
     setBusy(true);
     setError('');
+    setDone('');
     try {
       const r = await fn();
       onChanged?.();
@@ -226,9 +241,11 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
 
   const onShare = (ids) => run(async () => {
     const r = await shareUnitWithFriends(apiFetch, unit.id, ids);
-    // Hoppades någon över (hade redan området, eller kan inte få det) säger vi
-    // inget om det — en blockering mellan skaparen och kompisen får inte märkas.
+    // Hoppades någon över (hade redan allt, eller kan inte få det) säger vi
+    // inget om vem — en blockering mellan skaparen och kompisen får inte märkas.
+    setCopies(r.copies || []);
     setRecipients(r.recipients);
+    setDone('Klart! De har nu området i sin Plugga — som en egen kopia.');
     return r;
   });
   const onRemove = (userId) => run(async () => {
@@ -262,26 +279,28 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
         </div>
         <div className="modal-body stack" style={{ gap: 14 }}>
           <p className="t-hand muted" style={{ margin: 0, fontSize: 15 }}>
-            {unit.isOwner
-              ? 'De du delar med övar med sin egen statistik — ingen AI behövs — och kan dela det vidare. Bara du kan ändra innehållet, så rättar din AI något når det alla.'
-              : 'De du delar med övar med sin egen statistik — ingen AI behövs. Bara den som skapade området kan ändra innehållet.'}
+            De du delar med får en egen kopia — ingen AI behövs. Den är deras: de kan ta bort det de inte vill ha, och ändra med sin egen AI.
+            Det du ändrar sedan når inte kopian, men delar du igen får de bara det nya.
           </p>
           <div className="study-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'friends'} className={`btn btn-sm ${tab === 'friends' ? 'btn-primary' : ''}`} onClick={() => setTab('friends')}>
-              👥 Kompisar{recipients.length ? ` (${recipients.length})` : ''}
+              👥 Kompisar{copies.length + recipients.length ? ` (${copies.length + recipients.length})` : ''}
             </button>
             <button type="button" role="tab" aria-selected={tab === 'link'} className={`btn btn-sm ${tab === 'link' ? 'btn-primary' : ''}`} onClick={() => setTab('link')}>
               📱 QR-kod / länk
             </button>
           </div>
           {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+          {done && <p className="t-hand" style={{ margin: 0, color: 'var(--leaf-deep, inherit)' }}>{done}</p>}
           {loading ? (
             <p className="t-hand muted" style={{ margin: 0 }}>Glo hämtar dina kompisar…</p>
           ) : tab === 'friends' ? (
             <FriendsTab
               friends={friends}
+              copies={copies}
               recipients={recipients}
               isOwner={unit.isOwner}
+              gaveMe={unit.isCopy ? unit.copiedFrom : null}
               busy={busy}
               onShare={onShare}
               onRemove={onRemove}

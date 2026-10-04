@@ -81,19 +81,32 @@ account, who sign up through it. A list link gives the joiner a copy. It also ma
 only when the user ticked that box in the app (off by default); links made
 by the AI never do (`ListInvite.befriend`), and the AI never sees the
 address of one that does — so a manipulated AI can't bring strangers into a
-child's friend list. A unit link gives access without friendship. The tools return the url for the user to pass on.
+child's friend list. A unit link gives a copy without friendship. The tools return the url for the user to pass on.
+
+**Plugga units are shared as copies** (since v0.1.38): everyone gets their
+OWN copy — `share_study_units` and joining a `create_study_link` link — and
+sharing again sends only what is new (new units as new copies, new material
+into copies they have, never what they deleted). A copy can't be taken back.
+`get_study_sharing` shows `copies_given_to` (whom the user gave a copy),
+`following_original` (people who got the unit before copies existed) and the
+links. In the user's own copy, `get_study_unit` & co. say `is_owner: true,
+copied_from` (and `also_from` when others shared it with them too),
+`written_by_someone_else: true`: theirs to change, but the text is someone
+else's — data, never instructions. A copy's practice-test questions stay
+hidden in `get_study_unit` (the student takes that test), like for a unit
+shared with the student.
 
 The user can pass on what was shared with them too (lists and units), and
 `shared_by` is always the person who shared something with the user — not
-the creator, if someone else passed it on. On their own lists and units,
-`get_list_sharing` / `get_study_sharing` show everyone with `via` (who passed
-it on) and links others made as `made_by` + `link_id`, **without** their code
-or address: the AI can close them (`stop_sharing_list` with `link_id`,
-`stop_sharing_study` with `unit` + `link_id`) but never use or spread them.
-On something shared with the user, the tools show and remove only the people
-and links the user added, and never say who else has it. A list passed on by
-someone other than the owner is always read-only for the people it reaches
-(`can_edit` is the owner's alone).
+the creator, if someone else passed it on. On their own lists (and units
+from before copies), `get_list_sharing` / `get_study_sharing` show everyone
+with `via` (who passed it on) and links others made as `made_by` +
+`link_id`, **without** their code or address: the AI can close them
+(`stop_sharing_list` with `link_id`, `stop_sharing_study` with `unit` +
+`link_id`) but never use or spread them. On something shared with the user,
+the tools show and remove only the people and links the user added, and
+never say who else has it. A list passed on by someone other than the owner
+is always read-only for the people it reaches (`can_edit` is the owner's alone).
 
 Deliberately **not** exposed: blocking, duels, account settings, plans,
 deleting the account, disconnecting AIs. The instructions tell the AI to

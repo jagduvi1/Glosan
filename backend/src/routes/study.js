@@ -17,6 +17,9 @@ const {
   loadShareableUnits, shareUnitsWithFriends, listMyShareLinks, revokeMyShareLink, MAX_UNITS_PER_SHARE, MAX_UNITS_PER_LINK
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
+const { copiesGivenBy } = require('../services/study/copies');
+const { withUserLock } = require('../utils/userLock');
+const { deleteStudyUnitsCascade } = require('../services/studyData');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
 const { practiceSheet, SHEET_MODES } = require('../services/study/sheet');
@@ -320,13 +323,17 @@ router.post('/items/:id/flag', async (req, res, next) => {
 // i appen). Allt som tas bort loggas under "Borttaget" och kan ångras.
 
 // DELETE /api/study/items/:id
+// Borttagning och ångra körs under ägarens lås (utils/userLock.js): en kopia som
+// just får nytt innehåll av någon som delar ska inte få tillbaka det som tas bort.
 router.delete('/items/:id', async (req, res, next) => {
   try {
-    const access = await loadItem(req.user.id, req.params.id, 'owner');
-    if (access.error === 'forbidden') return res.status(403).json({ error: 'Bara den som skapade området kan ta bort uppgifter. Rapportera felet i stället.' });
-    if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
-    const [code] = await deleteItems(access.unit, [access.item], { userId: req.user.id, via: 'app' });
-    res.json({ deleted: code });
+    await withUserLock(req.user.id, async () => {
+      const access = await loadItem(req.user.id, req.params.id, 'owner');
+      if (access.error === 'forbidden') return res.status(403).json({ error: 'Bara den som skapade området kan ta bort uppgifter. Rapportera felet i stället.' });
+      if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
+      const [code] = await deleteItems(access.unit, [access.item], { userId: req.user.id, via: 'app' });
+      return res.json({ deleted: code });
+    });
   } catch (err) {
     next(err);
   }
@@ -346,11 +353,13 @@ router.get('/units/:id/deletions', async (req, res, next) => {
 // POST /api/study/units/:id/deletions/:deletionId/restore — ångra
 router.post('/units/:id/deletions/:deletionId/restore', async (req, res, next) => {
   try {
-    const unit = await ownedUnit(req, res);
-    if (!unit) return;
-    const result = await restoreDeletion(unit, req.params.deletionId);
-    if (result.error) return res.status(result.status).json({ error: result.error });
-    res.json({ restored: result.code, deletions: await listDeletions(unit, req.user.id) });
+    await withUserLock(req.user.id, async () => {
+      const unit = await ownedUnit(req, res);
+      if (!unit) return null;
+      const result = await restoreDeletion(unit, req.params.deletionId);
+      if (result.error) return res.status(result.status).json({ error: result.error });
+      return res.json({ restored: result.code, deletions: await listDeletions(unit, req.user.id) });
+    });
   } catch (err) {
     next(err);
   }
@@ -503,11 +512,11 @@ router.delete('/folders/:id', async (req, res, next) => {
 });
 
 // ── Dela ─────────────────────────────────────────────────────────────────────
-// Alla som har ett område kan dela det vidare — med kompisar eller via
-// länk/QR (publika delen ligger i routes/studyInvites.js). Mottagarna övar med
-// egen progress; bara skaparen kan ändra innehållet. Skaparen ser alla och kan
-// ta bort vem som helst; den som delat vidare ser och tar bort dem hen själv
-// lagt till. Den som fått ett område delat kan lämna det.
+// Alla som har ett område kan dela det — med kompisar eller via länk/QR
+// (publika delen ligger i routes/studyInvites.js). Mottagaren får en egen
+// kopia (services/study/copies.js) som hen kan ta bort; delar man igen får hen
+// bara det nya. De som delades med före kopiorna följer originalet: skaparen
+// kan ta bort dem (den som delat vidare dem hen själv lagt till), och de kan lämna.
 
 /** Området om inloggad användare har det (eget eller delat), annars 404 och null. */
 async function readableUnit(req, res) {
@@ -519,13 +528,17 @@ async function readableUnit(req, res) {
   return access.unit;
 }
 
-// GET /api/study/units/:id/shares → { recipients, links, isOwner }
+// GET /api/study/units/:id/shares → { copies, recipients, links, isOwner }
+// copies = de som fått en kopia av mig; recipients = de som följer originalet
+// (från före kopiorna).
 router.get('/units/:id/shares', async (req, res, next) => {
   try {
     const unit = await readableUnit(req, res);
     if (!unit) return;
-    const [recipients, links] = await Promise.all([listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id)]);
-    res.json({ recipients, links, isOwner: String(unit.user) === String(req.user.id) });
+    const [copies, recipients, links] = await Promise.all([
+      copiesGivenBy(unit, req.user.id), listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id)
+    ]);
+    res.json({ copies, recipients, links, isOwner: String(unit.user) === String(req.user.id) });
   } catch (err) {
     next(err);
   }
@@ -558,6 +571,23 @@ router.delete('/units/:id/share/:userId', async (req, res, next) => {
     await removeRecipient(unit, req.params.userId);
     const fresh = await StudyUnit.findById(unit._id, 'user sharedWith sharedVia').lean();
     res.json({ recipients: await listRecipients(fresh, req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/study/units/:id — ta bort en kopia man fått (den är ens egen;
+// den som delade har sitt original kvar). Egna original tas bort av ens AI.
+router.delete('/units/:id', async (req, res, next) => {
+  try {
+    // Under ägarens lås: ingen delning skriver i kopian medan den tas bort.
+    await withUserLock(req.user.id, async () => {
+      const access = await loadUnit(req.user.id, req.params.id, 'owner');
+      if (access.error) return res.status(404).json({ error: 'Området hittades inte.' });
+      if (!access.unit.copiedFrom) return bad(res, 'Det här är ditt eget område — be din AI arkivera eller radera det.');
+      await deleteStudyUnitsCascade([access.unit._id]);
+      return res.json({ deleted: true });
+    });
   } catch (err) {
     next(err);
   }

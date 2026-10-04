@@ -7,9 +7,9 @@ import { useDocumentTitle } from '../utils/useDocumentTitle';
 import { fetchStudyInvitePreview, acceptStudyInvite } from '../api/study';
 
 // /p/<kod> — någon delar ett eller flera områden i Plugga (QR-koden i "Dela",
-// t.ex. ett helt kapitel). Publik förhandsvisning; den som går med läggs till
-// i områdena (ingen kopia) och får Plugga påslaget. Inte inloggad → skapa konto/logga in och kom tillbaka
-// hit, då går man med automatiskt.
+// t.ex. ett helt kapitel). Publik förhandsvisning; den som går med får en egen
+// kopia (har hen redan en: det nya) och får Plugga påslaget. Inte inloggad →
+// skapa konto/logga in och kom tillbaka hit, då går man med automatiskt.
 
 const PENDING_KEY = 'pending-study-invite';
 
@@ -160,7 +160,7 @@ export default function JoinStudyUnit() {
             {user ? (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  Du övar med din egen statistik. Rättas något i {multi ? 'områdena' : 'området'} ser du det direkt.
+                  Du får en egen kopia: du övar med din egen statistik och kan ta bort det du inte vill ha. Har du redan en kopia får du bara det nya.
                 </p>
                 <button type="button" className="btn btn-primary btn-lg btn-block" onClick={join} disabled={joining}>
                   {joining ? 'Lägger till…' : multi ? `Lägg till alla ${units.length} i min Plugga` : 'Lägg till i min Plugga'}
@@ -169,7 +169,7 @@ export default function JoinStudyUnit() {
             ) : (
               <>
                 <p className="t-hand muted" style={{ fontSize: 14, marginBottom: 14 }}>
-                  Skapa ett konto (eller logga in) så får du {multi ? 'områdena' : 'området'} i Glosan — ingen egen AI behövs.
+                  Skapa ett konto (eller logga in) så får du {multi ? 'områdena' : 'området'} i Glosan som en egen kopia — ingen egen AI behövs.
                 </p>
                 <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
                   <Link to={`/register?studyInvite=${code}`} onClick={rememberInvite} className="btn btn-primary" style={{ flex: 1, textAlign: 'center' }}>

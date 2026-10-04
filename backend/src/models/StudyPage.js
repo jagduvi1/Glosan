@@ -12,6 +12,12 @@ const studyPageSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, maxlength: 120 },
   body: { type: String, required: true, maxlength: 20000 },
   order: { type: Number, default: 0 },
+  // I en kopia: originalsidan (först i kedjan av kopior, services/study/copies.js).
+  copiedFrom: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  // ... och vem som skrev originalet (för blockeringar, även om originalet tagits bort).
+  copyAuthor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: undefined },
+  // ... och vilka som ändrat det sedan, i en kopia (de räknas också som författare).
+  copyEditors: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
