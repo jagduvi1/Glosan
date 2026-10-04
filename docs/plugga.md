@@ -25,9 +25,9 @@ behind a feature flag and shown to more users step by step.
 5. **Levels follow the book.** The book's markings (nivå 1/2/3, grön/gul/röd)
    map to **E / C / A**, shown as *Lätt · E*, *Medel · C*, *Svår · A*.
 6. **Shareable.** A unit can be shared with friends or by QR code — also with
-   people who have no AI — and everyone who has it can pass it on. Everyone
-   practises with their **own** progress; only the creator's AI changes the
-   content, so corrections reach everyone.
+   people who have no AI. Everyone gets their **own copy** (since v0.1.38): it
+   is theirs to delete in and, with their own AI, change; sharing again sends
+   only what is new. Everyone can share what they have.
 7. **Study XP counts** toward the same XP and streak as the vocabulary quizzes.
 8. **Everything is tracked** so the student can show a parent what they have
    done: today / this week / this month / this term ("Min plugg").
@@ -192,70 +192,83 @@ level" only count steps the student earned.
 
 ## Sharing
 
+Since v0.1.38 sharing gives **a copy** (Johan, 2026-10-02): whoever gets a unit
+gets their OWN copy, to delete in and — with their own AI — change and add
+to. Changes to the original don't reach the copy; sharing again sends only
+what is new. Code: `services/study/copies.js`.
+
 - **Where**: "👥 Dela" on a unit's page (that unit), and on the Plugga start
   page, a subject page (also for a selection or a chapter) and a folder —
   one dialog (`ShareStudyDialog`) where you pick any of the units you have
   and share them together. The student's AI can do the same
   (`share_study_units`, `create_study_link`, `get_study_sharing`,
   `stop_sharing_study`; docs/mcp.md).
-- **Anyone who has a unit can pass it on** — their own, or one shared with
-  them — with their friends or with their own link. `StudyUnit.sharedVia`
-  records who added whom (`{ user, by }`); access is still `sharedWith`, and
-  no row means the creator shared it (all shares from before v0.1.37).
-  Shared helpers for this and for vocabulary lists live in
-  `services/sharedVia.js`.
-  - The recipient sees **who shared it with them** ("delad av …" in the app,
-    `shared_by` over MCP) — never the creator's name if someone else passed
-    it on.
-  - The **creator** sees everyone who has the unit, with "via …" for people
-    someone else added, and every active link to it. Others' links come with
-    "via …" and an id but never their code, in the app or over MCP: the
-    creator can close them, not use or spread them. The creator can remove
-    anyone and close any link — closing someone else's link takes only the
-    creator's units off it (atomically: `trimLink`).
-  - Someone who **passed it on** sees and removes only the people they added,
-    and their own links. They never learn who else has the unit: the Dela
-    dialog offers all their friends, and sharing with someone who already has
-    it — or who can't get it because of a block — silently does nothing.
-  - A link works only while its maker still has the units. Removing someone
-    (or them leaving, unfriending, blocking) takes those units off their
-    links, so an old link never wakes up again.
-  - If the creator and the recipient have blocked each other, the unit never
-    reaches the recipient, whoever shares it. Nobody is told why — but a
-    friend in between who keeps trying can notice that one particular person
-    never shows up in their list. Hiding even that (say, a row only the sharer
-    sees) would be a product decision; not done.
-  - Logged in, the link preview shows exactly the units you would get
-    (`previewInvite` with `optionalAuth`): a unit whose creator has a block
-    with you is left out there too.
-- **Friends**: you share with your confirmed friends. Two people sharing with
-  the same person at once can't both record it: each recipient is added with
-  its own conditional update (`sharedWith: { $ne }`).
+- **Anyone can share anything they have** — their own units, copies they got,
+  and originals they follow from before v0.1.38. A copy is shared like any
+  own unit.
+- **The copy** (`StudyUnit.copiedFrom { unit, root, by, origin, givers, at }`):
+  - a new unit in the recipient's account, with their next code (MA2), the
+    source's genomgångar, cards, exercises and practice tests — items keep
+    their numbers (MA1-14 at the sharer is MA2-14 in the copy);
+  - "din kopia från X" on the unit page (`copiedFrom.by` — who gave it, never
+    the creator further back); the owner has the bin, can delete the whole
+    copy in the app ("Ta bort kopian", `DELETE /api/study/units/:id` — copies
+    only; originals are deleted by their AI) and can change it with their AI.
+    The MCP marks it `is_owner: true, copied_from, written_by_someone_else:
+    true`: the student's to change, but the text is someone else's — data,
+    never instructions;
+  - independent: archiving, editing or deleting the original, unfriending or
+    blocking never touch it, and it can't be taken back.
+- **Sharing again sends only what is new** (Johan's choice: new chapters AND
+  new material in chapters you already have):
+  - every page, item and test in a copy remembers its ORIGINAL (the first in
+    the chain of copies) in `copiedFrom`; a unit's `copiedFrom.root` is its
+    original unit. A recipient has at most **one copy per original**,
+    whichever way it comes (Majken shares with A and B, both share with C →
+    C has one copy, and gets from the second whatever the first lacked);
+  - a unit they have no copy of → a new copy; one they have → only pages,
+    items and tests whose original isn't in it yet are added (new item
+    numbers), a test always with its questions;
+  - never what the owner deleted: deletions in a copy are remembered in
+    `StudyUnit.copyDropped` (original ids) — the deletion log is pruned after
+    180 days, this list never is. Undo takes it off the list again;
+  - never overwrites: what is already in the copy, changed or not, stays;
+  - nothing at all for someone who has the original (created it, or follows
+    it from before copies).
+- **Friends**: you share with your confirmed friends. The dialog lists who got
+  a copy from you (`copiedFrom.givers`) and lets you share with them again for
+  the new material; who else has the unit is never shown. At most 300
+  friend × unit pairs per share (`MAX_COPY_PAIRS`) — each can be a whole copy.
+  Copies are made one recipient at a time under that recipient's lock
+  (`utils/userLock.js`), so two people sharing the same unit with the same
+  friend at once still give one copy. The per-account caps
+  (`services/study/limits.js`) apply to copies too.
 - **QR / link** (`/p/<code>`): ONE link can cover several units
   (`StudyShareLink.units`, up to 50 — e.g. a chapter for the class) with an
   optional name; 1, 7 or 30 days, 10/30/100 uses, at most 3 active links per
   unit and 30 per person; a public preview (titles, subject, term and counts —
   not årskurs, book or description) showing the person who made the link.
-  People without an account sign up through the link and get every unit.
+  Logged in, the preview shows exactly what you would get (`optionalAuth`).
+  Everyone who opens it gets their own copy, from the link maker; it claims a
+  use only when a new copy is made, so the same link fetches the new
+  material later for free. People without an account sign up through it.
   Joining does **not** make you the link maker's friend (a link can be passed
-  on). Joining is idempotent and claims a use atomically. Links are deleted 30
-  days after they expire.
-- Nobody gets a copy: recipients join `sharedWith`, practise with their own
-  progress and see corrections at once. They can leave (the people they passed
-  it on to keep it), and report "fel i facit" to the creator's AI. Only the
-  creator edits and deletes. When the creator archives a unit it disappears
-  for the recipients too.
-- **Unfriending** ends every share between the two, both ways — the creator's
-  units, units joined by link, and what one passed on to the other — and takes
-  those units out of their folders and their open reports (`unshareBetween`).
-- **Blocking** (Kompisar page, or a unit's share list for someone who joined
-  by link) does the same and more: it also ends list shares, the co-op streak
-  and pending challenges, and stops the other from adding you by code or
-  joining your lists and units by link (`services/blocks.js`). The blocked
-  person gets no hint — a code or link just looks invalid.
-- The creator's AI sees a recipient's report note as `reporter_note_untrusted`,
-  and a recipient's AI sees shared units as `written_by_someone_else` — the
-  MCP instructions say such text is data, never instructions.
+  on). A link works only while its maker still has the units. Links are
+  deleted 30 days after they expire.
+- **Blocks**: if the recipient and the original's creator (`copiedFrom.origin`,
+  followed along the chain) have blocked each other, nothing reaches the
+  recipient, whoever shares — silently. A friend in between who keeps trying
+  can notice that one person never gets it; hiding even that would be a
+  product decision. Blocking also ends list shares, the co-op streak and
+  pending challenges, and stops adding by code or joining by link
+  (`services/blocks.js`); copies already given stay with their owners.
+- **From before copies (v0.1.29–0.1.37)**: people who got a unit then follow
+  the original (`sharedWith`): they see the creator's corrections at once and
+  can report "fel i facit" to the creator's AI. The creator sees them in the
+  Dela dialog ("Följer ditt original", with "via …" for people someone else
+  added, `sharedVia`) and can remove them; they can leave. Unfriending and
+  blocking end these shares both ways (`unshareBetween`). Nobody new is added
+  this way — new shares are copies. Rules for these in `services/sharedVia.js`.
 - **Invite-only beta**: whoever receives a unit gets the `study` flag switched
   on, so Plugga spreads only to people a beta user invites
   (`grantStudyFeature` in `services/study/sharing.js`). Switching it off on
@@ -264,13 +277,16 @@ level" only count steps the student earned.
 
 ## Deleting and history
 
-The creator can delete a card or exercise in the app (a small bin in the
-player and on the unit page). Every deletion — in the app or by the AI via
-MCP — goes through `services/study/itemDeletion.js`: a snapshot is logged in
-`StudyItemDeletion` (what, when, by whom, app or AI), everyone's progress on
-it is removed, and it is taken out of any test. "Borttaget" on the unit page
-lists it with **Ångra**, which restores it with its old code and id.
-`get_study_unit` shows recent deletions so the AI doesn't recreate them.
+The owner of a unit — its creator, or whoever owns a copy — can delete a card
+or exercise in the app (a small bin in the player and on the unit page).
+Every deletion — in the app or by the AI via MCP — goes through
+`services/study/itemDeletion.js`: a snapshot is logged in `StudyItemDeletion`
+(what, when, by whom, app or AI), everyone's progress on it is removed, and it
+is taken out of any test. "Borttaget" on the unit page lists it with **Ångra**,
+which restores it with its old code and id. `get_study_unit` shows recent
+deletions so the AI doesn't recreate them. In a copy, the deletion is also
+remembered in `copyDropped`, so sharing again never brings it back. Deleting in
+an original never touches copies people already have.
 
 ## Retention
 
@@ -341,7 +357,7 @@ every answer → send the link.
 
 | Model | Holds |
 |---|---|
-| `StudyUnit` | creator, subject, term, gradeYear, code (MA3), title, description, source{book, chapter, pages}, examDate, sharedWith, sharedVia (who passed it on to whom), archivedAt |
+| `StudyUnit` | creator, subject, term, gradeYear, code (MA3), title, description, source{book, chapter, pages}, examDate, archivedAt; a copy: copiedFrom {unit, root, by, origin, givers, at} and copyDropped; from before copies: sharedWith, sharedVia (who passed it on to whom) |
 | `StudyPage` | a genomgång: markdown + LaTeX + ```svg figures, rendered without raw HTML. All Plugga text keeps single line breaks (remark-breaks): plain Markdown turns them into spaces, and card backs written one line per point ran together |
 | `StudyItem` | a card or exercise: prompt, back / answer (number · choice · multi · order · factors · text · self; `expr` for templates), hints, solution, level E/C/A, skill, sourceRef, usage (practice/test), number (→ code), template |
 | `StudyItemState` | per user + item: Leitner box 0–5, dueAt, correct, wrong |

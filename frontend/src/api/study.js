@@ -97,6 +97,11 @@ export async function leaveStudyUnit(apiFetch, unitId) {
   return readJson(await post(apiFetch, `/api/study/units/${unitId}/leave`), 'Kunde inte lämna området');
 }
 
+// Ta bort en kopia man fått (den är ens egen; den som delade har sitt original kvar).
+export async function deleteStudyUnitCopy(apiFetch, unitId) {
+  return readJson(await apiFetch(`/api/study/units/${unitId}`, { method: 'DELETE' }), 'Kunde inte ta bort kopian');
+}
+
 // POST → { link: { code, expiresAt, maxUses, usedCount, revoked } }
 export async function createUnitShareLink(apiFetch, unitId, { ttlDays, maxUses }) {
   return readJson(await post(apiFetch, `/api/study/units/${unitId}/share-links`, { ttlDays, maxUses }), 'Kunde inte skapa länken');

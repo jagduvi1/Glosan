@@ -24,6 +24,7 @@ const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { activityFor } = require('../../services/study/activity');
 const { deleteItems } = require('../../services/study/itemDeletion');
+const { markDropped } = require('../../services/study/copies');
 const { figureProblems } = require('../../services/study/figures');
 const { validateTemplate, instance } = require('../../services/study/templates');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
@@ -34,13 +35,9 @@ const { parseStudyCode } = require('../../utils/studyCodes');
 const { parseYmd } = require('../../utils/localTime');
 
 const FEATURE = 'study';
-// Aktiva (ej arkiverade) områden per konto, och ett hårt tak med arkiverade.
-const MAX_UNITS_PER_USER = 1000;
-const MAX_UNITS_TOTAL = 3000;
-const MAX_PAGES_PER_UNIT = 30;
-const MAX_ITEMS_PER_UNIT = 500;
-// Kort och övningar sammanlagt per konto — en skolgång ryms, en AI i loop inte.
-const MAX_ITEMS_PER_ACCOUNT = 10000;
+const {
+  MAX_UNITS_PER_USER, MAX_UNITS_TOTAL, MAX_PAGES_PER_UNIT, MAX_ITEMS_PER_UNIT, MAX_ITEMS_PER_ACCOUNT
+} = require('../../services/study/limits');
 const MAX_TEMPLATES_PER_CALL = 20;
 // Läsverktygens tak — ett svar ska rymmas i en chatt (~25k tokens är en
 // vanlig gräns för ett verktygssvar).
@@ -414,6 +411,11 @@ function unitMeta(unit) {
  */
 async function authorship(unit, userId) {
   const isOwner = String(unit.user?._id || unit.user) === String(userId);
+  if (isOwner && unit.copiedFrom) {
+    // En kopia är elevens egen att ändra — men texten skrev någon annan.
+    const from = unit.copiedFrom.by ? await User.findById(unit.copiedFrom.by, 'username').lean() : null;
+    return { is_owner: true, copied_from: from?.username || null, written_by_someone_else: true };
+  }
   if (isOwner) return { is_owner: true };
   const sharer = await User.findById(sharerOf(unit, userId), 'username').lean();
   return { is_owner: false, shared_by: sharer?.username || null, written_by_someone_else: true };
@@ -491,6 +493,8 @@ registerTool({
       ...(u.source?.book || u.source?.chapter ? { source: { book: u.source.book || '', chapter: u.source.chapter || '' } } : {}),
       is_owner: u.isOwner,
       ...(u.sharedBy ? { shared_by: u.sharedBy } : {}),
+      // En kopia någon delat: elevens egen, men texten skrev någon annan.
+      ...(u.isCopy ? { copied_from: u.copiedFrom, written_by_someone_else: true } : {}),
       ...(u.sharedCount ? { shared_with: u.sharedCount } : {}),
       cards: u.progress.cards,
       exercises: u.progress.exercises,
@@ -941,6 +945,8 @@ registerTool({
     if (access.error === 'forbidden') return unitError(access);
     if (access.error) return fail('not_found', 'No such page. get_study_unit lists page ids.');
     await StudyPage.deleteOne({ _id: page._id });
+    // I en kopia: kommer inte tillbaka när någon delar området igen.
+    await markDropped(access.unit._id, [page.copiedFrom]);
     return ok(`Deleted a page from ${access.unit.code}`, { page_id: String(page._id), deleted_page: { title: page.title, body: page.body } });
   }
 });
@@ -1579,6 +1585,7 @@ registerTool({
     const items = await StudyItem.find({ _id: { $in: ids }, usage: 'test' }).lean();
     await deleteItems(loaded.unit, items, { userId: ctx.user.id, via: 'ai' });
     await StudyTest.deleteOne({ _id: loaded.test._id });
+    await markDropped(loaded.unit._id, [loaded.test.copiedFrom]);
     return ok(`Deleted the practice test and its ${items.length} question(s)`, { test_id: String(loaded.test._id) });
   }
 });

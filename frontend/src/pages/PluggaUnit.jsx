@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit, deleteStudyItem } from '../api/study';
+import {
+  fetchStudyUnit, startStudySession, pingStudySession, finishStudySession, leaveStudyUnit, deleteStudyUnitCopy, deleteStudyItem
+} from '../api/study';
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, sheetUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
@@ -180,6 +182,15 @@ export default function PluggaUnit() {
       setError(e.message);
     }
   };
+  const removeCopy = async () => {
+    setConfirming(null);
+    try {
+      await deleteStudyUnitCopy(apiFetch, unit.id);
+      navigate(`/plugga/amne/${unit.subject}`);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -195,6 +206,7 @@ export default function PluggaUnit() {
           {[unit.termLabel, unit.gradeYear ? `åk ${unit.gradeYear}` : null, unit.source?.book, unit.source?.chapter, unit.source?.pages ? `s. ${unit.source.pages}` : null]
             .filter(Boolean).join(' · ')}
           {unit.sharedBy ? ` · delad av ${unit.sharedBy}` : ''}
+          {unit.isCopy ? ` · din kopia${unit.copiedFrom ? ` från ${unit.copiedFrom}` : ''}` : ''}
         </p>
         {days !== null && days >= 0 && (
           <p style={{ margin: '6px 0 0', fontWeight: 800, color: days <= 3 ? 'var(--berry-deep)' : 'inherit' }}>
@@ -203,12 +215,17 @@ export default function PluggaUnit() {
         )}
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <button type="button" className="btn btn-sm" onClick={() => setPicking(true)}>📁 Mapp</button>
-          {/* Alla som har området kan dela det vidare — skaparen ser alla som har det. */}
+          {/* Alla som har området kan dela det — de man delar med får en egen kopia. */}
           <button type="button" className="btn btn-sm" onClick={() => setSharing(true)}>
             👥 Dela{unit.sharedCount ? ` · ${unit.sharedCount} ${unit.sharedCount === 1 ? 'kompis' : 'kompisar'}` : ''}
           </button>
           {!unit.isOwner && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirming({ kind: 'leave' })}>Lämna området</button>
+          )}
+          {unit.isCopy && (
+            <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--berry-deep)' }} onClick={() => setConfirming({ kind: 'removeCopy' })}>
+              Ta bort kopian
+            </button>
           )}
         </div>
       </div>
@@ -218,7 +235,9 @@ export default function PluggaUnit() {
       {confirming?.kind === 'remove' && (
         <ConfirmDialog
           title={`Ta bort ${confirming.item.code}?`}
-          message="Den försvinner ur området, även för dem du delat det med. Du kan ångra under ”Borttaget”."
+          message={unit.isCopy
+            ? 'Den försvinner ur din kopia. Du kan ångra under ”Borttaget”.'
+            : 'Den försvinner ur området — men inte ur kopior du gett bort. Du kan ångra under ”Borttaget”.'}
           confirmLabel="Ta bort"
           destructive
           onConfirm={() => removeItem(confirming.item)}
@@ -231,6 +250,16 @@ export default function PluggaUnit() {
           message={`Du kan gå med igen om ${unit.sharedBy || 'någon'} delar det på nytt.`}
           confirmLabel="Lämna"
           onConfirm={leave}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+      {confirming?.kind === 'removeCopy' && (
+        <ConfirmDialog
+          title="Ta bort din kopia?"
+          message={`Hela området försvinner ur din Plugga, med din statistik på det. ${unit.copiedFrom || 'Den som delade'} har kvar sitt — och kan dela det med dig igen.`}
+          confirmLabel="Ta bort"
+          destructive
+          onConfirm={removeCopy}
           onCancel={() => setConfirming(null)}
         />
       )}

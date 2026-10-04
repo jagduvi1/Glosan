@@ -182,23 +182,32 @@ async function main() {
     await bpage.setViewport({ width: 390, height: 844 });
     await bpage.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
     await login(bpage, B);
-    await bpage.goto(`${BASE}/plugga/omrade/${unitIds[1]}`, { waitUntil: 'networkidle0' });
-    await waitForText(bpage, `delad av ${A.name}`);
+    // B fick en egen kopia av A:s områden — och delar den som allt annat B har.
+    const bCopy = (await api('/api/study/units?allTerms=1', B.token)).body.units.find((u) => u.title === 'Förändringsfaktor');
+    assert.ok(bCopy && bCopy.isCopy && bCopy.id !== unitIds[1], 'the friend got a copy of their own');
+    await bpage.goto(`${BASE}/plugga/omrade/${bCopy.id}`, { waitUntil: 'networkidle0' });
+    await waitForText(bpage, `din kopia från ${A.name}`);
     await clickText(bpage, 'button', 'Dela');
     await bpage.waitForSelector('#share-unit-title');
-    await waitForText(bpage, 'Bara den som skapade området kan ändra innehållet');
+    await waitForText(bpage, 'får en egen kopia');
     await clickText(bpage, '.modal button[role="tab"]', 'QR-kod');
     await clickText(bpage, '.modal button', 'Skapa QR-kod');
     await bpage.waitForSelector('.modal img[alt^="QR"]');
-    const viaB = (await api(`/api/study/units/${unitIds[1]}/shares`, A.token)).body.links.find((l) => l.via === B.name);
-    assert.ok(viaB, 'the creator sees the link B made');
+    assert.equal((await api(`/api/study/units/${bCopy.id}/shares`, B.token)).body.links.length, 1, 'B made a link to B\'s copy');
+    // Stäng med × — fokus har lämnat dialogen när skapa-knappen försvann, så Escape når den inte.
+    await bpage.click('.modal button[aria-label="Stäng"]');
+    await bpage.waitForFunction(() => !document.querySelector('#share-unit-title'));
+    // Kopian är B:s: B kan ta bort den i appen (här bara fram till frågan).
+    await clickText(bpage, 'button', 'Ta bort kopian');
+    await waitForText(bpage, 'Ta bort din kopia?');
+    await clickText(bpage, '.modal button', 'Avbryt');
     await bpage.goto(`${BASE}/lists/${listId}`, { waitUntil: 'networkidle0' });
     await waitForText(bpage, `delad av ${A.name}`);
     await clickText(bpage, 'button', 'Dela med kompis');
     await waitForText(bpage, 'Bara den som äger listan kan ändra den');
     await bctx.close();
     current = page;
-    ok('a friend who got a unit or a list can pass it on (Dela on the unit and list pages); the creator sees their link "via" them');
+    ok('a friend who got a unit gets their own copy ("din kopia från …"), shares it on and can delete it; a list they got can be passed on too');
 
     // ── kortets baksida: en enkel radbrytning ska synas (inte flyta ihop) ────
     await page.goto(`${BASE}/plugga/ova?units=${unitIds[0]}`, { waitUntil: 'networkidle0' });
@@ -262,11 +271,11 @@ async function main() {
     await page.waitForSelector('.modal');
     await clickText(page, '.modal button', 'Blockera');
     await waitForText(page, 'är blockerad');
-    assert.equal((await api('/api/study/units?allTerms=1', B.token)).body.units.length, 0, 'blocking takes the shared units away');
+    assert.equal((await api('/api/study/units?allTerms=1', B.token)).body.units.length, 3, 'the friend\'s copies are theirs — a block takes nothing back');
     await clickText(page, 'details summary', 'Blockerade');
     await clickText(page, 'button', 'Häv blockering');
     await waitForText(page, 'är hävd');
-    ok('Kompisar: block (the friend loses the shared units) and unblock');
+    ok('Kompisar: block (the friend keeps the copies they got) and unblock');
 
     // ── utloggning: nästa elev på samma dator hamnar inte på den förras sida ──
     await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });

@@ -8,6 +8,7 @@ const StudyFlag = require('../../models/StudyFlag');
 const StudyTest = require('../../models/StudyTest');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
 const { isId, oid, itemCode } = require('./access');
+const { markDropped, unmarkDropped } = require('./copies');
 
 /**
  * Ta bort uppgifter ur ett område. `items` = StudyItem-dokument (eller lean)
@@ -38,7 +39,10 @@ async function deleteItems(unit, items, { userId, via }) {
   await StudyFlag.deleteMany({ unit: unit._id, item: { $in: ids } });
   // Provfrågor försvinner ur sina prov; ett prov utan frågor tas bort.
   await StudyTest.updateMany({ unit: unit._id }, { $pull: { questions: { item: { $in: ids } } } });
+  const emptied = await StudyTest.find({ unit: unit._id, questions: { $size: 0 } }, 'copiedFrom').lean();
   await StudyTest.deleteMany({ unit: unit._id, questions: { $size: 0 } });
+  // I en kopia: det man tagit bort ska aldrig komma tillbaka när någon delar igen.
+  await markDropped(unit._id, [...items.map((i) => i.copiedFrom), ...emptied.map((t) => t.copiedFrom)]);
   return items.map((i) => itemCode(unit, i));
 }
 
@@ -85,6 +89,7 @@ async function restoreDeletion(unit, deletionId) {
   await item.save();
   d.restoredAt = new Date();
   await d.save();
+  await unmarkDropped(unit._id, [item.copiedFrom]);
   return { code: itemCode(unit, item) };
 }
 

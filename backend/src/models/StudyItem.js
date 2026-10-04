@@ -66,6 +66,8 @@ const studyItemSchema = new mongoose.Schema({
   // Mall: nya tal varje gång ({ vars: [...], where: [...] }) — se
   // services/study/templates.js. Kontrolleras när AI:n skapar övningen.
   template: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // I en kopia: originaluppgiften (först i kedjan av kopior, services/study/copies.js).
+  copiedFrom: { type: mongoose.Schema.Types.ObjectId, default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

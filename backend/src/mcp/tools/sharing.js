@@ -18,6 +18,7 @@ const {
   listShares, shareListWithFriends, removeListRecipient, createListInvite, listListInvites, revokeListInvite, revokeListInviteById
 } = require('../../services/listSharing');
 const study = require('../../services/study/sharing');
+const { copiesGivenBy } = require('../../services/study/copies');
 
 const FEATURE = 'study';
 const LINK_DAYS = [1, 7, 30];
@@ -253,7 +254,7 @@ registerTool({
 registerTool({
   name: 'get_study_sharing',
   title: 'Who study units are shared with',
-  description: 'With unit (id or code): who has that unit and the active links that include it. For a unit the student created: everyone, with via = the person who passed it on when that was not the student, and links others made (made_by and link_id, without their address; close one with stop_sharing_study unit + link_id). For a unit shared with the student: only the people and links the student added. Without unit: all the student\'s own active study links and the units each one covers.',
+  description: 'With unit (id or code): who the student gave a copy of that unit (copies_given_to — those copies are theirs now), who still follows the original from before sharing gave copies (following_original; for a unit the student created: everyone, with via = who passed it on), and the active links that include it (links others made come as made_by + link_id, without their address; close one with stop_sharing_study unit + link_id). Without unit: all the student\'s own active study links and the units each one covers.',
   scope: 'read',
   feature: FEATURE,
   annotations: { readOnlyHint: true, openWorldHint: false },
@@ -277,12 +278,15 @@ registerTool({
     const units = await resolveShareableUnits(ctx.user.id, [args.unit]);
     if (units.error) return units.error;
     const unit = units.list[0];
-    const [recipients, links] = await Promise.all([study.listRecipients(unit, ctx.user.id), study.listShareLinks(unit, ctx.user.id)]);
+    const [copies, recipients, links] = await Promise.all([
+      copiesGivenBy(unit, ctx.user.id), study.listRecipients(unit, ctx.user.id), study.listShareLinks(unit, ctx.user.id)
+    ]);
     const isOwner = String(unit.user) === String(ctx.user.id);
-    return ok(`${isOwner ? 'Shared' : 'The student shared it'} with ${recipients.length} person(s), ${links.filter(isActive).length} active link(s)`, {
+    return ok(`Copies given to ${copies.length} person(s); ${recipients.length} follow the original; ${links.filter(isActive).length} active link(s)`, {
       ...unitOut(unit),
       is_owner: isOwner,
-      shared_with: recipients.map((p) => ({ ...personOut(p), ...(p.via ? { via: p.via } : {}) })),
+      copies_given_to: copies.map(personOut),
+      following_original: recipients.map((p) => ({ ...personOut(p), ...(p.via ? { via: p.via } : {}) })),
       links: links.filter(isActive).map(linkOut)
     });
   }
@@ -291,12 +295,12 @@ registerTool({
 registerTool({
   name: 'share_study_units',
   title: 'Share study units with friends',
-  description: 'Gives friends one or more units the student has — their own or ones shared with them (e.g. a whole chapter): they appear in the friends\' Plugga at once, and each practises with their own progress — no copy, so the creator\'s corrections reach everyone. Friends without Plugga get it switched on. ' + ON_REQUEST,
+  description: 'Gives friends their OWN COPY of one or more units the student has (e.g. a whole chapter): it appears in their Plugga at once, they own it and can delete what they don\'t want or change it with their own AI. Later changes to the student\'s unit don\'t reach the copy — but sharing again sends only what is new: units they don\'t have become new copies, and new genomgångar, cards, exercises and tests are added to copies they already have (never what they deleted; their changes stay). Friends without Plugga get it switched on. ' + ON_REQUEST,
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   inputSchema: {
-    units: z.array(unitRef).min(1).max(50).describe('Units the student has (own or shared with them), by id or code'),
+    units: z.array(unitRef).min(1).max(50).describe('Units the student has (own, copies or ones shared with them), by id or code'),
     friends: friendsInput
   },
   handler: async (args, ctx) => {
@@ -306,18 +310,20 @@ registerTool({
     if (missing.length) return fail('not_found', NOT_FRIENDS, { not_friends: missing });
     const r = await study.shareUnitsWithFriends(ctx.user.id, units.list, ids);
     if (r.error) {
-      return r.status === 409
-        ? fail('conflict', 'One of the units is already shared with the most people allowed (300).')
+      return r.code === 'too_many'
+        ? fail('invalid_input', 'That is too much at once (friends × units over 300) — share with fewer friends or fewer units per call.')
         : fail('invalid_input', NOT_FRIENDS);
     }
-    return ok(`Shared ${r.units} unit(s) with ${r.friends} friend(s)`, { units: units.list.map(unitOut), added: r.added });
+    return ok(`Shared ${r.units} unit(s) with ${r.friends} friend(s): ${r.created} new cop(ies), ${r.updated} cop(ies) got new material`, {
+      units: units.list.map(unitOut), new_copies: r.created, updated_copies: r.updated
+    });
   }
 });
 
 registerTool({
   name: 'create_study_link',
   title: 'Create a share link for study units',
-  description: 'Makes ONE link (the app shows it as a QR code) to one or more units the student has — their own or ones shared with them, e.g. a whole chapter for the class. Anyone with it can join until it expires or is used up — also people without a Glosan account, who sign up through it. They get the units in their Plugga (no copy, their own progress) and do NOT become the student\'s friend. Give the student the url to pass on; never post it anywhere yourself, and suggest a short validity. ' + ON_REQUEST,
+  description: 'Makes ONE link (the app shows it as a QR code) to one or more units the student has, e.g. a whole chapter for the class. Anyone with it can use it until it expires or is used up — also people without a Glosan account, who sign up through it. Each gets their OWN COPY of the units in their Plugga and does NOT become the student\'s friend; opening the link again later fetches only what is new. Give the student the url to pass on; never post it anywhere yourself, and suggest a short validity. ' + ON_REQUEST,
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -342,7 +348,7 @@ registerTool({
       units: units.list.map(unitOut),
       expires_at: r.link.expiresAt,
       max_uses: r.link.maxUses,
-      joiners_get: 'the units in their Plugga, with their own progress; they do not become the student\'s friend'
+      joiners_get: 'their own copy of the units in their Plugga; they do not become the student\'s friend'
     });
   }
 });
@@ -350,7 +356,7 @@ registerTool({
 registerTool({
   name: 'stop_sharing_study',
   title: 'Stop sharing study units',
-  description: 'Removes someone from a unit (unit + friend — also someone who joined by link; the student can remove anyone from units they created, and only the people they added themselves from units shared with them), or closes a link: link_code alone closes one of the student\'s own links for every unit it covers; unit + link_id (from get_study_sharing) closes a link someone else made to a unit the student created — it then stops covering the student\'s units. People removed lose the unit; their own results stay theirs.',
+  description: 'Closes a link — link_code alone: one of the student\'s own links, for every unit it covers; unit + link_id (from get_study_sharing): a link someone else made to a unit the student created (it then stops covering the student\'s units). Or removes someone who still follows the original from before sharing gave copies (unit + friend; the creator can remove anyone, others only the people they added). A copy someone was given is theirs and can\'t be taken back.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -386,7 +392,9 @@ registerTool({
     const unit = units.list[0];
     // Bara de man ser kan man ta bort: skaparen alla, andra dem de själva lagt till.
     const person = findPerson(await study.listRecipients(unit, ctx.user.id), args.friend);
-    if (!person) return fail('not_found', 'That person is not someone the student can remove from this unit — get_study_sharing shows who is.');
+    if (!person) {
+      return fail('not_found', 'That person does not follow this unit (or is not someone the student added). A copy someone was given is theirs and can\'t be taken back — get_study_sharing shows who follows the original.');
+    }
     await study.removeRecipient(unit, person._id);
     return ok('Removed one person from the unit', { ...unitOut(unit), removed: personOut(person) });
   }

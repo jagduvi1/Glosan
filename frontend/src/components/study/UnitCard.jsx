@@ -38,6 +38,7 @@ export default function UnitCard({ unit, selected = false, onToggle, showSubject
           <p className="t-hand muted" style={{ margin: '4px 0 8px', fontSize: 14 }}>
             {meta}
             {unit.sharedBy ? `${meta ? ' · ' : ''}delad av ${unit.sharedBy}` : ''}
+            {unit.isCopy && unit.copiedFrom ? `${meta ? ' · ' : ''}från ${unit.copiedFrom}` : ''}
           </p>
           <p className="t-hand" style={{ margin: '0 0 8px', fontSize: 14 }}>
             {unit.progress.cards} kort · {unit.progress.exercises} övningar

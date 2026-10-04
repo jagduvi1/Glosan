@@ -59,21 +59,29 @@ async function main() {
     await call(claude, 'add_flashcards', { unit_id: hist.data.unit_id, cards: [{ front: 'Ångmaskinen?', back: 'James Watt förbättrade den på 1760-talet.' }] });
     ok(`the creator's AI makes MA1 "${unit.data.title}" (4 items) and HI1 (1 card)`);
 
-    // ── dela med en kompis ──────────────────────────────────────────────────
+    // ── dela med en kompis: hen får en EGEN KOPIA ───────────────────────────
     const invite = await api('/api/me/invite-codes', A.token, { method: 'POST' });
     const befriended = await api('/api/me/friends/by-code', B.token, { method: 'POST', body: { code: invite.body.inviteCode.code } });
     assert.ok(befriended.status < 300, JSON.stringify(befriended.body));
     const shared = await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id] } });
     assert.equal(shared.status, 200, JSON.stringify(shared.body));
-    assert.deepEqual(shared.body.recipients.map((r) => r.username), [B.name]);
+    assert.deepEqual(shared.body.copies.map((r) => r.username), [B.name]);
+    assert.deepEqual(shared.body.recipients, [], 'nobody new follows the original');
     assert.ok(await hasPlugga(B), 'the friend gets Plugga');
     const bUnits = await api('/api/study/units?allTerms=1', B.token);
-    assert.deepEqual(bUnits.body.units.map((u) => u.code), ['MA1']);
-    assert.equal(bUnits.body.units[0].sharedBy, A.name);
-    assert.equal(bUnits.body.units[0].sharedCount, 0, 'recipients never see who else has it — only how many they passed it on to');
+    assert.equal(bUnits.body.units.length, 1);
+    const bCopy = bUnits.body.units[0];
+    const bCopyId = bCopy.id;
+    assert.notEqual(bCopyId, unitId, 'a copy, not the original');
+    assert.deepEqual([bCopy.code, bCopy.title, bCopy.isOwner, bCopy.isCopy, bCopy.copiedFrom, bCopy.sharedBy], ['MA1', 'Kapitel 4 — Procent', true, true, A.name, null]);
+    const bDetail = await api(`/api/study/units/${bCopyId}`, B.token);
+    assert.deepEqual(bDetail.body.items.map((i) => i.code), ['MA1-1', 'MA1-2', 'MA1-3', 'MA1-4'], 'the same items and codes');
+    assert.equal(bDetail.body.pages.length, 1);
+    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404, 'the original stays the creator\'s');
     const notFriend = await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [C.id] } });
     assert.equal(notFriend.status, 400);
-    const bSession = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [unitId], mode: 'exercises' } });
+    // B övar på sin kopia — med sin egen statistik.
+    const bSession = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [bCopyId], mode: 'exercises' } });
     const firstEx = bSession.body.items.find((i) => i.code === 'MA1-2');
     const bAnswer = await api(`/api/study/sessions/${bSession.body.session.id}/answer`, B.token, { method: 'POST', body: { itemId: firstEx.id, answer: '20 kr' } });
     assert.equal(bAnswer.body.result, 'correct');
@@ -81,32 +89,27 @@ async function main() {
     const aDetail = await api(`/api/study/units/${unitId}`, A.token);
     assert.equal(aDetail.body.items.find((i) => i.code === 'MA1-2').state, null, "the friend's progress is the friend's own");
     assert.equal(aDetail.body.unit.sharedCount, 1);
-    // B får ett eget MA1 — samma kod som A:s delade. En papperskod får då aldrig
-    // tyst hamna i B:s eget område: verktyget ger kandidaterna.
+    // Kopian är B:s: B tar bort en övning hen inte vill ha — A:s original är orört.
+    const bDrop = bDetail.body.items.find((i) => i.code === 'MA1-4');
+    assert.equal((await api(`/api/study/items/${bDrop.id}`, B.token, { method: 'DELETE' })).status, 200);
+    assert.ok((await api(`/api/study/units/${unitId}`, A.token)).body.items.some((i) => i.code === 'MA1-4'), 'the original keeps it');
+    // B:s AI ser kopian som B:s egen — men skriven av någon annan.
     const bClaude = await connectMcp(B.token);
+    const bAiCopy = await call(bClaude, 'get_study_unit', { unit_id: bCopyId, include_pages: false });
+    assert.deepEqual([bAiCopy.data.is_owner, bAiCopy.data.copied_from, bAiCopy.data.written_by_someone_else], [true, A.name, true]);
     const bOwn = await call(bClaude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'Mitt eget' });
-    assert.equal(bOwn.data.code, 'MA1');
-    await call(bClaude, 'add_flashcards', { unit_id: bOwn.data.unit_id, cards: [{ front: 'Vad är en jon?', back: 'En laddad atom.' }] });
-    const clash = await call(bClaude, 'get_study_item', { code: 'MA1-1' });
-    assert.equal(clash.error?.code, 'conflict');
-    assert.equal(clash.error.candidates.length, 2);
-    assert.ok(clash.error.candidates.some((c) => c.is_owner === false && c.shared_by === A.name));
-    assert.ok(!clash.error.message.includes('Procent'), 'no other user\'s text in the message');
-    const theirs = clash.error.candidates.find((c) => !c.is_owner);
-    const picked = await call(bClaude, 'get_study_item', { item_id: theirs.item_id });
-    assert.deepEqual([picked.data.unit.is_owner, picked.data.unit.written_by_someone_else], [false, true]);
+    assert.equal(bOwn.data.code, 'MA2', 'the copy took MA1 — codes are per account and never reused');
     await call(bClaude, 'delete_study_unit', { unit_id: bOwn.data.unit_id });
     await bClaude.close();
+    // Arkiverar skaparen sitt original påverkas inte kopian.
     await call(claude, 'update_study_unit', { unit_id: unitId, archived: true });
-    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404, 'an archived unit disappears for recipients');
+    assert.equal((await api(`/api/study/units/${bCopyId}`, B.token)).status, 200, 'the copy is not affected');
     const withArchived = await call(claude, 'list_study_units', { include_archived: true });
     assert.ok(withArchived.data.some((u) => u.unit_id === unitId && u.archived), 'include_archived finds it again');
-    assert.equal((await api(`/api/study/units/${unitId}`, A.token)).status, 200, '… but not for the creator');
     await call(claude, 'update_study_unit', { unit_id: unitId, archived: false });
-    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
-    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}unit visible, own progress; non-friends refused; the same code in two units → candidates; archived = hidden from recipients`);
+    ok(`shared with a friend: ${forAll ? '' : 'Plugga switched on, '}they get their OWN copy (same codes, own progress, own bin; their AI sees whose text it is); non-friends refused; archiving the original leaves it alone`);
 
-    // ── QR-länk ─────────────────────────────────────────────────────────────
+    // ── QR-länk: alla som går med får en egen kopia ─────────────────────────
     const link = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 7, maxUses: 10 } });
     assert.equal(link.status, 201);
     const code = link.body.link.code;
@@ -123,7 +126,11 @@ async function main() {
     const cEarly = forAll ? null : await connectMcp(C.token);
     if (cEarly) assert.equal(await hasStudyTools(cEarly), false);
     const joined = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
-    assert.deepEqual(joined.body, { unitId, unitIds: [unitId], joined: true });
+    assert.equal(joined.body.joined, true, JSON.stringify(joined.body));
+    const cCopyId = joined.body.unitId;
+    assert.notEqual(cCopyId, unitId);
+    assert.deepEqual(joined.body.unitIds, [cCopyId]);
+    assert.equal((await api(`/api/study/units/${cCopyId}`, C.token)).body.unit.copiedFrom, A.name);
     assert.ok(await hasPlugga(C), 'the classmate gets Plugga');
     if (cEarly) {
       assert.equal(await hasStudyTools(cEarly), false, 'an old connection does not widen by itself');
@@ -135,19 +142,24 @@ async function main() {
       await cLater.close();
     }
     const again = await api(`/api/study-invite/${code}/accept`, C.token, { method: 'POST' });
-    assert.equal(again.body.joined, false);
+    assert.deepEqual([again.body.joined, again.body.unitId], [false, cCopyId], 'opening it again gives no second copy');
     const own = await api(`/api/study-invite/${code}/accept`, A.token, { method: 'POST' });
     assert.equal(own.body.own, true);
     const shares = await api(`/api/study/units/${unitId}/shares`, A.token);
-    assert.deepEqual(shares.body.recipients.map((r) => r.username).sort(), [B.name, C.name].sort());
-    assert.equal(shares.body.links[0].usedCount, 1, 'joining twice uses one place');
+    assert.deepEqual(shares.body.copies.map((r) => r.username).sort(), [B.name, C.name].sort());
+    assert.equal(shares.body.links[0].usedCount, 1, 'opening it twice uses one place');
     const cFriends = await api('/api/me/friends', C.token);
     assert.ok(!cFriends.body.friends.some((f) => f.username === A.name), 'joining does not befriend the creator');
     await api(`/api/study/units/${unitId}/share-links/${code}`, A.token, { method: 'DELETE' });
     assert.equal((await api(`/api/study-invite/${code}`)).status, 404);
-    assert.equal((await api(`/api/study/units/${unitId}/leave`, C.token, { method: 'POST' })).status, 200);
-    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
-    ok(`QR link: public preview (no grade, book or description), join (idempotent, no friendship), revoke, leave${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
+    assert.equal((await api(`/api/study/units/${cCopyId}`, C.token)).status, 200, 'closing the link takes no copy back');
+    // C tar bort sin kopia i appen; originalet tas bort av skaparens AI, inte här.
+    assert.equal((await api(`/api/study/units/${unitId}`, C.token, { method: 'DELETE' })).status, 404, 'nobody deletes someone else\'s unit');
+    assert.equal((await api(`/api/study/units/${unitId}`, A.token, { method: 'DELETE' })).status, 400, 'an original is deleted by its AI');
+    assert.equal((await api(`/api/study/units/${cCopyId}`, C.token, { method: 'DELETE' })).status, 200);
+    assert.equal((await api(`/api/study/units/${cCopyId}`, C.token)).status, 404);
+    assert.equal((await api(`/api/study/units/${unitId}`, A.token)).status, 200);
+    ok(`QR link: public preview (no grade, book or description); each joiner gets their own copy (once, no friendship); closing the link takes nothing back; a copy is deleted in the app${forAll ? '' : '; an AI connected before Plugga stays without it until reconnected'}`);
 
     // ── Dela flera på en gång (Plugga-sidornas Dela: ett kapitel, en mapp) ──
     const histId = hist.data.unit_id;
@@ -160,18 +172,21 @@ async function main() {
     const D = await signUp('p2class');
     const dJoin = await api(`/api/study-invite/${multi.body.link.code}/accept`, D.token, { method: 'POST' });
     assert.equal(dJoin.body.joined, true);
-    assert.deepEqual(dJoin.body.unitIds, [unitId, histId]);
-    for (const id of [unitId, histId]) assert.equal((await api(`/api/study/units/${id}`, D.token)).status, 200);
+    assert.equal(dJoin.body.unitIds.length, 2);
+    const dUnits = (await api('/api/study/units?allTerms=1', D.token)).body.units;
+    assert.deepEqual(dUnits.map((u) => u.title).sort(), ['Industriella revolutionen', 'Kapitel 4 — Procent']);
+    assert.ok(dUnits.every((u) => u.isCopy && u.copiedFrom === A.name));
     const mine = await api('/api/study/share-links', A.token);
     assert.ok(mine.body.links.some((l) => l.code === multi.body.link.code && l.units.length === 2));
-    // Dela ett urval med en kompis på en gång; ett område man inte har går inte.
+    // Ett urval med en kompis på en gång: B har redan MA1, så bara HI1 är nytt.
     const both = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId], friendIds: [B.id] } });
     assert.equal(both.status, 200);
-    assert.equal(both.body.units, 2);
-    assert.equal((await api(`/api/study/units/${histId}`, B.token)).status, 200);
+    assert.deepEqual([both.body.units, both.body.created, both.body.updated], [2, 1, 0], 'one new copy (HI1); MA1 B already has, without what B deleted');
+    const bHist = (await api('/api/study/units?allTerms=1', B.token)).body.units.find((u) => u.title === 'Industriella revolutionen');
+    assert.ok(bHist && bHist.isCopy);
     assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: ['64b000000000000000000009'], friendIds: [A.id] } })).status, 404);
-    const toOwner = await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [A.id] } });
-    assert.equal(toOwner.body.added, 0, 'passing a unit back to its creator changes nothing');
+    const toOwner = await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [bCopyId], friendIds: [A.id] } });
+    assert.equal(toOwner.body.added, 0, 'a copy passed back to its creator changes nothing — they have the original');
     assert.equal((await api(`/api/study/share-links/${multi.body.link.code}`, A.token, { method: 'DELETE' })).status, 200);
     assert.equal((await api(`/api/study-invite/${multi.body.link.code}`)).status, 404);
     // Raderas länkens FÖRSTA område lever länken vidare för resten.
@@ -183,91 +198,86 @@ async function main() {
     assert.equal(survived.status, 200, 'the link still works for the unit that is left');
     assert.deepEqual(survived.body.units.map((u) => u.title), ['Industriella revolutionen']);
     await api(`/api/study/share-links/${chain.body.link.code}`, A.token, { method: 'DELETE' });
-    ok('share several at once: one link for two units (preview, join both, my links, revoke); a selection with a friend; only units you have; deleting the first unit keeps the link');
+    ok('share several at once: one link for two units (each joiner gets copies of both); a selection with a friend gives only what they lack; only units you have; deleting the first unit keeps the link');
 
-    // ── Dela vidare ─────────────────────────────────────────────────────────
-    // Alla som har ett område kan dela det vidare. Mottagaren ser den som
-    // delade med hen — aldrig skaparen om det var någon annan; skaparen ser
-    // alla ("via …") och kan ta bort vem som helst.
+    // ── Dela igen: bara det nya ─────────────────────────────────────────────
+    // B tar bort HI1-1 ur sin kopia. A lägger till en genomgång och ett kort i
+    // HI1 och gör ett nytt kapitel. A delar igen → B får bara det nya.
+    const bHistDetail = await api(`/api/study/units/${bHist.id}`, B.token);
+    assert.equal((await api(`/api/study/items/${bHistDetail.body.items[0].id}`, B.token, { method: 'DELETE' })).status, 200);
+    await call(claude, 'add_study_pages', { unit_id: histId, pages: [{ title: 'Fabrikerna', body: 'Fabrikerna växte i städerna.' }] });
+    await call(claude, 'add_flashcards', { unit_id: histId, cards: [{ front: 'Spinning Jenny?', back: 'En spinnmaskin från 1764.' }] });
+    const kap3 = await call(claude, 'create_study_unit', { subject: 'historia', grade_year: 8, title: 'Kapitel 3 — Imperialismen' });
+    await call(claude, 'add_flashcards', { unit_id: kap3.data.unit_id, cards: [{ front: 'Kolonialism?', back: 'När ett land styr ett annat.' }] });
+    const reShare = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId, kap3.data.unit_id], friendIds: [B.id] } });
+    assert.deepEqual([reShare.body.created, reShare.body.updated], [1, 1], 'a copy of the new chapter; new material in HI1; nothing in MA1');
+    const bHistAfter = await api(`/api/study/units/${bHist.id}`, B.token);
+    assert.deepEqual(bHistAfter.body.items.map((i) => i.prompt), ['Spinning Jenny?'], 'the new card came — the one B deleted did not');
+    assert.deepEqual(bHistAfter.body.pages.map((p) => p.title), ['Fabrikerna']);
+    assert.ok(!(await api(`/api/study/units/${bCopyId}`, B.token)).body.items.some((i) => i.code === 'MA1-4'), 'MA1-4, which B deleted, stays away');
+    assert.equal((await api('/api/study/units?allTerms=1', B.token)).body.units.length, 3, 'MA1, HI1 and the new chapter');
+    const nothingNew = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId, histId, kap3.data.unit_id], friendIds: [B.id] } });
+    assert.equal(nothingNew.body.added, 0, 'sharing again with nothing new changes nothing');
+    ok('share again: only what is new arrives — the new chapter as a new copy, a new page and card in the copy B has — never what B deleted');
+
+    // ── Dela vidare: en kopia delas som allt annat man har ──────────────────
     const befriend = async (x, y) => {
       const c = (await api('/api/me/invite-codes', x.token, { method: 'POST' })).body.inviteCode.code;
       assert.ok((await api('/api/me/friends/by-code', y.token, { method: 'POST', body: { code: c } })).status < 300);
     };
+    const unitsOf = async (u) => (await api('/api/study/units?allTerms=1', u.token)).body?.units || [];
     await befriend(B, C);
-    const onward = await api(`/api/study/units/${unitId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } });
+    const onward = await api(`/api/study/units/${bCopyId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } });
     assert.equal(onward.status, 200, JSON.stringify(onward.body));
-    assert.deepEqual(onward.body.recipients.map((r) => r.username), [C.name], 'B sees only the people B added');
-    const cSees = (await api('/api/study/units?allTerms=1', C.token)).body.units.find((u) => u.id === unitId);
-    assert.equal(cSees.sharedBy, B.name, 'C sees who shared it — not the creator');
-    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).body.unit.sharedBy, B.name);
-    const aView = await api(`/api/study/units/${unitId}/shares`, A.token);
-    const viaOf = Object.fromEntries(aView.body.recipients.map((r) => [r.username, r.via]));
-    assert.equal(viaOf[C.name], B.name, 'the creator sees C via B');
-    assert.equal(viaOf[B.name], null);
-    assert.equal(viaOf[D.name], null, 'D joined through the creator\'s own link');
-    const bView = await api(`/api/study/units/${unitId}/shares`, B.token);
-    assert.equal(bView.body.isOwner, false);
-    assert.deepEqual(bView.body.recipients.map((r) => r.username), [C.name]);
-    assert.equal(bView.body.friendsWithIt, undefined, 'a re-sharer never learns who else has it');
-    // Ta bort: skaparen vem som helst, andra bara dem de själva lagt till.
-    assert.equal((await api(`/api/study/units/${unitId}/share/${D.id}`, B.token, { method: 'DELETE' })).status, 404);
-    assert.equal((await api(`/api/study/units/${unitId}/share/${B.id}`, C.token, { method: 'DELETE' })).status, 404);
-    // B:s egen länk: den som går med ser B; skaparen ser länken och kan stänga den.
-    const bLink = await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    assert.deepEqual(onward.body.copies.map((r) => r.username), [C.name]);
+    const cFromB = (await unitsOf(C)).find((u) => u.title === 'Kapitel 4 — Procent');
+    assert.equal(cFromB.copiedFrom, B.name, 'C sees who gave it — not the creator');
+    const isMa14 = (i) => i.prompt.startsWith('En vara kostar');
+    assert.ok(!(await api(`/api/study/units/${cFromB.id}`, C.token)).body.items.some(isMa14), 'B\'s copy as it is — without what B deleted');
+    // En kopia per original, vilken väg det än kommer: C öppnar A:s länk och får
+    // det C saknade i den kopia hen redan har.
+    const aLink2 = await api(`/api/study/units/${unitId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    const viaA = await api(`/api/study-invite/${aLink2.body.link.code}/accept`, C.token, { method: 'POST' });
+    assert.deepEqual([viaA.body.joined, viaA.body.unitId, viaA.body.updated], [false, cFromB.id, 1], JSON.stringify(viaA.body));
+    assert.equal((await unitsOf(C)).filter((u) => u.title === 'Kapitel 4 — Procent').length, 1, 'one copy per original');
+    assert.ok((await api(`/api/study/units/${cFromB.id}`, C.token)).body.items.some(isMa14), 'what C lacked arrived');
+    await api(`/api/study/units/${unitId}/share-links/${aLink2.body.link.code}`, A.token, { method: 'DELETE' });
+    // B:s egen länk till sin kopia: den som går med får en kopia "från B".
+    const bLink = await api(`/api/study/units/${bCopyId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
     assert.equal(bLink.status, 201, JSON.stringify(bLink.body));
     assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`)).body.creator.username, B.name);
     const E = await signUp('p2onward');
-    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}/accept`, E.token, { method: 'POST' })).body.joined, true);
-    assert.equal((await api(`/api/study/units/${unitId}`, E.token)).body.unit.sharedBy, B.name);
-    const aAll = (await api(`/api/study/units/${unitId}/shares`, A.token)).body;
-    const bLinkSeen = aAll.links.find((l) => l.id === bLink.body.link.id);
-    assert.equal(bLinkSeen?.via, B.name);
-    assert.equal(bLinkSeen.code, undefined, 'the creator sees B\'s link without its code');
-    assert.ok(!JSON.stringify(aAll).includes(bLink.body.link.code));
-    assert.equal(aAll.recipients.find((r) => r.username === E.name)?.via, B.name);
-    assert.equal((await api(`/api/study/units/${unitId}/share-links/${bLink.body.link.id}`, A.token, { method: 'DELETE' })).status, 200);
-    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`)).status, 404, 'the creator closed B\'s link');
-    assert.equal((await api(`/api/study/units/${unitId}/share/${C.id}`, A.token, { method: 'DELETE' })).status, 200);
-    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404, 'the creator removed C, whom B added');
-    // Har skaparen blockerat någon kommer området aldrig fram — vem som än delar.
+    const eJoin = await api(`/api/study-invite/${bLink.body.link.code}/accept`, E.token, { method: 'POST' });
+    assert.equal(eJoin.body.joined, true);
+    assert.equal((await api(`/api/study/units/${eJoin.body.unitId}`, E.token)).body.unit.copiedFrom, B.name);
+    assert.deepEqual((await api(`/api/study/units/${bCopyId}/shares`, B.token)).body.copies.map((r) => r.username).sort(), [C.name, E.name].sort());
+    const aGave = (await api(`/api/study/units/${unitId}/shares`, A.token)).body.copies.map((r) => r.username);
+    assert.ok(!aGave.includes(E.name), 'the creator sees whom THEY gave a copy, not the whole chain');
+    // Har skaparen blockerat någon kommer det aldrig fram — vem som än delar.
     const F = await signUp('p2blocked');
     await befriend(B, F);
     assert.equal((await api('/api/me/blocks', A.token, { method: 'POST', body: { userId: F.id } })).status, 200);
-    const toBlocked = await api(`/api/study/units/${unitId}/share`, B.token, { method: 'POST', body: { friendIds: [F.id] } });
+    const toBlocked = await api(`/api/study/units/${bCopyId}/share`, B.token, { method: 'POST', body: { friendIds: [F.id] } });
     assert.equal(toBlocked.status, 200);
     assert.equal(toBlocked.body.added, 0);
-    const bLink2 = await api(`/api/study/units/${unitId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
-    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}`)).status, 200, 'the public preview works');
-    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}`, F.token)).status, 404, 'logged in, F\'s preview shows what F would get: nothing');
-    assert.equal((await api(`/api/study-invite/${bLink2.body.link.code}/accept`, F.token, { method: 'POST' })).status, 404);
-    assert.ok(!(await api(`/api/study/units/${unitId}/shares`, A.token)).body.recipients.some((r) => r.username === F.name));
-    await api(`/api/study/units/${unitId}/share-links/${bLink2.body.link.code}`, B.token, { method: 'DELETE' });
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`)).status, 200, 'the public preview works');
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}`, F.token)).status, 404, 'logged in, F\'s preview shows what F would get: nothing');
+    assert.equal((await api(`/api/study-invite/${bLink.body.link.code}/accept`, F.token, { method: 'POST' })).status, 404);
+    assert.equal((await unitsOf(F)).length, 0);
+    await api(`/api/study/units/${bCopyId}/share-links/${bLink.body.link.code}`, B.token, { method: 'DELETE' });
     assert.equal((await api(`/api/me/blocks/${F.id}`, A.token, { method: 'DELETE' })).status, 200);
-    // Slutar två vara kompisar försvinner det den ena delat vidare till den andra.
-    assert.equal((await api(`/api/study/units/${histId}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } })).body.added, 1);
-    assert.equal((await api(`/api/study/units/${histId}`, C.token)).status, 200);
+    // En kopia är mottagarens: att sluta vara kompisar tar inget tillbaka.
     assert.equal((await api(`/api/me/friends/${B.id}`, C.token, { method: 'DELETE' })).status, 200);
-    assert.equal((await api(`/api/study/units/${histId}`, C.token)).status, 404);
-    // Via AI:n: B:s AI gör EN länk till A:s område och ett eget. A:s AI ser
-    // länken utan kod och adress och stänger den — bara för A:s område.
+    assert.equal((await api(`/api/study/units/${cFromB.id}`, C.token)).status, 200, 'unfriending takes no copy back');
+    // Via AI:n: samma sak — och en kopia kan inte tas tillbaka.
     const bAi = await connectMcp(B.token);
-    const bOwnUnit = await call(bAi, 'create_study_unit', { subject: 'historia', grade_year: 8, title: 'B:s eget område' });
-    const bAiLink = await call(bAi, 'create_study_link', { units: [unitId, bOwnUnit.data.unit_id], days: 1, max_uses: 10 });
-    assert.equal(bAiLink.isError, false, JSON.stringify(bAiLink));
-    assert.equal((await call(bAi, 'get_study_sharing', { unit: unitId })).data.is_owner, false);
-    const seenByA = (await call(claude, 'get_study_sharing', { unit: unitId })).data;
-    const bAiSeen = seenByA.links.find((l) => l.link_id === bAiLink.data.link_id);
-    assert.ok(bAiSeen && bAiSeen.made_by === B.name && !bAiSeen.url && !bAiSeen.code, 'another person\'s link without its code or address');
-    assert.equal(seenByA.shared_with.find((p) => p.username === E.name)?.via, B.name);
-    const closedForA = await call(claude, 'stop_sharing_study', { unit: unitId, link_id: bAiLink.data.link_id });
-    assert.equal(closedForA.isError, false, JSON.stringify(closedForA));
-    const trimmed = await api(`/api/study-invite/${bAiLink.data.code}`);
-    assert.equal(trimmed.status, 200, 'B\'s link still works for B\'s own unit');
-    assert.deepEqual(trimmed.body.units.map((u) => u.title), ['B:s eget område'], '… but no longer for A\'s');
-    assert.equal((await call(bAi, 'stop_sharing_study', { link_code: bAiLink.data.code })).isError, false);
-    await call(bAi, 'delete_study_unit', { unit_id: bOwnUnit.data.unit_id });
+    const bSharing = (await call(bAi, 'get_study_sharing', { unit: bCopyId })).data;
+    assert.deepEqual(bSharing.copies_given_to.map((p) => p.username).sort(), [C.name, E.name].sort());
+    const takeBack = await call(bAi, 'stop_sharing_study', { unit: bCopyId, friend: E.name });
+    assert.equal(takeBack.error?.code, 'not_found');
+    assert.match(takeBack.error.message, /can't be taken back/);
     await bAi.close();
-    ok('pass it on: a recipient shares with friends and by link; "delad av" is the sharer; the creator sees everyone via whom, removes anyone and closes their links; blocks and unfriending reach re-shares; the same via MCP');
+    ok('pass it on: a copy is shared like anything else ("från B"); one copy per original whichever way it comes, with only what was missing; the creator sees whom they gave copies; blocks hold along the chain; unfriending takes nothing back');
 
     // Glos-listor: samma regler. A delar med B (får ändra); B delar vidare med
     // C, som bara får läsa och öva — ägaren valde aldrig C.
@@ -324,7 +334,7 @@ async function main() {
     assert.equal(aiPreview.body.title, 'Från AI:n');
     assert.equal(aiPreview.body.units.length, 2);
     assert.ok((await call(claude, 'get_study_sharing', {})).data.links.some((l) => l.code === aiLink.data.code && l.unit_count === 2));
-    assert.ok((await call(claude, 'get_study_sharing', { unit: unitId })).data.shared_with.some((p) => p.username === B.name));
+    assert.ok((await call(claude, 'get_study_sharing', { unit: unitId })).data.copies_given_to.some((p) => p.username === B.name));
     assert.equal((await call(claude, 'share_study_units', { units: ['64b000000000000000000009'], friends: [B.name] })).error.code, 'not_found');
     assert.equal((await call(claude, 'stop_sharing_study', { link_code: aiLink.data.code })).isError, false);
     assert.equal((await api(`/api/study-invite/${aiLink.data.code}`)).status, 404);
@@ -338,7 +348,7 @@ async function main() {
     const fDetail = await api(`/api/study/folders/${fid}`, A.token);
     assert.deepEqual(fDetail.body.units.map((u) => u.code), ['MA1', 'HI1']);
     const fSession = await api('/api/study/sessions', A.token, { method: 'POST', body: { folderId: fid, mode: 'cards', count: 10 } });
-    assert.deepEqual(fSession.body.items.map((i) => i.code).sort(), ['HI1-1', 'MA1-1']);
+    assert.deepEqual(fSession.body.items.map((i) => i.code).sort(), ['HI1-1', 'HI1-2', 'MA1-1']);
     await api(`/api/study/sessions/${fSession.body.session.id}/finish`, A.token, { method: 'POST' });
     const viaAi = await call(claude, 'list_study_folders');
     assert.equal(viaAi.data[0].name, 'Inför provet v. 42');
@@ -371,14 +381,19 @@ async function main() {
     await api(`/api/study/sessions/${practice.body.session.id}/finish`, A.token, { method: 'POST' });
     ok(`create_practice_test: MA1-5…8, 2/3/1 points (E/C/A); hidden from practice`);
 
-    const bUnit = await api(`/api/study/units/${unitId}`, B.token);
-    assert.equal(bUnit.body.tests.length, 1);
-    const started = await api(`/api/study/tests/${testId}/start`, B.token, { method: 'POST' });
+    // B får provet i sin kopia när A delar igen (det är nytt), och gör det i appen.
+    const withTest = await api('/api/study/share', A.token, { method: 'POST', body: { unitIds: [unitId], friendIds: [B.id] } });
+    assert.equal(withTest.body.updated, 1);
+    const bWithTest = await api(`/api/study/units/${bCopyId}`, B.token);
+    assert.equal(bWithTest.body.tests.length, 1);
+    const bTestId = bWithTest.body.tests[0].id;
+    assert.notEqual(bTestId, testId, 'the test is in B\'s copy too — B\'s own');
+    const started = await api(`/api/study/tests/${bTestId}/start`, B.token, { method: 'POST' });
     assert.equal(started.status, 201);
     const qs = started.body.questions;
     assert.equal(qs.length, 4);
     assert.ok(qs.every((q) => q.solution === undefined && q.modelAnswer === undefined && q.hints === undefined), 'no answers before handing in');
-    const resumed = await api(`/api/study/tests/${testId}/start`, B.token, { method: 'POST' });
+    const resumed = await api(`/api/study/tests/${bTestId}/start`, B.token, { method: 'POST' });
     assert.equal(resumed.body.attempt.id, started.body.attempt.id);
     assert.equal(resumed.body.attempt.resumed, true);
     const attemptId = started.body.attempt.id;
@@ -407,7 +422,7 @@ async function main() {
     assert.equal(view.body.answers.find((a) => a.code === 'MA1-6').expected, '0,35');
     assert.equal(view.body.answers.find((a) => a.code === 'MA1-8').selfLevel, 'C');
     assert.equal((await api(`/api/study/tests/attempts/${attemptId}`, A.token)).status, 404, "results are the student's own");
-    const fresh = await api(`/api/study/tests/${testId}/start`, B.token, { method: 'POST' });
+    const fresh = await api(`/api/study/tests/${bTestId}/start`, B.token, { method: 'POST' });
     assert.equal(fresh.status, 201, 'a finished test starts a new attempt');
     ok(`the friend takes the test in the app: "tjugo" not counted (422), self-assessed C → ${done.body.score.total}/6, estimated ${done.body.grade}, +${done.body.xpEarned} XP`);
 
@@ -523,9 +538,11 @@ async function main() {
     const cardId = (await call(claude, 'get_study_item', { code: 'MA1-1' })).data.item_id;
     const sOwn = await api('/api/study/sessions', A.token, { method: 'POST', body: { unitIds: [unitId], mode: 'cards' } });
     assert.ok(sOwn.body.items.every((i) => i.own === true));
-    const sShared = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [unitId], mode: 'cards' } });
-    assert.ok(sShared.body.items.every((i) => i.own === false), 'a recipient never gets the bin');
-    assert.equal((await api(`/api/study/items/${cardId}`, B.token, { method: 'DELETE' })).status, 403);
+    // B har papperskorgen i sin kopia, men når aldrig A:s original.
+    const sCopy = await api('/api/study/sessions', B.token, { method: 'POST', body: { unitIds: [bCopyId], mode: 'cards' } });
+    assert.ok(sCopy.body.items.length > 0 && sCopy.body.items.every((i) => i.own === true), 'a copy is its owner\'s — with the bin');
+    await api(`/api/study/sessions/${sCopy.body.session.id}/finish`, B.token, { method: 'POST' });
+    assert.equal((await api(`/api/study/items/${cardId}`, B.token, { method: 'DELETE' })).status, 404);
     const binned = await api(`/api/study/items/${cardId}`, A.token, { method: 'DELETE' });
     assert.deepEqual(binned.body, { deleted: 'MA1-1' });
     await call(claude, 'delete_study_items', { unit_id: unitId, codes: ['MA1-3'] });
@@ -537,13 +554,13 @@ async function main() {
     assert.ok(!afterBin.body.items.some((i) => ['MA1-1', 'MA1-3'].includes(i.code)));
     const aiView = await call(claude, 'get_study_unit', { unit_id: unitId, include_pages: false });
     assert.deepEqual(aiView.data.recently_deleted.map((d) => d.code), ['MA1-3', 'MA1-1']);
-    assert.equal((await api(`/api/study/units/${unitId}/deletions`, B.token)).status, 403);
+    assert.equal((await api(`/api/study/units/${unitId}/deletions`, B.token)).status, 404);
     const undo = await api(`/api/study/units/${unitId}/deletions/${log.body.deletions[1].id}/restore`, A.token, { method: 'POST' });
     assert.equal(undo.body.restored, 'MA1-1');
     const back = await api(`/api/study/units/${unitId}`, A.token);
     assert.equal(back.body.items.find((i) => i.code === 'MA1-1').id, cardId, 'restored with its old code and id');
     assert.equal((await api(`/api/study/units/${unitId}/deletions/${log.body.deletions[1].id}/restore`, A.token, { method: 'POST' })).status, 409);
-    ok('bin: recipients can\'t delete; app and AI deletions are logged with who/where; undo brings MA1-1 back with its code and id');
+    ok('bin: only the owner deletes (B in B\'s copy, never in the original); app and AI deletions are logged with who/where; undo brings MA1-1 back with its code and id');
 
     // ── feedback från en riktig MCP-session ─────────────────────────────────
     const dupUnit = await call(claude, 'create_study_unit', { subject: 'matematik', grade_year: 8, title: 'kapitel 4 — procent' });
@@ -655,20 +672,22 @@ async function main() {
     ok('feedback: duplicate unit refused; one tolerance warning (exact decimals pass); retries skip; svg checked; multi/order/factors graded; templates with seeds; skill practice; test parts and per-skill result');
 
     // ── städning ────────────────────────────────────────────────────────────
-    const delTest = await call(claude, 'delete_practice_test', { test_id: testId });
-    assert.equal(delTest.isError, false);
+    // A raderar sitt prov: B:s kopia har kvar sitt eget.
+    assert.equal((await call(claude, 'delete_practice_test', { test_id: testId })).isError, false);
+    assert.equal((await api(`/api/study/tests/attempts/${attemptId}`, B.token)).body.testExists, true, 'the copy keeps its test');
+    // B:s AI raderar provet i kopian: resultatet finns kvar. Och det kommer
+    // inte tillbaka när A delar igen — B tog bort det.
+    const bAi2 = await connectMcp(B.token);
+    assert.equal((await call(bAi2, 'delete_practice_test', { test_id: bTestId })).isError, false);
+    await bAi2.close();
     const afterDel = await api(`/api/study/tests/attempts/${attemptId}`, B.token);
     assert.equal(afterDel.body.testExists, false, 'results survive the test');
     assert.equal(afterDel.body.score.total, 4);
-    await api(`/api/study/units/${unitId}/share/${B.id}`, A.token, { method: 'DELETE' });
-    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
-    // Att ta bort kompisen (här gör mottagaren det) avslutar delningen åt båda hållen.
-    assert.equal((await api(`/api/study/units/${unitId}/share`, A.token, { method: 'POST', body: { friendIds: [B.id] } })).status, 200);
-    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 200);
+    // Kopian är B:s — den finns kvar när B och A slutar vara kompisar.
     assert.equal((await api(`/api/me/friends/${A.id}`, B.token, { method: 'DELETE' })).status, 200);
-    assert.equal((await api(`/api/study/units/${unitId}`, B.token)).status, 404);
+    assert.equal((await api(`/api/study/units/${bCopyId}`, B.token)).status, 200);
     await claude.close();
-    ok('delete_practice_test keeps the results; removing B from the unit, or unfriending, takes it away');
+    ok('delete_practice_test keeps the results (the copy keeps its own test until its owner deletes it); a copy stays after unfriending');
 
     // ── Blockera ────────────────────────────────────────────────────────────
     const codeFor = async (u) => (await api('/api/me/invite-codes', u.token, { method: 'POST' })).body.inviteCode.code;
@@ -680,9 +699,9 @@ async function main() {
     const blockRes = await api('/api/me/blocks', A.token, { method: 'POST', body: { userId: C.id } });
     assert.equal(blockRes.status, 200);
     assert.deepEqual(blockRes.body.blocked.map((b) => b.username), [C.name]);
-    // Allt mellan dem är borta.
+    // Allt mellan dem är borta — utom kopior C redan fått: de är C:s.
     assert.ok(!(await api('/api/me/friends', A.token)).body.friends.some((f) => f.username === C.name), 'no longer friends');
-    assert.equal((await api(`/api/study/units/${unitId}`, C.token)).status, 404);
+    assert.equal((await api(`/api/study/units/${cFromB.id}`, C.token)).status, 200, 'a copy is C\'s — a block takes nothing back');
     assert.equal((await api(`/api/lists/${listId}`, C.token)).status, 404);
     // Den blockerade kommer inte tillbaka: ingen kod, ingen länk — och får inte veta varför.
     const cTry = await api('/api/me/friends/by-code', C.token, { method: 'POST', body: { code: await codeFor(A) } });
@@ -696,17 +715,17 @@ async function main() {
     // Häv blockeringen: länken fungerar igen.
     assert.deepEqual((await api(`/api/me/blocks/${C.id}`, A.token, { method: 'DELETE' })).body.blocked, []);
     assert.equal((await api(`/api/study-invite/${aLink.body.link.code}/accept`, C.token, { method: 'POST' })).status, 200);
-    ok('block: friendship, unit and list shares go both ways; no way back by code or link (and no hint why); unblock restores links');
+    ok('block: friendship and list shares go both ways (copies stay with their owners); no way back by code or link (and no hint why); unblock restores links');
 
-    // Skaparen raderar sitt konto: vännens resultat finns kvar, utan skaparens texter.
+    // Skaparen raderar sitt konto: kopiorna är vännernas och finns kvar — utan skaparens namn.
     assert.equal((await api('/api/me', A.token, { method: 'DELETE' })).status, 200);
+    const kept = await api(`/api/study/units/${bCopyId}`, B.token);
+    assert.equal(kept.status, 200);
+    assert.deepEqual([kept.body.unit.isCopy, kept.body.unit.copiedFrom], [true, null], 'no trace of the deleted account');
     const orphan = await api(`/api/study/tests/attempts/${attemptId}`, B.token);
     assert.equal(orphan.status, 200);
-    assert.equal(orphan.body.unitTitle, 'Raderat område');
-    assert.equal(orphan.body.testTitle, 'Raderat prov');
-    assert.ok(orphan.body.answers.every((a) => a.prompt === '' && a.solution === ''), 'no questions or solutions left from the creator');
     assert.equal(orphan.body.score.total, 4);
-    ok('the creator deletes the account: the friend keeps the result, without the creator\'s titles and questions');
+    ok('the creator deletes the account: the friends\' copies and results stay theirs, without the creator\'s name');
   } finally {
     let leftover = 0;
     for (const u of users) {

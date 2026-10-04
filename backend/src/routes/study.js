@@ -17,6 +17,8 @@ const {
   loadShareableUnits, shareUnitsWithFriends, listMyShareLinks, revokeMyShareLink, MAX_UNITS_PER_SHARE, MAX_UNITS_PER_LINK
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
+const { copiesGivenBy } = require('../services/study/copies');
+const { deleteStudyUnitsCascade } = require('../services/studyData');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
 const { practiceSheet, SHEET_MODES } = require('../services/study/sheet');
@@ -503,11 +505,11 @@ router.delete('/folders/:id', async (req, res, next) => {
 });
 
 // ── Dela ─────────────────────────────────────────────────────────────────────
-// Alla som har ett område kan dela det vidare — med kompisar eller via
-// länk/QR (publika delen ligger i routes/studyInvites.js). Mottagarna övar med
-// egen progress; bara skaparen kan ändra innehållet. Skaparen ser alla och kan
-// ta bort vem som helst; den som delat vidare ser och tar bort dem hen själv
-// lagt till. Den som fått ett område delat kan lämna det.
+// Alla som har ett område kan dela det — med kompisar eller via länk/QR
+// (publika delen ligger i routes/studyInvites.js). Mottagaren får en egen
+// kopia (services/study/copies.js) som hen kan ta bort; delar man igen får hen
+// bara det nya. De som delades med före kopiorna följer originalet: skaparen
+// kan ta bort dem (den som delat vidare dem hen själv lagt till), och de kan lämna.
 
 /** Området om inloggad användare har det (eget eller delat), annars 404 och null. */
 async function readableUnit(req, res) {
@@ -519,13 +521,17 @@ async function readableUnit(req, res) {
   return access.unit;
 }
 
-// GET /api/study/units/:id/shares → { recipients, links, isOwner }
+// GET /api/study/units/:id/shares → { copies, recipients, links, isOwner }
+// copies = de som fått en kopia av mig; recipients = de som följer originalet
+// (från före kopiorna).
 router.get('/units/:id/shares', async (req, res, next) => {
   try {
     const unit = await readableUnit(req, res);
     if (!unit) return;
-    const [recipients, links] = await Promise.all([listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id)]);
-    res.json({ recipients, links, isOwner: String(unit.user) === String(req.user.id) });
+    const [copies, recipients, links] = await Promise.all([
+      copiesGivenBy(unit, req.user.id), listRecipients(unit, req.user.id), listShareLinks(unit, req.user.id)
+    ]);
+    res.json({ copies, recipients, links, isOwner: String(unit.user) === String(req.user.id) });
   } catch (err) {
     next(err);
   }
@@ -558,6 +564,20 @@ router.delete('/units/:id/share/:userId', async (req, res, next) => {
     await removeRecipient(unit, req.params.userId);
     const fresh = await StudyUnit.findById(unit._id, 'user sharedWith sharedVia').lean();
     res.json({ recipients: await listRecipients(fresh, req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/study/units/:id — ta bort en kopia man fått (den är ens egen;
+// den som delade har sitt original kvar). Egna original tas bort av ens AI.
+router.delete('/units/:id', async (req, res, next) => {
+  try {
+    const access = await loadUnit(req.user.id, req.params.id, 'owner');
+    if (access.error) return res.status(404).json({ error: 'Området hittades inte.' });
+    if (!access.unit.copiedFrom) return bad(res, 'Det här är ditt eget område — be din AI arkivera eller radera det.');
+    await deleteStudyUnitsCascade([access.unit._id]);
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }
