@@ -18,8 +18,6 @@ const StudyUnit = require('../../models/StudyUnit');
 const StudyPage = require('../../models/StudyPage');
 const StudyItem = require('../../models/StudyItem');
 const StudyShareLink = require('../../models/StudyShareLink');
-const StudyFolder = require('../../models/StudyFolder');
-const StudyFlag = require('../../models/StudyFlag');
 const User = require('../../models/User');
 const Friendship = require('../../models/Friendship');
 const { getSubject } = require('../../config/subjects');
@@ -28,7 +26,8 @@ const { randomCode } = require('../../utils/friendCode');
 const { isId, oid } = require('./access');
 const { isBlockedBetween } = require('../blocks');
 const { sharerOf, blockChecker, profiles, visibleRecipients, canRemove } = require('../sharedVia');
-const { MAX_COPY_PAIRS, rootOf, originOf, giveCopies, copiesGivenBy, hasRoomForUnit } = require('./copies');
+const { MAX_COPY_PAIRS, rootOf, originOf, giveCopies, copiesGivenBy, hasRoomForUnit, blockedUnit } = require('./copies');
+const { linkUnitIds, trimLink, dropFrom } = require('./membership');
 
 const ownerId = (unit) => String(unit.user?._id || unit.user);
 const isMember = (unit, userId) =>
@@ -130,20 +129,6 @@ async function removeRecipient(unit, userId) {
 }
 
 /**
- * Ta bort `recipient` ur områdena `ids`: ur delningen, ur hens mappar och
- * öppna felrapporter, och ur länkar hen gjort till dem (hen har ju inte
- * områdena längre, och läggs hen till igen ska en gammal länk inte vakna).
- */
-async function dropFrom(ids, recipient) {
-  if (!ids.length) return;
-  await StudyUnit.updateMany({ _id: { $in: ids } }, { $pull: { sharedWith: recipient, sharedVia: { user: recipient } } });
-  await StudyFolder.updateMany({ user: recipient, units: { $in: ids } }, { $pull: { units: { $in: ids } } });
-  await StudyFlag.deleteMany({ unit: { $in: ids }, reporter: recipient, status: 'open' });
-  const links = await StudyShareLink.find({ creator: recipient, revokedAt: null, $or: [{ unit: { $in: ids } }, { units: { $in: ids } }] });
-  for (const link of links) await trimLink(link, ids); // eslint-disable-line no-await-in-loop
-}
-
-/**
  * Två kompisar tar bort varandra: inget område delas längre åt något håll —
  * varken den enas egna eller det den ena delat vidare till den andra. Samma
  * städning som removeRecipient (mappar, öppna felrapporter). Även den som
@@ -163,34 +148,8 @@ async function unshareBetween(a, b) {
 
 // ── länkar / QR ──────────────────────────────────────────────────────────────
 
-/** Områdena en länk gäller: `units` på en länk till flera, annars `unit`. */
-function linkUnitIds(link) {
-  return link.units && link.units.length ? link.units : [link.unit];
-}
-
 /** Filter: länkar som gäller ett område — även länkar till flera. */
 const coversUnit = (unitId) => ({ $or: [{ unit: unitId }, { units: unitId }] });
-
-/**
- * Ta bort områdena `dropIds` ur en länk; gäller den inget område efter det
- * stängs den. Varje steg är en egen atomär uppdatering, så två som trimmar
- * samma länk samtidigt aldrig skriver tillbaka ett område den andra tog bort.
- */
-async function trimLink(link, dropIds) {
-  const drop = dropIds.map(oid);
-  // 1. Ur listan över områden (en länk till ett område har ingen lista).
-  await StudyShareLink.updateOne({ _id: link._id }, { $pull: { units: { $in: drop } } });
-  // 2. Var det första området (`unit`) som togs bort: flytta det till det som nu står först.
-  await StudyShareLink.updateOne(
-    { _id: link._id, unit: { $in: drop }, 'units.0': { $exists: true } },
-    [{ $set: { unit: { $arrayElemAt: ['$units', 0] } } }]
-  );
-  // 3. Gäller länken inget område längre: stäng den.
-  await StudyShareLink.updateOne(
-    { _id: link._id, unit: { $in: drop }, 'units.0': { $exists: false }, revokedAt: null },
-    { $set: { revokedAt: new Date() } }
-  );
-}
 
 async function uniqueLinkCode() {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -359,6 +318,18 @@ async function linkUnits(link, fields) {
 }
 
 /**
+ * Länkens områden som `userId` kan få via länken: inte de vars (ursprungliga)
+ * skapare, eller någon som ändrat titeln längs vägen, har en blockering med
+ * hen (titeln syns ju redan i förhandsvisningen). Används både av
+ * förhandsvisningen och när man går med, så det man ser är det man får.
+ */
+async function linkUnitsFor(linked, userId) {
+  const editorsOf = (u) => (u.copiedFrom?.editors || []).map(String);
+  const blocked = await blockChecker([String(userId), ...linked.map(originOf), ...linked.flatMap(editorsOf)]);
+  return linked.filter((u) => !blocked(originOf(u), userId) && !blockedUnit(u, userId, blocked));
+}
+
+/**
  * Publik förhandsvisning av en länk (ingen inloggning). null = ogiltig.
  * Bara det som behövs för att känna igen områdena — inte årskurs, bok eller
  * beskrivning, som säger mer om skaparen (ofta ett barn) än om innehållet.
@@ -374,12 +345,11 @@ async function previewInvite(code, viewerId = null) {
   if (!linked.length || !creator) return null;
   // Inloggad: samma urval som när man går med (acceptInvite) — så det man ser
   // är det man får. Blockerad med den som delar → länken ser död ut; områden
-  // vars (ursprungliga) skapare man har en blockering med visas inte.
+  // man inte skulle få (se linkUnitsFor) visas inte.
   let units = linked;
   if (viewerId && isId(viewerId) && String(viewerId) !== String(link.creator)) {
     if (await isBlockedBetween(viewerId, link.creator)) return null;
-    const blocked = await blockChecker([String(viewerId), ...linked.map(originOf)]);
-    units = linked.filter((u) => !blocked(originOf(u), viewerId));
+    units = await linkUnitsFor(linked, viewerId);
     if (!units.length) return null;
   }
   const unitIds = units.map((u) => u._id);
@@ -437,11 +407,10 @@ async function acceptInvite(userId, code) {
     const own = linked.map((u) => String(u._id));
     return { unitId: own[0], unitIds: own, joined: false, own: true };
   }
-  // Blockerad åt något håll — med den som delar eller med ett områdes
-  // (ursprungliga) skapare → länken ser bara ut att inte fungera för det.
+  // Blockerad åt något håll med den som delar → länken ser bara ut att inte
+  // fungera. Områden man inte skulle få räknas inte (och tar ingen plats).
   if (await isBlockedBetween(userId, link.creator)) return { error: LINK_GONE, status: 404 };
-  const blocked = await blockChecker([String(userId), ...linked.map(originOf)]);
-  const units = linked.filter((u) => !blocked(originOf(u), userId));
+  const units = await linkUnitsFor(linked, userId);
   if (!units.length) return { error: LINK_GONE, status: 404 };
   // Behövs en ny kopia — ett original man varken har en kopia av, skapat
   // själv eller följer?

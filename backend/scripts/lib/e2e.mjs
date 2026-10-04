@@ -114,4 +114,9 @@ export function fillStudyLinkInLocalDb(code, container) {
   localMongo(`db.studysharelinks.updateOne({ code: ${JSON.stringify(code)} }, [{ $set: { maxUses: { $max: [1, { $size: '$usedBy' }] } } }])`, container);
 }
 
+/** Låt `username` följa ett område som förr (sharedWith, från före kopiorna) — för att testa bytet till en kopia. */
+export function followStudyUnitInLocalDb(unitId, username, container) {
+  localMongo(`const u = db.users.findOne({ username: ${JSON.stringify(username.toLowerCase())} }, { _id: 1 }); db.studyunits.updateOne({ _id: ObjectId(${JSON.stringify(unitId)}) }, { $addToSet: { sharedWith: u._id } })`, container);
+}
+
 export const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

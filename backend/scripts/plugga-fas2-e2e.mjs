@@ -10,7 +10,7 @@
 //   FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 //   cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 import assert from 'node:assert/strict';
-import { e2e, grantFeatureInLocalDb, fillStudyLinkInLocalDb, inDays } from './lib/e2e.mjs';
+import { e2e, grantFeatureInLocalDb, fillStudyLinkInLocalDb, followStudyUnitInLocalDb, inDays } from './lib/e2e.mjs';
 
 const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 
@@ -288,6 +288,18 @@ async function main() {
     const v2Detail = await api(`/api/study/units/${v2Units[0].id}`, V2.token);
     assert.ok(!v2Detail.body.items.some((i) => i.prompt === 'Spinning Jenny?'), 'nor the card B rewrote');
     assert.deepEqual(v2Detail.body.pages.map((p) => p.title), ['Fabrikerna'], 'what A wrote still comes');
+    // Samma via en länk: W:s länk till båda — inloggad ser V2 bara det V2 kan få
+    // (inte titeln B skrev), och HI1 har V2 redan, så ingen plats går åt.
+    const wLink = await api('/api/study/share-links', W.token, { method: 'POST', body: { unitIds: (await unitsOf(W)).map((u) => u.id), ttlDays: 1, maxUses: 10 } });
+    assert.equal(wLink.status, 201, JSON.stringify(wLink.body));
+    const wCode = wLink.body.link.code;
+    assert.equal((await api(`/api/study-invite/${wCode}`)).body.units.length, 2, 'the public preview shows the whole link');
+    assert.deepEqual((await api(`/api/study-invite/${wCode}`, V2.token)).body.units.map((u) => u.title), ['Industriella revolutionen'], 'logged in, V2 sees only what V2 would get');
+    const v2Join = await api(`/api/study-invite/${wCode}/accept`, V2.token, { method: 'POST' });
+    assert.deepEqual([v2Join.status, v2Join.body.joined, v2Join.body.unitIds], [200, false, [v2Units[0].id]], JSON.stringify(v2Join.body));
+    assert.deepEqual((await unitsOf(V2)).map((u) => u.title), ['Industriella revolutionen']);
+    assert.equal((await api('/api/study/share-links', W.token)).body.links.find((l) => l.code === wCode).usedCount, 0, 'no place used');
+    await api(`/api/study/share-links/${wCode}`, W.token, { method: 'DELETE' });
     // Siffran på Dela-knappen och listan i dialogen räknar likadant — även
     // efter en blockering (en skillnad skulle avslöja den).
     const countAndList = async () => [
@@ -346,7 +358,33 @@ async function main() {
     assert.equal(takeBack.error?.code, 'not_found');
     assert.match(takeBack.error.message, /can't be taken back/);
     await bAi.close();
-    ok('pass it on: a copy is shared like anything else ("från B"); one copy per original whichever way it comes, with only what was missing; your own additions never come back as duplicates; nothing by someone you blocked reaches you; a full link still brings the new material to those who used it; blocks hold along the chain; unfriending takes nothing back');
+    ok('pass it on: a copy is shared like anything else ("från B"); one copy per original whichever way it comes, with only what was missing; your own additions never come back as duplicates; nothing by someone you blocked reaches you (not by link either); a full link still brings the new material to those who used it; blocks hold along the chain; unfriending takes nothing back');
+
+    // Följde man ett original från före kopiorna gör man det fortfarande — tills
+    // man får en kopia av det (här: originalet har arkiverats); då byter man
+    // till kopian, på samma plats i sina mappar.
+    const kap3Id = kap3.data.unit_id;
+    const P = await signUp('p2follower');
+    grantFeatureInLocalDb(P.name, 'study');
+    followStudyUnitInLocalDb(kap3Id, P.name);
+    assert.deepEqual((await unitsOf(P)).map((u) => [u.id, u.isOwner]), [[kap3Id, false]]);
+    const pFolder = await api('/api/study/folders', P.token, { method: 'POST', body: { name: 'Följer', unitIds: [kap3Id] } });
+    assert.equal(pFolder.body.folder?.unitCount, 1, JSON.stringify(pFolder.body));
+    await befriend(B, P);
+    const bKap3 = (await unitsOf(B)).find((u) => u.title === 'Kapitel 3 — Imperialismen');
+    const shareKap3 = () => api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [bKap3.id], friendIds: [P.id] } });
+    const whileFollowing = await shareKap3();
+    assert.deepEqual([whileFollowing.status, whileFollowing.body.created, whileFollowing.body.added], [200, 0, 0], 'a follower already sees the original, live');
+    assert.deepEqual((await unitsOf(P)).map((u) => u.id), [kap3Id]);
+    await call(claude, 'update_study_unit', { unit_id: kap3Id, archived: true });
+    const switched = await shareKap3();
+    await call(claude, 'update_study_unit', { unit_id: kap3Id, archived: false });
+    assert.equal(switched.body.created, 1, JSON.stringify(switched.body));
+    const pUnits = await unitsOf(P);
+    assert.deepEqual(pUnits.map((u) => [u.isCopy, u.copiedFrom]), [[true, B.name]], 'the copy, and the original is gone even after it was unarchived');
+    assert.equal((await api(`/api/study/units/${kap3Id}`, P.token)).status, 404);
+    assert.deepEqual((await api(`/api/study/folders/${pFolder.body.folder.id}`, P.token)).body.folder.unitIds, [pUnits[0].id], 'the copy took the original\'s place in the folder');
+    ok('a follower from before the copies keeps following — until they get a copy (here: the original was archived); then they switch to it, in the same place in their folders');
 
     // Glos-listor: samma regler. A delar med B (får ändra); B delar vidare med
     // C, som bara får läsa och öva — ägaren valde aldrig C.

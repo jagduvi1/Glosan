@@ -26,9 +26,11 @@ const StudyUnit = require('../../models/StudyUnit');
 const StudyPage = require('../../models/StudyPage');
 const StudyItem = require('../../models/StudyItem');
 const StudyTest = require('../../models/StudyTest');
+const StudyFolder = require('../../models/StudyFolder');
 const { oid } = require('./access');
 const { blockChecker, profiles } = require('../sharedVia');
 const { deleteStudyUnitsCascade } = require('../studyData');
+const { dropFrom } = require('./membership');
 const { withUserLock } = require('../../utils/userLock');
 const L = require('./limits');
 
@@ -153,7 +155,8 @@ async function copyContent(src, copy, recipientId, { fresh = false, blocked = ()
     if (!wanted(t)) continue;
     const questionItems = t.questions.map((q) => byId.get(String(q.item))).filter((i) => i && !dropped.has(rootOfDoc(i)));
     const toInsert = questionItems.filter((i) => !haveByRoot.has(rootOfDoc(i)));
-    if (!questionItems.length || toInsert.length > room) continue;
+    // Ett prov kommer helt eller inte alls — även en fråga någon blockerad skrivit om stoppar det.
+    if (!questionItems.length || toInsert.length > room || !questionItems.every(allowed)) continue;
     tests.push({ t, toInsert });
     room -= toInsert.length;
   }
@@ -226,25 +229,31 @@ async function giveCopy(sharerId, src, recipientId, blocked) {
   // Har hen originalet (skapat det, eller följer det från före kopiorna) får hen
   // inget — utom den som både följer det och redan har en kopia: hen byter till kopian.
   if (original && (String(original.user) === r || !existing)) return { unitId: String(original._id), created: false, added: 0 };
-  // Den som följde ett original från före kopiorna och nu får (eller har) en
-  // kopia slutar följa det — annars skulle originalet stå i vägen för allt nytt.
-  const leaveOriginal = () => StudyUnit.updateOne(
-    { _id: oid(root), sharedWith: oid(r) }, { $pull: { sharedWith: oid(r), sharedVia: { user: oid(r) } } }
-  );
+  // Den som följde ett original från före kopiorna och nu har en kopia slutar
+  // följa det — annars skulle originalet stå i vägen för allt nytt. Görs först
+  // när kopian finns: mapparna pekar på kopian, och resten städas som när
+  // någon tas bort (felrapporter, länkar hen gjort till originalet).
+  const switchToCopy = async (copyId) => {
+    if (!(await StudyUnit.exists({ _id: oid(root), sharedWith: oid(r) }))) return;
+    await StudyFolder.updateMany(
+      { user: oid(r), $and: [{ units: oid(root) }, { units: { $ne: oid(copyId) } }] },
+      { $set: { 'units.$[u]': oid(copyId) } },
+      { arrayFilters: [{ u: oid(root) }] }
+    );
+    await dropFrom([oid(root)], oid(r));
+  };
   const sum = (a) => a.pages + a.items + a.tests;
   if (existing) {
-    await leaveOriginal();
     const added = await copyContent(src, existing, r, { blocked });
     // Hen har nu fått det av den här personen också (hens "har fått en kopia av dig").
     await StudyUnit.updateOne({ _id: existing._id }, { $addToSet: { 'copiedFrom.givers': oid(sharerId) } });
+    await switchToCopy(existing._id);
     return { unitId: String(existing._id), created: false, added: sum(added) };
   }
   // Titeln och beskrivningen följer med en ny kopia: har någon mottagaren har
   // en blockering med ändrat dem längs vägen kommer området inte fram alls.
-  if (src.unitEditors.some((e) => e !== r && blocked(e, r))) return null;
+  if (blockedUnit(src, r, blocked)) return null;
   if (!(await hasRoomForUnit(r))) return null;
-  // T.ex. hen följde ett original som sedan arkiverats (och som hen inte ser).
-  await leaveOriginal();
   const copy = await StudyUnit.create({
     user: oid(r),
     subject: source.subject,
@@ -266,14 +275,27 @@ async function giveCopy(sharerId, src, recipientId, blocked) {
       at: new Date()
     }
   });
+  let added;
   try {
-    const added = await copyContent(src, copy, r, { fresh: true, blocked });
-    return { unitId: String(copy._id), created: true, added: sum(added) };
+    added = await copyContent(src, copy, r, { fresh: true, blocked });
   } catch (err) {
-    // Ingen halv kopia blir kvar.
+    // Ingen halv kopia blir kvar (och hen följer originalet som förut).
     await deleteStudyUnitsCascade([copy._id]);
     throw err;
   }
+  // T.ex. hen följde ett original som sedan arkiverats (och som hen inte ser).
+  await switchToCopy(copy._id);
+  return { unitId: String(copy._id), created: true, added: sum(added) };
+}
+
+/**
+ * Har någon som `recipientId` har en blockering med ändrat områdets titel,
+ * beskrivning eller källa längs vägen? Då kommer det inte fram — den texten
+ * följer med en ny kopia. (Används också av länkens förhandsvisning.)
+ */
+function blockedUnit(src, recipientId, blocked) {
+  const editors = src.unitEditors || (src.copiedFrom?.editors || []).map(String);
+  return editors.some((e) => e !== String(recipientId) && blocked(e, recipientId));
 }
 
 /** Får mottagaren plats med ett område till (tak per konto)? */
@@ -385,6 +407,7 @@ module.exports = {
   giveCopy,
   giveCopies,
   hasRoomForUnit,
+  blockedUnit,
   copiesGivenBy,
   copyCounts,
   markDropped,
