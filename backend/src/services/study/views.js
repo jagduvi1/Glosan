@@ -6,7 +6,6 @@ const StudyItem = require('../../models/StudyItem');
 const StudyItemState = require('../../models/StudyItemState');
 const StudyAttempt = require('../../models/StudyAttempt');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
-const User = require('../../models/User');
 const { getSubject, SUBJECT_KEYS, subjectsInGroup } = require('../../config/subjects');
 const { isValidTerm, termLabel } = require('../../utils/term');
 const { readableFilter, oid, loadUnit } = require('./access');
@@ -76,8 +75,9 @@ function testUrl(testId) {
 /**
  * Ett område i listor och på områdessidan. `who.sharer` = den som delade ett
  * original användaren följer (aldrig skaparens namn om någon annan delade),
- * `who.from` = den som gav användaren kopian, `who.copies` = hur många
- * användaren själv gett en kopia av området.
+ * `who.from` = den som gav användaren kopian, `who.alsoFrom` = de som delat
+ * det med användaren sedan (det nya från dem finns i kopian), `who.copies` =
+ * hur många användaren själv gett en kopia av området.
  */
 function unitSummary(u, userId, progress, who = {}) {
   const isOwner = String(u.user?._id || u.user) === String(userId);
@@ -100,6 +100,7 @@ function unitSummary(u, userId, progress, who = {}) {
     // En egen kopia som någon delat ("från X"): ägaren kan ta bort den i appen.
     isCopy,
     copiedFrom: isCopy ? who.from || null : null,
+    alsoFrom: isCopy ? who.alsoFrom || [] : [],
     sharedBy: isOwner ? null : who.sharer || null,
     // Hur många användaren delat området med: de som följer originalet (från
     // före kopiorna — skaparen ser alla, andra dem de själva lagt till) och de
@@ -137,15 +138,24 @@ async function summarizeUnits(userId, units) {
     unitProgress(userId, units.map((u) => u._id)),
     profiles([
       ...units.filter((u) => !mine(u)).map((u) => sharerOf(u, userId)),
-      ...units.filter((u) => mine(u) && u.copiedFrom?.by).map((u) => u.copiedFrom.by)
-    ]),
+      ...units.filter((u) => mine(u) && u.copiedFrom).flatMap((u) => [u.copiedFrom.by, ...(u.copiedFrom.givers || [])])
+    ].filter(Boolean)),
     copyCounts(units, userId)
   ]);
   return units.map((u) => unitSummary(u, userId, progress.get(String(u._id)), {
     sharer: names.get(sharerOf(u, userId))?.username,
-    from: u.copiedFrom?.by ? names.get(String(u.copiedFrom.by))?.username : null,
+    ...giversOf(u, names),
     copies: given.get(String(u._id)) || 0
   }));
+}
+
+/** Kopians givare som namn: den som gav den (from) och de som delat det med en sedan (alsoFrom). */
+function giversOf(u, names) {
+  const by = u.copiedFrom?.by ? String(u.copiedFrom.by) : null;
+  return {
+    from: by ? names.get(by)?.username || null : null,
+    alsoFrom: (u.copiedFrom?.givers || []).map(String).filter((g) => g !== by).map((g) => names.get(g)?.username).filter(Boolean)
+  };
 }
 
 /**
@@ -156,12 +166,14 @@ async function unitDetail(userId, unitId) {
   const access = await loadUnit(userId, unitId, 'read');
   if (access.error) return access;
   const { unit } = access;
-  // Den som delade originalet med en, eller den som gav en kopian.
-  const giver = access.isOwner ? unit.copiedFrom?.by : sharerOf(unit, userId);
-  const [pages, items, named, given] = await Promise.all([
+  // Den som delade originalet med en, eller de som gett en kopian.
+  const people = access.isOwner
+    ? (unit.copiedFrom ? [unit.copiedFrom.by, ...(unit.copiedFrom.givers || [])] : [])
+    : [sharerOf(unit, userId)];
+  const [pages, items, names, given] = await Promise.all([
     StudyPage.find({ unit: unit._id }).sort({ order: 1, createdAt: 1 }).lean(),
     StudyItem.find({ unit: unit._id, usage: 'practice' }).sort({ number: 1 }).lean(),
-    giver ? User.findById(giver, 'username').lean() : null,
+    profiles(people.filter(Boolean)),
     copyCounts([unit], userId)
   ]);
   const itemIds = items.map((i) => i._id);
@@ -188,8 +200,8 @@ async function unitDetail(userId, unitId) {
   const u = unit.toObject();
   return {
     unit: unitSummary(u, userId, progress.get(String(unit._id)), {
-      sharer: access.isOwner ? null : named?.username,
-      from: access.isOwner ? named?.username : null,
+      sharer: access.isOwner ? null : names.get(String(sharerOf(unit, userId)))?.username,
+      ...giversOf(u, names),
       copies: given.get(String(unit._id)) || 0
     }),
     pages: pages.map((p) => ({ id: String(p._id), title: p.title, body: p.body, order: p.order })),

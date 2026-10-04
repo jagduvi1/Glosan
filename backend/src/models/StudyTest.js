@@ -49,6 +49,8 @@ const studyTestSchema = new mongoose.Schema({
   baseMax: { type: new mongoose.Schema({ E: Number, C: Number, A: Number }, { _id: false }), default: undefined },
   // I en kopia: originalprovet (först i kedjan av kopior, services/study/copies.js).
   copiedFrom: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  // ... och vem som skrev originalet (för blockeringar, även om originalet tagits bort).
+  copyAuthor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

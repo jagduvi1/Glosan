@@ -54,7 +54,7 @@ export default function Integritet() {
           <li><strong>Co-op-streaks</strong> (<em>CoopStreak</em>): gemensam streak per kompis-par och senaste dagen ni båda var aktiva.</li>
           <li><strong>Utmaningar</strong> (<em>Duel</em>): async-, mål- eller live-duells du deltagit i, inklusive snapshot av frågorna och varje deltagares resultat (rätt/total/tid). Live-duells visar tillfälligt din avatar och dina svar för motspelaren i realtid över WebSocket.</li>
           <li><strong>AI-anslutningar</strong> (<em>McpToken</em>): om du kopplar din egen AI (till exempel Claude) till Glosan sparar vi anslutningens namn, behörighet (läsa, eller läsa och skapa), när den användes senast och en hashad nyckel. Du kopplar bort den på profilsidan.</li>
-          <li><strong>Plugga</strong> (för konton där det är påslaget): områden, genomgångar, kort, övningar och övningsprov som din AI skapat; dina svar, din pluggtid och dina resultat (&quot;Min plugg&quot;); och AI:ns återkoppling på lösningar du fotat — själva fotot når aldrig oss. Delar du ett område ser mottagarna innehållet men aldrig dina resultat. Går någon med via en delningslänk sparar länken vem som gått med.</li>
+          <li><strong>Plugga</strong> (för konton där det är påslaget): områden, genomgångar, kort, övningar och övningsprov som din AI skapat; dina svar, din pluggtid och dina resultat (&quot;Min plugg&quot;); och AI:ns återkoppling på lösningar du fotat — själva fotot når aldrig oss. Delar du ett område får mottagaren en egen kopia av innehållet — aldrig dina resultat — och kopian visar att den kom från dig. Går någon med via en delningslänk sparar länken vem som gått med.</li>
           <li><strong>Tekniska detaljer:</strong> en httpOnly-cookie med en hashad refresh-token som håller dig inloggad i upp till 7 dagar.</li>
         </ul>
       </section>
@@ -134,7 +134,8 @@ export default function Integritet() {
           relationer, co-op-streaks, utmaningar du deltagit i, XP- och quiz-runda-historik, aktiva engångskoder,
           dina AI-anslutningar, dina blockeringar, Plugga-områden du skapat (med allas progress på dem) och din plugghistorik.
           Du tas också automatiskt bort från andras &quot;delade med dig&quot;-sektion. I andras plugghistorik från dina områden
-          ersätts områdets namn och frågornas text med &quot;Raderat område&quot; — deras egna resultat finns kvar.
+          ersätts områdets namn och frågornas text med &quot;Raderat område&quot; — deras egna resultat finns kvar. Kopior av
+          dina Plugga-områden som du redan gett till andra är deras och finns kvar, men ditt namn tas bort från dem.
         </p>
         <p className="t-hand muted" style={{ fontSize: 14 }}>
           Påverkan på andra: kompisar som hade dina delade listor förlorar tillgången, utmaningar mellan dig och dem

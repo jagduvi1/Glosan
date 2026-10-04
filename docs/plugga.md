@@ -211,7 +211,8 @@ what is new. Code: `services/study/copies.js`.
     source's genomgångar, cards, exercises and practice tests — items keep
     their numbers (MA1-14 at the sharer is MA2-14 in the copy);
   - "din kopia från X" on the unit page (`copiedFrom.by` — who gave it, never
-    the creator further back); the owner has the bin, can delete the whole
+    the creator further back; "från X och Y" once Y has shared it too and new
+    material came from them, `copiedFrom.givers`); the owner has the bin, can delete the whole
     copy in the app ("Ta bort kopian", `DELETE /api/study/units/:id` — copies
     only; originals are deleted by their AI) and can change it with their AI.
     The MCP marks it `is_owner: true, copied_from, written_by_someone_else:
@@ -222,8 +223,10 @@ what is new. Code: `services/study/copies.js`.
 - **Sharing again sends only what is new** (Johan's choice: new chapters AND
   new material in chapters you already have):
   - every page, item and test in a copy remembers its ORIGINAL (the first in
-    the chain of copies) in `copiedFrom`; a unit's `copiedFrom.root` is its
-    original unit. A recipient has at most **one copy per original**,
+    the chain of copies) in `copiedFrom`, and who wrote it in `copyAuthor`;
+    what the owner adds to their copy themselves is its own original (its id),
+    so it never comes back as a duplicate when shared on and back. A unit's
+    `copiedFrom.root` is its original unit. A recipient has at most **one copy per original**,
     whichever way it comes (Majken shares with A and B, both share with C →
     C has one copy, and gets from the second whatever the first lacked);
   - a unit they have no copy of → a new copy; one they have → only pages,
@@ -237,11 +240,13 @@ what is new. Code: `services/study/copies.js`.
     it from before copies).
 - **Friends**: you share with your confirmed friends. The dialog lists who got
   a copy from you (`copiedFrom.givers`) and lets you share with them again for
-  the new material; who else has the unit is never shown. At most 300
-  friend × unit pairs per share (`MAX_COPY_PAIRS`) — each can be a whole copy.
-  Copies are made one recipient at a time under that recipient's lock
-  (`utils/userLock.js`), so two people sharing the same unit with the same
-  friend at once still give one copy. The per-account caps
+  the new material; who else has the unit is never shown. At most 100
+  friend × unit pairs per share (`MAX_COPY_PAIRS`) — each can be a whole copy;
+  the source is read once per share. Copies are made one recipient at a time
+  under that recipient's lock (`utils/userLock.js`) — so two people sharing
+  the same unit with the same friend at once still give one copy — and the
+  owner's own deletions take the same lock. A copy that fails halfway is
+  removed and the share goes on for the others. The per-account caps
   (`services/study/limits.js`) apply to copies too.
 - **QR / link** (`/p/<code>`): ONE link can cover several units
   (`StudyShareLink.units`, up to 50 — e.g. a chapter for the class) with an
@@ -251,13 +256,16 @@ what is new. Code: `services/study/copies.js`.
   Logged in, the preview shows exactly what you would get (`optionalAuth`).
   Everyone who opens it gets their own copy, from the link maker; it claims a
   use only when a new copy is made, so the same link fetches the new
-  material later for free. People without an account sign up through it.
+  material later for free — also when it is full, for those who already
+  used it (a full link takes no one new). People without an account sign up through it.
   Joining does **not** make you the link maker's friend (a link can be passed
   on). A link works only while its maker still has the units. Links are
   deleted 30 days after they expire.
 - **Blocks**: if the recipient and the original's creator (`copiedFrom.origin`,
   followed along the chain) have blocked each other, nothing reaches the
-  recipient, whoever shares — silently. A friend in between who keeps trying
+  recipient, whoever shares — silently. Nor does anything someone they have a
+  block with added along the way (`copyAuthor`, kept even when that original
+  is deleted). A friend in between who keeps trying
   can notice that one person never gets it; hiding even that would be a
   product decision. Blocking also ends list shares, the co-op streak and
   pending challenges, and stops adding by code or joining by link

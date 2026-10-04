@@ -42,7 +42,7 @@ async function deleteItems(unit, items, { userId, via }) {
   const emptied = await StudyTest.find({ unit: unit._id, questions: { $size: 0 } }, 'copiedFrom').lean();
   await StudyTest.deleteMany({ unit: unit._id, questions: { $size: 0 } });
   // I en kopia: det man tagit bort ska aldrig komma tillbaka när någon delar igen.
-  await markDropped(unit._id, [...items.map((i) => i.copiedFrom), ...emptied.map((t) => t.copiedFrom)]);
+  await markDropped(unit, [...items, ...emptied]);
   return items.map((i) => itemCode(unit, i));
 }
 
@@ -89,7 +89,7 @@ async function restoreDeletion(unit, deletionId) {
   await item.save();
   d.restoredAt = new Date();
   await d.save();
-  await unmarkDropped(unit._id, [item.copiedFrom]);
+  await unmarkDropped(unit, [item]);
   return { code: itemCode(unit, item) };
 }
 

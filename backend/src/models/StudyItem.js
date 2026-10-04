@@ -68,6 +68,8 @@ const studyItemSchema = new mongoose.Schema({
   template: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // I en kopia: originaluppgiften (först i kedjan av kopior, services/study/copies.js).
   copiedFrom: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  // ... och vem som skrev originalet (för blockeringar, även om originalet tagits bort).
+  copyAuthor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

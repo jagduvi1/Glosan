@@ -28,7 +28,7 @@ const { randomCode } = require('../../utils/friendCode');
 const { isId, oid } = require('./access');
 const { isBlockedBetween } = require('../blocks');
 const { sharerOf, blockChecker, profiles, visibleRecipients, canRemove } = require('../sharedVia');
-const { MAX_COPY_PAIRS, rootOf, originOf, giveCopies, copiesGivenBy } = require('./copies');
+const { MAX_COPY_PAIRS, rootOf, originOf, giveCopies, copiesGivenBy, hasRoomForUnit } = require('./copies');
 
 const ownerId = (unit) => String(unit.user?._id || unit.user);
 const isMember = (unit, userId) =>
@@ -251,10 +251,10 @@ async function createShareLink(creatorId, units, { ttlDays, maxUses, title } = {
 }
 
 /** Filter: länkar som fortfarande går att använda (inte avstängda, utgångna eller fulla). */
+// Även en full länk räknas: de som redan använt den hämtar det nya med den.
 const usable = () => ({
   revokedAt: null,
-  expiresAt: { $gt: new Date() },
-  $expr: { $lt: [{ $size: '$usedBy' }, '$maxUses'] }
+  expiresAt: { $gt: new Date() }
 });
 
 /**
@@ -329,10 +329,17 @@ async function revokeMyShareLink(creatorId, code) {
   return r.matchedCount > 0;
 }
 
-async function loadActiveLink(code) {
+/**
+ * En länk som går att använda för `userId`: öppen (inte avstängd eller
+ * utgången), och — är den full — bara för den som redan använt den (hen
+ * hämtar det nya utan att ta en plats). null = ser ut som en död länk.
+ */
+async function loadActiveLink(code, userId = null) {
   if (typeof code !== 'string' || !/^[A-Z0-9]{4,16}$/.test(code)) return null;
   const link = await StudyShareLink.findOne({ code });
-  return link && link.isActive() ? link : null;
+  if (!link || !link.isOpen()) return null;
+  if (link.isFull() && !(userId && link.usedBy.some((id) => String(id) === String(userId)))) return null;
+  return link;
 }
 
 /**
@@ -358,7 +365,7 @@ async function linkUnits(link, fields) {
  * `unit` = det första området (för en länk till ett område), `units` = alla.
  */
 async function previewInvite(code, viewerId = null) {
-  const link = await loadActiveLink(code);
+  const link = await loadActiveLink(code, viewerId && isId(viewerId) ? viewerId : null);
   if (!link) return null;
   const [linked, creator] = await Promise.all([
     linkUnits(link, 'user code title subject term copiedFrom'),
@@ -419,7 +426,7 @@ async function previewInvite(code, viewerId = null) {
  * Returnerar { unitId, unitIds (ens kopior), joined, updated? } eller { error, status }.
  */
 async function acceptInvite(userId, code) {
-  const link = await loadActiveLink(code);
+  const link = await loadActiveLink(code, userId);
   if (!link) return { error: LINK_GONE, status: 404 };
   // En åtkomsttoken lever 15 min efter att kontot raderats — inga spökkopior.
   if (!(await User.exists({ _id: oid(userId) }))) return { error: 'Logga in igen.', status: 401 };
@@ -441,11 +448,13 @@ async function acceptInvite(userId, code) {
   const roots = [...new Set(units.map(rootOf))].map(oid);
   const [mineCopies, mineOriginals] = await Promise.all([
     StudyUnit.find({ user: uid, 'copiedFrom.root': { $in: roots } }, 'copiedFrom.root').lean(),
-    StudyUnit.find({ _id: { $in: roots }, $or: [{ user: uid }, { sharedWith: uid }] }, '_id').lean()
+    StudyUnit.find({ _id: { $in: roots }, $or: [{ user: uid }, { sharedWith: uid, archivedAt: null }] }, '_id').lean()
   ]);
   const haveRoot = new Set([...mineCopies.map((c) => String(c.copiedFrom.root)), ...mineOriginals.map((u) => String(u._id))]);
   const needsNew = units.some((u) => !haveRoot.has(rootOf(u)));
   if (needsNew && !link.usedBy.some((id) => String(id) === String(userId))) {
+    // Ingen plats på kontot → ingen plats på länken heller.
+    if (!(await hasRoomForUnit(userId))) return { error: 'Det finns inte plats för fler områden i din Plugga.', status: 409 };
     // Förbruka en plats atomärt, så två samtidiga klick aldrig spräcker maxUses.
     const claimed = await StudyShareLink.findOneAndUpdate(
       {

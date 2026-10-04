@@ -10,7 +10,7 @@
 //   FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 //   cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
 import assert from 'node:assert/strict';
-import { e2e, grantFeatureInLocalDb, inDays } from './lib/e2e.mjs';
+import { e2e, grantFeatureInLocalDb, fillStudyLinkInLocalDb, inDays } from './lib/e2e.mjs';
 
 const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 
@@ -242,6 +242,46 @@ async function main() {
     assert.equal((await unitsOf(C)).filter((u) => u.title === 'Kapitel 4 — Procent').length, 1, 'one copy per original');
     assert.ok((await api(`/api/study/units/${cFromB.id}`, C.token)).body.items.some(isMa14), 'what C lacked arrived');
     await api(`/api/study/units/${unitId}/share-links/${aLink2.body.link.code}`, A.token, { method: 'DELETE' });
+    // Det man själv lagt till i sin kopia är sitt eget original: det kommer aldrig
+    // tillbaka som dubblett när någon delar vidare och tillbaka — och inte heller
+    // när man tagit bort det.
+    const bAiHi = await connectMcp(B.token);
+    assert.equal((await call(bAiHi, 'add_flashcards', { unit_id: bHist.id, cards: [{ front: 'B:s egen fråga?', back: 'B:s svar.' }] })).isError, false);
+    await bAiHi.close();
+    assert.equal((await api(`/api/study/units/${bHist.id}/share`, B.token, { method: 'POST', body: { friendIds: [C.id] } })).status, 200);
+    const cHist = (await unitsOf(C)).find((u) => u.title === 'Industriella revolutionen');
+    const promptsIn = async (u, id) => (await api(`/api/study/units/${id}`, u.token)).body.items.map((i) => i.prompt);
+    assert.ok((await promptsIn(C, cHist.id)).includes('B:s egen fråga?'), 'C got B\'s own card');
+    const back1 = await api(`/api/study/units/${cHist.id}/share`, C.token, { method: 'POST', body: { friendIds: [B.id] } });
+    assert.equal(back1.body.added, 0, 'shared back, nothing is new to B — not even B\'s own card');
+    const bCardItem = (await api(`/api/study/units/${bHist.id}`, B.token)).body.items.find((i) => i.prompt === 'B:s egen fråga?');
+    assert.equal((await api(`/api/study/items/${bCardItem.id}`, B.token, { method: 'DELETE' })).status, 200);
+    const back2 = await api(`/api/study/units/${cHist.id}/share`, C.token, { method: 'POST', body: { friendIds: [B.id] } });
+    assert.equal(back2.body.added, 0);
+    assert.ok(!(await promptsIn(B, bHist.id)).includes('B:s egen fråga?'), 'what B deleted stays away — B\'s own too');
+    // Den man blockerat når en aldrig — inte heller det hen lagt till i något
+    // en kompis delar: V blockerar B och får C:s kopia utan B:s kort.
+    const V = await signUp('p2viewer');
+    await befriend(C, V);
+    assert.equal((await api('/api/me/blocks', V.token, { method: 'POST', body: { userId: B.id } })).status, 200);
+    assert.equal((await api(`/api/study/units/${cHist.id}/share`, C.token, { method: 'POST', body: { friendIds: [V.id] } })).body.added, 1);
+    const vHist = (await unitsOf(V)).find((u) => u.title === 'Industriella revolutionen');
+    const vPrompts = await promptsIn(V, vHist.id);
+    assert.ok(vPrompts.includes('Spinning Jenny?') && !vPrompts.includes('B:s egen fråga?'), 'nothing B wrote reaches someone who blocked B');
+    assert.deepEqual([vHist.copiedFrom, vHist.alsoFrom], [C.name, []]);
+    // En full länk fungerar fortfarande för dem som redan använt den — de hämtar det nya.
+    const fullLink = await api(`/api/study/units/${histId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
+    const G = await signUp('p2late');
+    assert.equal((await api(`/api/study-invite/${fullLink.body.link.code}/accept`, G.token, { method: 'POST' })).body.joined, true);
+    fillStudyLinkInLocalDb(fullLink.body.link.code);
+    await call(claude, 'add_flashcards', { unit_id: histId, cards: [{ front: 'Ångloket?', back: 'Stephenson, 1829.' }] });
+    const gAgain = await api(`/api/study-invite/${fullLink.body.link.code}/accept`, G.token, { method: 'POST' });
+    assert.deepEqual([gAgain.status, gAgain.body.updated], [200, 1], 'the new card comes through the full link');
+    const H = await signUp('p2toolate');
+    assert.equal((await api(`/api/study-invite/${fullLink.body.link.code}/accept`, H.token, { method: 'POST' })).status, 404, 'a full link takes no one new');
+    assert.equal((await api(`/api/study-invite/${fullLink.body.link.code}`)).status, 404);
+    assert.equal((await api(`/api/study-invite/${fullLink.body.link.code}`, G.token)).status, 200);
+    await api(`/api/study/units/${histId}/share-links/${fullLink.body.link.code}`, A.token, { method: 'DELETE' });
     // B:s egen länk till sin kopia: den som går med får en kopia "från B".
     const bLink = await api(`/api/study/units/${bCopyId}/share-links`, B.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
     assert.equal(bLink.status, 201, JSON.stringify(bLink.body));
@@ -277,7 +317,7 @@ async function main() {
     assert.equal(takeBack.error?.code, 'not_found');
     assert.match(takeBack.error.message, /can't be taken back/);
     await bAi.close();
-    ok('pass it on: a copy is shared like anything else ("från B"); one copy per original whichever way it comes, with only what was missing; the creator sees whom they gave copies; blocks hold along the chain; unfriending takes nothing back');
+    ok('pass it on: a copy is shared like anything else ("från B"); one copy per original whichever way it comes, with only what was missing; your own additions never come back as duplicates; nothing by someone you blocked reaches you; a full link still brings the new material to those who used it; blocks hold along the chain; unfriending takes nothing back');
 
     // Glos-listor: samma regler. A delar med B (får ändra); B delar vidare med
     // C, som bara får läsa och öva — ägaren valde aldrig C.
@@ -348,7 +388,7 @@ async function main() {
     const fDetail = await api(`/api/study/folders/${fid}`, A.token);
     assert.deepEqual(fDetail.body.units.map((u) => u.code), ['MA1', 'HI1']);
     const fSession = await api('/api/study/sessions', A.token, { method: 'POST', body: { folderId: fid, mode: 'cards', count: 10 } });
-    assert.deepEqual(fSession.body.items.map((i) => i.code).sort(), ['HI1-1', 'HI1-2', 'MA1-1']);
+    assert.deepEqual(fSession.body.items.map((i) => i.code).sort(), ['HI1-1', 'HI1-2', 'HI1-3', 'MA1-1']);
     await api(`/api/study/sessions/${fSession.body.session.id}/finish`, A.token, { method: 'POST' });
     const viaAi = await call(claude, 'list_study_folders');
     assert.equal(viaAi.data[0].name, 'Inför provet v. 42');

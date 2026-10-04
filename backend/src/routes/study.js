@@ -18,6 +18,7 @@ const {
 } = require('../services/study/sharing');
 const { listFolders, folderDetail, createFolder, updateFolder, deleteFolder } = require('../services/study/folders');
 const { copiesGivenBy } = require('../services/study/copies');
+const { withUserLock } = require('../utils/userLock');
 const { deleteStudyUnitsCascade } = require('../services/studyData');
 const { activityFor, todaySummary, effectiveStreak } = require('../services/study/activity');
 const { testOverview, testSheet, startTest, submitTest, assessTest, attemptView } = require('../services/study/tests');
@@ -322,13 +323,17 @@ router.post('/items/:id/flag', async (req, res, next) => {
 // i appen). Allt som tas bort loggas under "Borttaget" och kan ångras.
 
 // DELETE /api/study/items/:id
+// Borttagning och ångra körs under ägarens lås (utils/userLock.js): en kopia som
+// just får nytt innehåll av någon som delar ska inte få tillbaka det som tas bort.
 router.delete('/items/:id', async (req, res, next) => {
   try {
-    const access = await loadItem(req.user.id, req.params.id, 'owner');
-    if (access.error === 'forbidden') return res.status(403).json({ error: 'Bara den som skapade området kan ta bort uppgifter. Rapportera felet i stället.' });
-    if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
-    const [code] = await deleteItems(access.unit, [access.item], { userId: req.user.id, via: 'app' });
-    res.json({ deleted: code });
+    await withUserLock(req.user.id, async () => {
+      const access = await loadItem(req.user.id, req.params.id, 'owner');
+      if (access.error === 'forbidden') return res.status(403).json({ error: 'Bara den som skapade området kan ta bort uppgifter. Rapportera felet i stället.' });
+      if (access.error) return res.status(404).json({ error: 'Uppgiften hittades inte.' });
+      const [code] = await deleteItems(access.unit, [access.item], { userId: req.user.id, via: 'app' });
+      return res.json({ deleted: code });
+    });
   } catch (err) {
     next(err);
   }
@@ -348,11 +353,13 @@ router.get('/units/:id/deletions', async (req, res, next) => {
 // POST /api/study/units/:id/deletions/:deletionId/restore — ångra
 router.post('/units/:id/deletions/:deletionId/restore', async (req, res, next) => {
   try {
-    const unit = await ownedUnit(req, res);
-    if (!unit) return;
-    const result = await restoreDeletion(unit, req.params.deletionId);
-    if (result.error) return res.status(result.status).json({ error: result.error });
-    res.json({ restored: result.code, deletions: await listDeletions(unit, req.user.id) });
+    await withUserLock(req.user.id, async () => {
+      const unit = await ownedUnit(req, res);
+      if (!unit) return null;
+      const result = await restoreDeletion(unit, req.params.deletionId);
+      if (result.error) return res.status(result.status).json({ error: result.error });
+      return res.json({ restored: result.code, deletions: await listDeletions(unit, req.user.id) });
+    });
   } catch (err) {
     next(err);
   }
@@ -573,11 +580,14 @@ router.delete('/units/:id/share/:userId', async (req, res, next) => {
 // den som delade har sitt original kvar). Egna original tas bort av ens AI.
 router.delete('/units/:id', async (req, res, next) => {
   try {
-    const access = await loadUnit(req.user.id, req.params.id, 'owner');
-    if (access.error) return res.status(404).json({ error: 'Området hittades inte.' });
-    if (!access.unit.copiedFrom) return bad(res, 'Det här är ditt eget område — be din AI arkivera eller radera det.');
-    await deleteStudyUnitsCascade([access.unit._id]);
-    res.json({ deleted: true });
+    // Under ägarens lås: ingen delning skriver i kopian medan den tas bort.
+    await withUserLock(req.user.id, async () => {
+      const access = await loadUnit(req.user.id, req.params.id, 'owner');
+      if (access.error) return res.status(404).json({ error: 'Området hittades inte.' });
+      if (!access.unit.copiedFrom) return bad(res, 'Det här är ditt eget område — be din AI arkivera eller radera det.');
+      await deleteStudyUnitsCascade([access.unit._id]);
+      return res.json({ deleted: true });
+    });
   } catch (err) {
     next(err);
   }

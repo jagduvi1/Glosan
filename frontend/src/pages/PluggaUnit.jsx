@@ -7,6 +7,7 @@ import {
 import StudyMarkdown from '../components/StudyMarkdown';
 import { LevelPill, CodeTag, ProgressBar, PracticePicker, practiceUrl, sheetUrl, daysUntil } from '../components/study/StudyBits';
 import ShareUnitDialog from '../components/study/ShareUnitDialog';
+import { copyFromLabel } from '../components/study/copyLabel';
 import FolderPicker from '../components/study/FolderPicker';
 import DeletedList from '../components/study/DeletedList';
 import { GradeBadge, pointsText, pointsTotal } from '../components/study/TestBits';
@@ -206,7 +207,7 @@ export default function PluggaUnit() {
           {[unit.termLabel, unit.gradeYear ? `åk ${unit.gradeYear}` : null, unit.source?.book, unit.source?.chapter, unit.source?.pages ? `s. ${unit.source.pages}` : null]
             .filter(Boolean).join(' · ')}
           {unit.sharedBy ? ` · delad av ${unit.sharedBy}` : ''}
-          {unit.isCopy ? ` · din kopia${unit.copiedFrom ? ` från ${unit.copiedFrom}` : ''}` : ''}
+          {unit.isCopy ? ` · din kopia${copyFromLabel(unit) ? ` ${copyFromLabel(unit)}` : ''}` : ''}
         </p>
         {days !== null && days >= 0 && (
           <p style={{ margin: '6px 0 0', fontWeight: 800, color: days <= 3 ? 'var(--berry-deep)' : 'inherit' }}>

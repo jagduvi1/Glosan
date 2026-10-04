@@ -14,6 +14,8 @@ const studyPageSchema = new mongoose.Schema({
   order: { type: Number, default: 0 },
   // I en kopia: originalsidan (först i kedjan av kopior, services/study/copies.js).
   copiedFrom: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+  // ... och vem som skrev originalet (för blockeringar, även om originalet tagits bort).
+  copyAuthor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: undefined },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

@@ -90,7 +90,11 @@ export function e2e(baseArg) {
  * Containern heter likadant i produktion, så den måste höra till compose-
  * projektet i DEN HÄR utcheckningen (eller anges med E2E_MONGO_CONTAINER).
  */
-export function grantFeatureInLocalDb(username, feature, container = process.env.E2E_MONGO_CONTAINER || 'glosan-mongo') {
+/**
+ * Kör mongosh-kod i den lokala stackens databas — bara om containern hör till
+ * just den här checkouten (E2E_MONGO_CONTAINER för att välja en annan).
+ */
+function localMongo(js, container = process.env.E2E_MONGO_CONTAINER || 'glosan-mongo') {
   if (!process.env.E2E_MONGO_CONTAINER) {
     const dir = execFileSync('docker', ['inspect', '-f', '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}', container], { encoding: 'utf8' }).trim();
     const same = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -98,10 +102,16 @@ export function grantFeatureInLocalDb(username, feature, container = process.env
       throw new Error(`${container} belongs to ${dir || 'another project'}, not this checkout (${REPO_ROOT}) — refusing to write to it. Set E2E_MONGO_CONTAINER to override.`);
     }
   }
-  execFileSync('docker', [
-    'exec', container, 'mongosh', '--quiet', 'glosan', '--eval',
-    `db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $addToSet: { features: ${JSON.stringify(feature)} } })`
-  ], { stdio: 'pipe' });
+  execFileSync('docker', ['exec', container, 'mongosh', '--quiet', 'glosan', '--eval', js], { stdio: 'pipe' });
+}
+
+export function grantFeatureInLocalDb(username, feature, container) {
+  localMongo(`db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $addToSet: { features: ${JSON.stringify(feature)} } })`, container);
+}
+
+/** Gör en Plugga-länk full (alla platser tagna av dem som redan gått med) — för att testa en full länk. */
+export function fillStudyLinkInLocalDb(code, container) {
+  localMongo(`db.studysharelinks.updateOne({ code: ${JSON.stringify(code)} }, [{ $set: { maxUses: { $max: [1, { $size: '$usedBy' }] } } }])`, container);
 }
 
 export const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

@@ -412,9 +412,17 @@ function unitMeta(unit) {
 async function authorship(unit, userId) {
   const isOwner = String(unit.user?._id || unit.user) === String(userId);
   if (isOwner && unit.copiedFrom) {
-    // En kopia är elevens egen att ändra — men texten skrev någon annan.
-    const from = unit.copiedFrom.by ? await User.findById(unit.copiedFrom.by, 'username').lean() : null;
-    return { is_owner: true, copied_from: from?.username || null, written_by_someone_else: true };
+    // En kopia är elevens egen att ändra — men texten skrev någon annan:
+    // den som gav kopian, och de som delat det med eleven sedan (det nya från dem).
+    const { by, givers = [] } = unit.copiedFrom;
+    const names = await profiles([by, ...givers].filter(Boolean));
+    const also = givers.filter((g) => String(g) !== String(by)).map((g) => names.get(String(g))?.username).filter(Boolean);
+    return {
+      is_owner: true,
+      copied_from: (by && names.get(String(by))?.username) || null,
+      ...(also.length ? { also_from: also } : {}),
+      written_by_someone_else: true
+    };
   }
   if (isOwner) return { is_owner: true };
   const sharer = await User.findById(sharerOf(unit, userId), 'username').lean();
@@ -494,7 +502,7 @@ registerTool({
       is_owner: u.isOwner,
       ...(u.sharedBy ? { shared_by: u.sharedBy } : {}),
       // En kopia någon delat: elevens egen, men texten skrev någon annan.
-      ...(u.isCopy ? { copied_from: u.copiedFrom, written_by_someone_else: true } : {}),
+      ...(u.isCopy ? { copied_from: u.copiedFrom, ...(u.alsoFrom.length ? { also_from: u.alsoFrom } : {}), written_by_someone_else: true } : {}),
       ...(u.sharedCount ? { shared_with: u.sharedCount } : {}),
       cards: u.progress.cards,
       exercises: u.progress.exercises,
@@ -548,8 +556,11 @@ registerTool({
       return fail('invalid_input', 'Pass unit_id or code.');
     }
     const isOwner = String(unit.user) === String(ctx.user.id);
+    // Provfrågor med facit bara för den som gjort provet — inte i en kopia
+    // (eleven ska kunna göra provet utan att svaren redan hamnat i chatten).
+    const showTests = isOwner && !unit.copiedFrom;
     const itemQuery = { unit: unit._id };
-    if (!isOwner) itemQuery.usage = 'practice';
+    if (!showTests) itemQuery.usage = 'practice';
     if (args.kind) itemQuery.kind = args.kind;
     if (args.level) itemQuery.level = args.level;
     if (args.codes?.length) {
@@ -568,10 +579,8 @@ registerTool({
       isOwner ? StudyItemDeletion.find({ unit: unit._id, restoredAt: null }).sort({ deletedAt: -1 }).limit(20).lean() : []
     ]);
     const codeById = new Map(allRefs.map((i) => [String(i._id), itemCode(unit, i)]));
-    // Provfrågor med facit bara för skaparen — en mottagare ska kunna göra
-    // provet utan att svaren redan hamnat i chatten (get_practice_test finns
-    // för att rätta ett prov gjort på papper).
-    const hiddenTests = isOwner ? 0 : allRefs.filter((i) => i.usage === 'test').length;
+    // (get_practice_test finns för att rätta ett prov gjort på papper.)
+    const hiddenTests = showTests ? 0 : allRefs.filter((i) => i.usage === 'test').length;
     // Långa genomgångar kortas när de tillsammans blir för stora för en chatt.
     const pagesTotal = pages.reduce((n, p) => n + (p.body || '').length, 0);
     const cutPages = pagesTotal > PAGES_BODY_BUDGET;
@@ -733,6 +742,8 @@ registerTool({
       reported_by: String(f.reporter?._id) === String(ctx.user.id) ? 'the user' : (f.reporter?.username || 'a friend'),
       reporter_note_untrusted: f.note || '',
       reported_at: f.createdAt,
+      // En kopia: elevens egen att rätta, men texten skrev någon annan.
+      ...(f.unit.copiedFrom ? { written_by_someone_else: true } : {}),
       item: itemFull(f.item, f.unit)
     }));
     return ok(`${data.length} of ${totalOpen} open report(s)`, data, { total_open: totalOpen });
@@ -933,28 +944,29 @@ registerTool({
   name: 'delete_study_page',
   title: 'Delete a genomgång',
   description:
-    'Deletes one genomgång page from a unit you created (for everyone it is shared with). The page\'s title and text come back in the response, ' +
+    'Deletes one genomgång page from a unit you created (also for anyone following it from before copies; copies friends were given keep theirs). The page\'s title and text come back in the response, ' +
     'so it can be added again with add_study_pages if it was a mistake. Confirm with the student first, naming the page.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: { page_id: objectId },
-  handler: async (args, ctx) => {
+  // Under användarens lås: en kopia som just får nytt innehåll ska inte få tillbaka det som tas bort.
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const page = await StudyPage.findById(args.page_id);
     const access = page ? await loadUnit(ctx.user.id, page.unit, 'owner') : { error: 'not_found' };
     if (access.error === 'forbidden') return unitError(access);
     if (access.error) return fail('not_found', 'No such page. get_study_unit lists page ids.');
     await StudyPage.deleteOne({ _id: page._id });
     // I en kopia: kommer inte tillbaka när någon delar området igen.
-    await markDropped(access.unit._id, [page.copiedFrom]);
+    await markDropped(access.unit, [page]);
     return ok(`Deleted a page from ${access.unit.code}`, { page_id: String(page._id), deleted_page: { title: page.title, body: page.body } });
-  }
+  })
 });
 
 registerTool({
   name: 'update_study_page',
   title: 'Edit a genomgång',
-  description: 'Changes the title, text or order of a genomgång page in a unit you created (overwrites it for everyone it is shared with).',
+  description: 'Changes the title, text or order of a genomgång page in a unit you created (also for anyone following it from before copies; copies friends were given stay as they are).',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -1083,7 +1095,7 @@ registerTool({
   title: 'Correct a card or exercise',
   description:
     'Changes a card or exercise in a unit you created — fix a wrong answer, improve a solution or hint, change the level. Only the fields you pass change ' +
-    '(it overwrites the item for everyone the unit is shared with). The fields and the checks are the same as in add_exercises. template: null turns a template back into a fixed exercise (pass an answer with value too). ' +
+    '(also for anyone following the unit from before copies; copies friends were given stay as they are). The fields and the checks are the same as in add_exercises. template: null turns a template back into a fixed exercise (pass an answer with value too). ' +
     'Use it after verifying your own content and when resolving "fel i facit" reports.',
   scope: 'write',
   feature: FEATURE,
@@ -1168,7 +1180,7 @@ registerTool({
     unit_id: objectId,
     codes: z.array(z.string().trim().max(20)).min(1).max(100).describe('e.g. ["MA3-14", "MA3-15"]')
   },
-  handler: async (args, ctx) => {
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
     const { unit } = access;
@@ -1185,7 +1197,7 @@ registerTool({
     const deleted = await deleteItems(unit, items, { userId: ctx.user.id, via: 'ai' });
     const missing = numbers.filter((n) => !items.some((i) => i.number === n)).map((n) => `${unit.code}-${n}`);
     return ok(`Deleted ${deleted.length} item(s) from ${unit.code}`, { deleted, ...(missing.length ? { not_found: missing } : {}) });
-  }
+  })
 });
 
 registerTool({
@@ -1193,7 +1205,7 @@ registerTool({
   title: 'Edit a study unit',
   description:
     'Changes a unit you created: title, description, term, årskurs, test date (null to clear), source, or archive it. ' +
-    'Archiving hides the unit from the student\'s lists AND from everyone it is shared with (their folders too) until it is unarchived — ' +
+    'Archiving hides the unit from the student\'s lists AND from anyone following it from before copies (their folders too) until it is unarchived; copies friends were given are theirs and stay — ' +
     'list_study_units with include_archived finds it again. The subject cannot change (the code prefix depends on it) — create a new unit instead.',
   scope: 'write',
   feature: FEATURE,
@@ -1246,20 +1258,20 @@ registerTool({
   name: 'delete_study_unit',
   title: 'Delete a study unit',
   description:
-    'Permanently deletes a unit you created with all its genomgångar, cards and exercises — also for friends it was shared with, and everyone\'s progress on it. ' +
+    'Permanently deletes a unit you created (or a copy the student got) with all its genomgångar, cards and exercises — also for anyone following it from before copies, and everyone\'s progress on it; copies friends were given are theirs and stay. ' +
     'Cannot be undone; archiving (update_study_unit archived:true) is often better. Always confirm with the student first, naming the unit.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: { unit_id: objectId },
-  handler: async (args, ctx) => {
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const access = await loadUnit(ctx.user.id, args.unit_id, 'owner');
     if (access.error) return unitError(access);
     const { unit } = access;
     const items = await StudyItem.countDocuments({ unit: unit._id });
     await deleteStudyUnitsCascade([unit._id]);
     return ok(`Deleted ${unit.code} and its ${items} card(s)/exercise(s)`, { unit_id: String(unit._id), code: unit.code });
-  }
+  })
 });
 
 registerTool({
@@ -1570,13 +1582,13 @@ registerTool({
   name: 'delete_practice_test',
   title: 'Delete a practice test',
   description:
-    'Permanently deletes a practice test you created and its questions (for everyone it is shared with). Results already done stay in the students\' history. ' +
+    'Permanently deletes a practice test you created and its questions (also for anyone following the unit from before copies; copies keep theirs). Results already done stay in the students\' history. ' +
     'Confirm with the student first, naming the test.',
   scope: 'write',
   feature: FEATURE,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   inputSchema: { test_id: objectId },
-  handler: async (args, ctx) => {
+  handler: async (args, ctx) => withUserLock(ctx.user.id, async () => {
     const loaded = await loadTest(ctx.user.id, args.test_id);
     if (!loaded) return fail('not_found', MSG_TEST_NOT_FOUND);
     if (!loaded.isOwner) return fail('forbidden', MSG_OWNER_ONLY);
@@ -1585,9 +1597,9 @@ registerTool({
     const items = await StudyItem.find({ _id: { $in: ids }, usage: 'test' }).lean();
     await deleteItems(loaded.unit, items, { userId: ctx.user.id, via: 'ai' });
     await StudyTest.deleteOne({ _id: loaded.test._id });
-    await markDropped(loaded.unit._id, [loaded.test.copiedFrom]);
+    await markDropped(loaded.unit, [loaded.test]);
     return ok(`Deleted the practice test and its ${items.length} question(s)`, { test_id: String(loaded.test._id) });
-  }
+  })
 });
 
 // ── mappar ───────────────────────────────────────────────────────────────────

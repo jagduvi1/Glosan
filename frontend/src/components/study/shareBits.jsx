@@ -15,7 +15,8 @@ export const USES = [
   { value: 100, label: '100' }
 ];
 
-export const isActiveLink = (l) => !l.revoked && new Date(l.expiresAt) > new Date() && l.usedCount < l.maxUses;
+// Även en full länk visas: de som redan använt den hämtar det nya med den.
+export const isActiveLink = (l) => !l.revoked && new Date(l.expiresAt) > new Date();
 export const inviteUrl = (code) => `${window.location.origin}/p/${code}`;
 
 /** Hur länge och hur många — valen för en ny länk. */

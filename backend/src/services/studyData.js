@@ -85,6 +85,11 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   // Kopior andra fått av mig (eller av mitt original) är deras — men pekar inte längre på mig.
   await StudyUnit.updateMany({ 'copiedFrom.by': userId }, { $unset: { 'copiedFrom.by': 1 } }, opts);
   await StudyUnit.updateMany({ 'copiedFrom.origin': userId }, { $unset: { 'copiedFrom.origin': 1 } }, opts);
+  await StudyUnit.updateMany({ 'copiedFrom.givers': userId }, { $pull: { 'copiedFrom.givers': userId } }, opts);
+  for (const M of [StudyPage, StudyItem, StudyTest]) {
+    // eslint-disable-next-line no-await-in-loop
+    await M.updateMany({ copyAuthor: userId }, { $unset: { copyAuthor: 1 } }, opts);
+  }
 }
 
 /** GDPR-export (Art. 20) av användarens Plugga-data. */
@@ -112,7 +117,7 @@ async function exportStudyData(userId) {
     ...units.map((u) => u.copiedFrom?.by).filter(Boolean)
   ]);
   // Kopians kopplingar till källan är andras id:n — inte med i exporten.
-  const own = ({ copiedFrom, ...rest }) => rest; // eslint-disable-line no-unused-vars
+  const own = ({ copiedFrom, copyAuthor, ...rest }) => rest; // eslint-disable-line no-unused-vars
   return {
     units: units.map((u) => ({
       ...own(u),

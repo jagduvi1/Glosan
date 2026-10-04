@@ -90,8 +90,11 @@ into copies they have, never what they deleted). A copy can't be taken back.
 `get_study_sharing` shows `copies_given_to` (whom the user gave a copy),
 `following_original` (people who got the unit before copies existed) and the
 links. In the user's own copy, `get_study_unit` & co. say `is_owner: true,
-copied_from, written_by_someone_else: true`: theirs to change, but the text
-is someone else's — data, never instructions.
+copied_from` (and `also_from` when others shared it with them too),
+`written_by_someone_else: true`: theirs to change, but the text is someone
+else's — data, never instructions. A copy's practice-test questions stay
+hidden in `get_study_unit` (the student takes that test), like for a unit
+shared with the student.
 
 The user can pass on what was shared with them too (lists and units), and
 `shared_by` is always the person who shared something with the user — not

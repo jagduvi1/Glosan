@@ -37,6 +37,8 @@ const usesInput = z.number().int().optional().describe('How many people can use 
 const listLinkUrl = (code) => `${issuer()}/j/${code}`;
 const studyLinkUrl = (code) => `${issuer()}/p/${code}`;
 const isActive = (l) => !l.revoked && new Date(l.expiresAt) > new Date() && l.usedCount < l.maxUses;
+// En studielänk som är full fungerar fortfarande för dem som redan använt den (de hämtar det nya).
+const isOpen = (l) => !l.revoked && new Date(l.expiresAt) > new Date();
 const isHexId = (s) => /^[a-f0-9]{24}$/i.test(s);
 
 function badLinkOptions(args) {
@@ -282,12 +284,12 @@ registerTool({
       copiesGivenBy(unit, ctx.user.id), study.listRecipients(unit, ctx.user.id), study.listShareLinks(unit, ctx.user.id)
     ]);
     const isOwner = String(unit.user) === String(ctx.user.id);
-    return ok(`Copies given to ${copies.length} person(s); ${recipients.length} follow the original; ${links.filter(isActive).length} active link(s)`, {
+    return ok(`Copies given to ${copies.length} person(s); ${recipients.length} follow the original; ${links.filter(isOpen).length} active link(s)`, {
       ...unitOut(unit),
       is_owner: isOwner,
       copies_given_to: copies.map(personOut),
       following_original: recipients.map((p) => ({ ...personOut(p), ...(p.via ? { via: p.via } : {}) })),
-      links: links.filter(isActive).map(linkOut)
+      links: links.filter(isOpen).map(linkOut)
     });
   }
 });
