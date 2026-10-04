@@ -18,7 +18,7 @@ const {
   listShares, shareListWithFriends, removeListRecipient, createListInvite, listListInvites, revokeListInvite, revokeListInviteById
 } = require('../../services/listSharing');
 const study = require('../../services/study/sharing');
-const { copiesGivenBy } = require('../../services/study/copies');
+const { copiesGivenBy, MAX_COPY_PAIRS } = require('../../services/study/copies');
 
 const FEATURE = 'study';
 const LINK_DAYS = [1, 7, 30];
@@ -313,7 +313,7 @@ registerTool({
     const r = await study.shareUnitsWithFriends(ctx.user.id, units.list, ids);
     if (r.error) {
       return r.code === 'too_many'
-        ? fail('invalid_input', 'That is too much at once (friends × units over 300) — share with fewer friends or fewer units per call.')
+        ? fail('invalid_input', `That is too much at once (friends × units over ${MAX_COPY_PAIRS}) — share with fewer friends or fewer units per call.`)
         : fail('invalid_input', NOT_FRIENDS);
     }
     return ok(`Shared ${r.units} unit(s) with ${r.friends} friend(s): ${r.created} new cop(ies), ${r.updated} cop(ies) got new material`, {

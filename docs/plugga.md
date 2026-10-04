@@ -264,8 +264,12 @@ what is new. Code: `services/study/copies.js`.
 - **Blocks**: if the recipient and the original's creator (`copiedFrom.origin`,
   followed along the chain) have blocked each other, nothing reaches the
   recipient, whoever shares — silently. Nor does anything someone they have a
-  block with added along the way (`copyAuthor`, kept even when that original
-  is deleted). A friend in between who keeps trying
+  block with added or changed along the way: `copyAuthor` (kept even when that
+  original is deleted) and `copyEditors` on pages and items someone rewrote in
+  their copy; a copy whose title, description or source someone renamed
+  (`copiedFrom.editors`) doesn't reach them at all. The "har fått en kopia av
+  dig" list and the count on the Dela button both leave out people you have a
+  block with, so they always agree. A friend in between who keeps trying
   can notice that one person never gets it; hiding even that would be a
   product decision. Blocking also ends list shares, the co-op streak and
   pending challenges, and stops adding by code or joining by link

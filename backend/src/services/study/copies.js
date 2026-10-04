@@ -46,8 +46,18 @@ const plain = (doc) => (doc && typeof doc.toObject === 'function' ? doc.toObject
 
 /** Det som inte följer med till en kopia: id, ägare, tider och källans ursprung. */
 function contentOf(doc) {
-  const { _id, __v, unit, user, createdAt, updatedAt, copiedFrom, copyAuthor, ...rest } = doc; // eslint-disable-line no-unused-vars
+  const { _id, __v, unit, user, createdAt, updatedAt, copiedFrom, copyAuthor, copyEditors, ...rest } = doc; // eslint-disable-line no-unused-vars
   return rest;
+}
+
+/**
+ * En kopierad sak (eller kopians titel och beskrivning) som ägaren ändrar:
+ * hen räknas nu också som författare — det hen skrivit ska inte nå den som
+ * blockerat hen. `path` = 'copyEditors' (sida/uppgift) eller 'copiedFrom.editors' (området).
+ */
+function markEdited(doc, userId, path = 'copyEditors') {
+  const current = (doc.get(path) || []).map(String);
+  if (!current.includes(String(userId))) doc.set(path, [...current, String(userId)]);
 }
 
 /** Mottagarens kopia av originalet `rootId`, om hen har en (även arkiverad). */
@@ -81,8 +91,12 @@ async function loadSource(sourceDoc) {
     if (doc.copyAuthor) return String(doc.copyAuthor);
     return authorOfRoot.get(String(doc.copiedFrom)) || null;
   };
-  const authors = new Set([...pages, ...items, ...tests].map(authorOf).filter(Boolean));
-  return { source, pages, items, tests, authorOf, authors: [...authors] };
+  // Alla som skrivit något i en sak: författaren och de som ändrat den sedan.
+  const writersOf = (doc) => [authorOf(doc), ...(doc.copyEditors || []).map(String)].filter(Boolean);
+  // Områdets titel och beskrivning: den som ändrat dem i en kopia längs vägen.
+  const unitEditors = (source.copiedFrom?.editors || []).map(String);
+  const authors = new Set([...[...pages, ...items, ...tests].flatMap(writersOf), ...unitEditors]);
+  return { source, pages, items, tests, authorOf, writersOf, unitEditors, authors: [...authors] };
 }
 
 /**
@@ -104,15 +118,17 @@ async function copyContent(src, copy, recipientId, { fresh = false, blocked = ()
   ]);
   const dropped = new Set((copy.copyDropped || []).map(String));
   const known = new Set([...dropped, ...[...havePages, ...haveItems, ...haveTests].map(rootOfDoc)]);
-  const allowed = (doc) => {
-    const author = src.authorOf(doc);
-    return !author || author === String(recipientId) || !blocked(author, recipientId);
-  };
+  // Inget som någon mottagaren har en blockering med har skrivit eller ändrat.
+  const allowed = (doc) => src.writersOf(doc).every((w) => w === String(recipientId) || !blocked(w, recipientId));
   const wanted = (doc) => !known.has(rootOfDoc(doc)) && allowed(doc);
-  // Kopian minns vem som skrev originalet — även när originalet tagits bort.
+  // Kopian minns vem som skrev originalet och vilka som ändrat det — även när
+  // originalet tagits bort.
   const origin = (doc) => {
     const author = src.authorOf(doc);
-    return author ? { copyAuthor: oid(author) } : {};
+    return {
+      ...(author ? { copyAuthor: oid(author) } : {}),
+      ...(doc.copyEditors?.length ? { copyEditors: doc.copyEditors.map(oid) } : {})
+    };
   };
 
   const pages = src.pages.filter(wanted).slice(0, Math.max(0, L.MAX_PAGES_PER_UNIT - havePages.length));
@@ -203,19 +219,32 @@ async function giveCopy(sharerId, src, recipientId, blocked) {
   const { source } = src;
   const r = String(recipientId);
   const root = rootOf(source);
-  const original = await StudyUnit.findOne(
-    { _id: oid(root), $or: [{ user: oid(r) }, { sharedWith: oid(r), archivedAt: null }] }, '_id'
-  ).lean();
-  if (original) return { unitId: String(original._id), created: false, added: 0 };
+  const [original, existing] = await Promise.all([
+    StudyUnit.findOne({ _id: oid(root), $or: [{ user: oid(r) }, { sharedWith: oid(r), archivedAt: null }] }, 'user').lean(),
+    findCopy(r, root)
+  ]);
+  // Har hen originalet (skapat det, eller följer det från före kopiorna) får hen
+  // inget — utom den som både följer det och redan har en kopia: hen byter till kopian.
+  if (original && (String(original.user) === r || !existing)) return { unitId: String(original._id), created: false, added: 0 };
+  // Den som följde ett original från före kopiorna och nu får (eller har) en
+  // kopia slutar följa det — annars skulle originalet stå i vägen för allt nytt.
+  const leaveOriginal = () => StudyUnit.updateOne(
+    { _id: oid(root), sharedWith: oid(r) }, { $pull: { sharedWith: oid(r), sharedVia: { user: oid(r) } } }
+  );
   const sum = (a) => a.pages + a.items + a.tests;
-  const existing = await findCopy(r, root);
   if (existing) {
+    await leaveOriginal();
     const added = await copyContent(src, existing, r, { blocked });
     // Hen har nu fått det av den här personen också (hens "har fått en kopia av dig").
     await StudyUnit.updateOne({ _id: existing._id }, { $addToSet: { 'copiedFrom.givers': oid(sharerId) } });
     return { unitId: String(existing._id), created: false, added: sum(added) };
   }
+  // Titeln och beskrivningen följer med en ny kopia: har någon mottagaren har
+  // en blockering med ändrat dem längs vägen kommer området inte fram alls.
+  if (src.unitEditors.some((e) => e !== r && blocked(e, r))) return null;
   if (!(await hasRoomForUnit(r))) return null;
+  // T.ex. hen följde ett original som sedan arkiverats (och som hen inte ser).
+  await leaveOriginal();
   const copy = await StudyUnit.create({
     user: oid(r),
     subject: source.subject,
@@ -228,7 +257,13 @@ async function giveCopy(sharerId, src, recipientId, blocked) {
     examDate: source.examDate || null,
     itemCounter: source.itemCounter || 0,
     copiedFrom: {
-      unit: source._id, root: oid(root), by: oid(sharerId), origin: oid(originOf(source)), givers: [oid(sharerId)], at: new Date()
+      unit: source._id,
+      root: oid(root),
+      by: oid(sharerId),
+      origin: oid(originOf(source)),
+      givers: [oid(sharerId)],
+      ...(src.unitEditors.length ? { editors: src.unitEditors.map(oid) } : {}),
+      at: new Date()
     }
   });
   try {
@@ -306,14 +341,20 @@ async function copiesGivenBy(unit, viewerId) {
     .sort((a, b) => a.username.localeCompare(b.username, 'sv'));
 }
 
-/** Hur många `viewerId` gett en kopia av varje område: Map(områdets id → n). */
+/**
+ * Hur många `viewerId` gett en kopia av varje område: Map(områdets id → n).
+ * Räknar som copiesGivenBy — utan dem man har en blockering med — så siffran
+ * och listan aldrig skiljer sig (en skillnad skulle avslöja en blockering).
+ */
 async function copyCounts(units, viewerId) {
   if (!units.length) return new Map();
   const rows = await StudyUnit.aggregate([
     { $match: { 'copiedFrom.root': { $in: [...new Set(units.map(rootOf))].map(oid) }, 'copiedFrom.givers': oid(viewerId), user: { $ne: oid(viewerId) } } },
     { $group: { _id: '$copiedFrom.root', users: { $addToSet: '$user' } } }
   ]);
-  const byRoot = new Map(rows.map((r) => [String(r._id), r.users.length]));
+  const everyone = [...new Set(rows.flatMap((r) => r.users.map(String)))];
+  const blocked = everyone.length ? await blockChecker([String(viewerId), ...everyone]) : () => false;
+  const byRoot = new Map(rows.map((r) => [String(r._id), r.users.filter((id) => !blocked(viewerId, id)).length]));
   return new Map(units.map((u) => [String(u._id), byRoot.get(rootOf(u)) || 0]));
 }
 
@@ -347,5 +388,6 @@ module.exports = {
   copiesGivenBy,
   copyCounts,
   markDropped,
-  unmarkDropped
+  unmarkDropped,
+  markEdited
 };

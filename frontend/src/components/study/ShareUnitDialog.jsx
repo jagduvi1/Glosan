@@ -128,7 +128,10 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
   // med `via`) kan bara stängas av — de är inte ens egna att sprida.
   const active = links.filter((l) => isActiveLink(l) && !l.via);
   const others = links.filter((l) => isActiveLink(l) && l.via);
-  const shown = active.find((l) => l.code === shownCode) || active[0] || null;
+  // En full länk tar ingen ny (de som redan gått med hämtar det nya med den) —
+  // visa den aldrig av sig själv som QR-koden att sätta upp.
+  const isFull = (l) => l.usedCount >= l.maxUses;
+  const shown = active.find((l) => l.code === shownCode) || active.find((l) => !isFull(l)) || null;
 
   return (
     <div className="stack" style={{ gap: 14 }}>
@@ -162,11 +165,11 @@ function LinkTab({ links, busy, onCreate, onRevoke }) {
         </div>
       )}
 
-      {active.length > 1 && (
+      {active.length > (shown ? 1 : 0) && (
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
           {active.map((l) => (
             <button key={l.code} type="button" className="chip" aria-pressed={shown?.code === l.code} onClick={() => setShownCode(l.code)}>
-              {l.title || l.code} · {l.usedCount}/{l.maxUses}{l.unitCount > 1 ? ` · ${l.unitCount} områden` : ''}
+              {l.title || l.code} · {isFull(l) ? 'full' : `${l.usedCount}/${l.maxUses}`}{l.unitCount > 1 ? ` · ${l.unitCount} områden` : ''}
             </button>
           ))}
         </div>

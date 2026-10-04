@@ -4,12 +4,14 @@
 //
 //   - tar bort vänskapen, co-op-streaken och pågående utmaningar mellan bara er
 //     två (gruppens utmaningar är de andras också och får vara kvar),
-//   - tar bort allt ni delat med varandra (glos-listor och Plugga-områden,
-//     även de den andra gick med i via länk och det ni delat vidare till
-//     varandra) — åt båda hållen,
+//   - tar bort glos-listor ni delat med varandra (även det ni delat vidare
+//     till varandra) och Plugga-områden den ena följer hos den andra från före
+//     kopiorna — åt båda hållen. Kopior av Plugga-områden som redan getts är
+//     mottagarens och finns kvar (services/study/copies.js),
 //   - hindrar att ni blir kompisar igen (kod eller länk till en lista), att
-//     den andra går med i det du delar via länk (och tvärtom) och att någon
-//     annan delar vidare det du skapat till den andra (och tvärtom).
+//     den andra går med i det du delar via länk (och tvärtom), och att något
+//     du skrivit — ett område du skapat eller något du lagt till eller ändrat
+//     i en kopia — når den andra genom någon annans delning (och tvärtom).
 //
 // Blockeringen syns inte för den blockerade: en kod eller länk ser bara ut att
 // inte fungera. Den som blockerat kan häva det under Kompisar.

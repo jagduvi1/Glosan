@@ -55,6 +55,8 @@ const studyUnitSchema = new mongoose.Schema({
   //   by     — den som först gav kopian ("från X")
   //   origin — den som skapade originalet (för blockeringar längs kedjan)
   //   givers — alla som delat det med ägaren (deras "har fått en kopia av dig")
+  //   editors — de som ändrat titel, beskrivning eller källa längs vägen
+  //             (för blockeringar: det de skrivit når inte den som blockerat dem)
   copiedFrom: {
     type: new mongoose.Schema({
       unit: { type: mongoose.Schema.Types.ObjectId, ref: 'StudyUnit', required: true },
@@ -62,6 +64,7 @@ const studyUnitSchema = new mongoose.Schema({
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       origin: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       givers: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+      editors: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: undefined },
       at: { type: Date, default: Date.now }
     }, { _id: false }),
     default: undefined

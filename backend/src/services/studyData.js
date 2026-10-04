@@ -86,10 +86,16 @@ async function deleteStudyDataForUser(userId, opts = {}) {
   await StudyUnit.updateMany({ 'copiedFrom.by': userId }, { $unset: { 'copiedFrom.by': 1 } }, opts);
   await StudyUnit.updateMany({ 'copiedFrom.origin': userId }, { $unset: { 'copiedFrom.origin': 1 } }, opts);
   await StudyUnit.updateMany({ 'copiedFrom.givers': userId }, { $pull: { 'copiedFrom.givers': userId } }, opts);
+  await StudyUnit.updateMany({ 'copiedFrom.editors': userId }, { $pull: { 'copiedFrom.editors': userId } }, opts);
   for (const M of [StudyPage, StudyItem, StudyTest]) {
     // eslint-disable-next-line no-await-in-loop
     await M.updateMany({ copyAuthor: userId }, { $unset: { copyAuthor: 1 } }, opts);
+    // eslint-disable-next-line no-await-in-loop
+    await M.updateMany({ copyEditors: userId }, { $pull: { copyEditors: userId } }, opts);
   }
+  // Även i andras borttagningslogg (kopian av en borttagen uppgift).
+  await StudyItemDeletion.updateMany({ 'snapshot.copyAuthor': userId }, { $unset: { 'snapshot.copyAuthor': 1 } }, opts);
+  await StudyItemDeletion.updateMany({ 'snapshot.copyEditors': userId }, { $pull: { 'snapshot.copyEditors': userId } }, opts);
 }
 
 /** GDPR-export (Art. 20) av användarens Plugga-data. */
@@ -117,7 +123,7 @@ async function exportStudyData(userId) {
     ...units.map((u) => u.copiedFrom?.by).filter(Boolean)
   ]);
   // Kopians kopplingar till källan är andras id:n — inte med i exporten.
-  const own = ({ copiedFrom, copyAuthor, ...rest }) => rest; // eslint-disable-line no-unused-vars
+  const own = ({ copiedFrom, copyAuthor, copyEditors, ...rest }) => rest; // eslint-disable-line no-unused-vars
   return {
     units: units.map((u) => ({
       ...own(u),
@@ -129,7 +135,7 @@ async function exportStudyData(userId) {
       pages: pages.filter((p) => String(p.unit) === String(u._id)).map(own),
       items: items.filter((i) => String(i.unit) === String(u._id)).map(own),
       tests: tests.filter((t) => String(t.unit) === String(u._id)).map(own),
-      deletedItems: deletions.filter((d) => String(d.unit) === String(u._id))
+      deletedItems: deletions.filter((d) => String(d.unit) === String(u._id)).map((d) => ({ ...d, snapshot: own(d.snapshot || {}) }))
     })),
     sharedWithMe: sharedWithMe.map((u) => ({
       title: u.title, subject: u.subject, term: u.term, sharedByUsername: sharers.get(sharerOf(u, userId))?.username || null

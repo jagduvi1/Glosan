@@ -24,7 +24,7 @@ const { recordPaperAttempt } = require('../../services/study/practice');
 const { listFolders, createFolder, updateFolder, COLORS } = require('../../services/study/folders');
 const { activityFor } = require('../../services/study/activity');
 const { deleteItems } = require('../../services/study/itemDeletion');
-const { markDropped } = require('../../services/study/copies');
+const { markDropped, markEdited } = require('../../services/study/copies');
 const { figureProblems } = require('../../services/study/figures');
 const { validateTemplate, instance } = require('../../services/study/templates');
 const StudyItemDeletion = require('../../models/StudyItemDeletion');
@@ -987,6 +987,8 @@ registerTool({
     if (args.title !== undefined) page.title = args.title;
     if (args.body !== undefined) page.body = args.body;
     if (args.order !== undefined) page.order = args.order;
+    // En sida i en kopia som eleven skriver om: eleven räknas också som författare.
+    if (page.copiedFrom && (args.title !== undefined || args.body !== undefined)) markEdited(page, ctx.user.id);
     await page.save();
     return ok(`Updated a page in ${access.unit.code}`, { page_id: String(page._id), title: page.title });
   }
@@ -1156,6 +1158,8 @@ registerTool({
       if (checked.error) return checked.error;
       warnings = checked.warnings;
     }
+    // En uppgift i en kopia som eleven ändrar: eleven räknas också som författare.
+    if (item.copiedFrom) markEdited(item, ctx.user.id);
     try {
       await item.save();
     } catch (err) {
@@ -1244,6 +1248,9 @@ registerTool({
     }
     if (args.archived !== undefined) set('archivedAt', args.archived ? new Date() : null, 'archived');
     if (!changed.length) return fail('invalid_input', 'Nothing to change — pass at least one field.');
+    // En kopia vars titel, beskrivning eller källa eleven skriver om: eleven
+    // räknas som medförfattare till dem (de följer med när kopian delas vidare).
+    if (unit.copiedFrom && ['title', 'description', 'source'].some((f) => changed.includes(f))) markEdited(unit, ctx.user.id, 'copiedFrom.editors');
     try {
       await unit.save();
     } catch (err) {

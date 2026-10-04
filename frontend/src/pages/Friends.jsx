@@ -660,7 +660,7 @@ export default function Friends() {
       {pendingRemove && (
         <ConfirmDialog
           title="Ta bort kompisen?"
-          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s.${hasFeature(user, 'study') ? ' Kopior av Plugga-områden ni gett varandra är era egna och finns kvar.' : ''} Ni kan alltid lägga till varandra igen.`}
+          message={`${pendingRemove.username} tas bort från din kompislista, och du från ${pendingRemove.username}s.${hasFeature(user, 'study') ? ' Kopior av Plugga-områden ni gett varandra är era egna och finns kvar; områden ni följer hos varandra sedan förr slutar delas.' : ''} Ni kan alltid lägga till varandra igen.`}
           confirmLabel="Ta bort"
           destructive
           onConfirm={onRemoveConfirmed}

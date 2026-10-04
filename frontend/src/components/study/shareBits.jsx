@@ -75,6 +75,11 @@ export function QrLinkCard({ link, busy = false, onRevoke }) {
         {link.usedCount} av {link.maxUses} har gått med · går ut {new Date(link.expiresAt).toLocaleDateString('sv-SE')}
         {link.unitCount > 1 ? ` · gäller ${link.unitCount} områden` : ''}
       </p>
+      {link.usedCount >= link.maxUses && (
+        <p className="t-hand" style={{ fontSize: 14, margin: '4px 0 0', color: 'var(--berry-deep)' }}>
+          Full — ingen ny kan gå med, men de som redan gjort det kan hämta det nya. Gör en ny QR-kod för fler.
+        </p>
+      )}
       {onRevoke && (
         <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={busy} onClick={() => onRevoke(code)}>
           Stäng av länken

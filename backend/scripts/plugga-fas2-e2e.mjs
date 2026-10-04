@@ -269,6 +269,35 @@ async function main() {
     const vPrompts = await promptsIn(V, vHist.id);
     assert.ok(vPrompts.includes('Spinning Jenny?') && !vPrompts.includes('B:s egen fråga?'), 'nothing B wrote reaches someone who blocked B');
     assert.deepEqual([vHist.copiedFrom, vHist.alsoFrom], [C.name, []]);
+    // Det någon ändrat i sin kopia räknas också som hens: V2 blockerar B och får
+    // (via W) B:s kopior — utan kortet B skrev om och utan området B döpte om.
+    const bAiEd = await connectMcp(B.token);
+    const jenny = (await api(`/api/study/units/${bHist.id}`, B.token)).body.items.find((i) => i.prompt === 'Spinning Jenny?');
+    assert.equal((await call(bAiEd, 'update_study_item', { item_id: jenny.id, back: 'B skrev om det här.' })).isError, false);
+    assert.equal((await call(bAiEd, 'update_study_unit', { unit_id: bCopyId, title: 'Procent — B:s version' })).isError, false);
+    await bAiEd.close();
+    const W = await signUp('p2middle');
+    const V2 = await signUp('p2viewer2');
+    await befriend(B, W);
+    await befriend(W, V2);
+    assert.equal((await api('/api/me/blocks', V2.token, { method: 'POST', body: { userId: B.id } })).status, 200);
+    assert.equal((await api('/api/study/share', B.token, { method: 'POST', body: { unitIds: [bCopyId, bHist.id], friendIds: [W.id] } })).body.created, 2);
+    await api('/api/study/share', W.token, { method: 'POST', body: { unitIds: (await unitsOf(W)).map((u) => u.id), friendIds: [V2.id] } });
+    const v2Units = await unitsOf(V2);
+    assert.deepEqual(v2Units.map((u) => u.title), ['Industriella revolutionen'], 'the unit B renamed never reaches V2');
+    const v2Detail = await api(`/api/study/units/${v2Units[0].id}`, V2.token);
+    assert.ok(!v2Detail.body.items.some((i) => i.prompt === 'Spinning Jenny?'), 'nor the card B rewrote');
+    assert.deepEqual(v2Detail.body.pages.map((p) => p.title), ['Fabrikerna'], 'what A wrote still comes');
+    // Siffran på Dela-knappen och listan i dialogen räknar likadant — även
+    // efter en blockering (en skillnad skulle avslöja den).
+    const countAndList = async () => [
+      (await api(`/api/study/units/${bCopyId}`, B.token)).body.unit.sharedCount,
+      (await api(`/api/study/units/${bCopyId}/shares`, B.token)).body.copies.length
+    ];
+    assert.equal((await api('/api/me/blocks', W.token, { method: 'POST', body: { userId: B.id } })).status, 200);
+    const [shownCount, shownList] = await countAndList();
+    assert.equal(shownCount, shownList, 'the count never gives a block away');
+    assert.equal((await api(`/api/me/blocks/${B.id}`, W.token, { method: 'DELETE' })).status, 200);
     // En full länk fungerar fortfarande för dem som redan använt den — de hämtar det nya.
     const fullLink = await api(`/api/study/units/${histId}/share-links`, A.token, { method: 'POST', body: { ttlDays: 1, maxUses: 10 } });
     const G = await signUp('p2late');
@@ -290,7 +319,7 @@ async function main() {
     const eJoin = await api(`/api/study-invite/${bLink.body.link.code}/accept`, E.token, { method: 'POST' });
     assert.equal(eJoin.body.joined, true);
     assert.equal((await api(`/api/study/units/${eJoin.body.unitId}`, E.token)).body.unit.copiedFrom, B.name);
-    assert.deepEqual((await api(`/api/study/units/${bCopyId}/shares`, B.token)).body.copies.map((r) => r.username).sort(), [C.name, E.name].sort());
+    assert.deepEqual((await api(`/api/study/units/${bCopyId}/shares`, B.token)).body.copies.map((r) => r.username).sort(), [C.name, E.name, W.name].sort());
     const aGave = (await api(`/api/study/units/${unitId}/shares`, A.token)).body.copies.map((r) => r.username);
     assert.ok(!aGave.includes(E.name), 'the creator sees whom THEY gave a copy, not the whole chain');
     // Har skaparen blockerat någon kommer det aldrig fram — vem som än delar.
@@ -312,7 +341,7 @@ async function main() {
     // Via AI:n: samma sak — och en kopia kan inte tas tillbaka.
     const bAi = await connectMcp(B.token);
     const bSharing = (await call(bAi, 'get_study_sharing', { unit: bCopyId })).data;
-    assert.deepEqual(bSharing.copies_given_to.map((p) => p.username).sort(), [C.name, E.name].sort());
+    assert.deepEqual(bSharing.copies_given_to.map((p) => p.username).sort(), [C.name, E.name, W.name].sort());
     const takeBack = await call(bAi, 'stop_sharing_study', { unit: bCopyId, friend: E.name });
     assert.equal(takeBack.error?.code, 'not_found');
     assert.match(takeBack.error.message, /can't be taken back/);
