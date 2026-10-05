@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import GloAvatar from '../components/GloAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+import { hasFeature } from '../utils/features';
 import { fetchMcpEndpoint } from '../api/mcp';
 
 // /koppla-ai — guiden till att koppla sin egen AI (Claude m.fl.) till Glosan
@@ -50,7 +51,7 @@ function Example({ photo, children }) {
   );
 }
 
-function Guide({ loggedIn }) {
+function Guide({ loggedIn, hasPlugga = false }) {
   const [endpoint, setEndpoint] = useState(`${window.location.origin}/api/mcp`);
   useEffect(() => {
     let alive = true;
@@ -151,8 +152,15 @@ function Guide({ loggedIn }) {
       <section className="card" style={{ marginBottom: 18 }}>
         <h2 style={{ marginTop: 0 }}>Vad ser AI:n?</h2>
         <ul style={{ lineHeight: 1.6, margin: 0 }}>
-          <li>Dina listor, glosor, Plugga-områden och resultat i Glosan — aldrig ditt lösenord eller din e-post.</li>
-          <li>Du väljer själv om den bara får <strong>läsa</strong> eller också <strong>skapa och ändra</strong>.</li>
+          <li>
+            Dina listor, glosor, Plugga-områden och resultat i Glosan, och vilka kompisar du har och delar med — aldrig
+            ditt lösenord eller din e-post.
+          </li>
+          <li>
+            Du väljer själv om den bara får <strong>läsa</strong> eller också <strong>skapa och ändra</strong>. Då kan den
+            också dela med dina kompisar och göra delningslänkar — Glosan säger åt den att bara göra det när du ber om
+            det, och att fråga dig först.
+          </li>
           <li>
             Foton du skickar till AI:n når aldrig Glosan: AI:n läser bilden själv och lägger bara in texten. Glosan
             ser inte heller dina chattar.
@@ -196,7 +204,7 @@ function Guide({ loggedIn }) {
         {loggedIn ? (
           <>
             <Link to="/profile"><button className="btn btn-primary" type="button">Till Profil → Koppla din AI</button></Link>
-            <Link to="/plugga"><button className="btn" type="button">Till Plugga</button></Link>
+            {hasPlugga && <Link to="/plugga"><button className="btn" type="button">Till Plugga</button></Link>}
           </>
         ) : (
           <>
@@ -219,7 +227,7 @@ export default function ConnectAiGuide() {
       <link rel="canonical" href="https://glosan.app/koppla-ai" />
     </Helmet>
   );
-  if (user) return <>{head}<Guide loggedIn /></>;
+  if (user) return <>{head}<Guide loggedIn hasPlugga={hasFeature(user, 'study')} /></>;
   return (
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
       {head}

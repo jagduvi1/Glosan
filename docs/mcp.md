@@ -134,7 +134,10 @@ point the user at the web app for those.
   module on later never widens an existing connection — the Profile page says
   "Når inte Plugga" and suggests reconnecting — and switching one off takes
   it away at once. Connections from before the field are frozen to what they
-  reach on first use.
+  reach on first use — except a module released to everyone after they were
+  made (Plugga, v0.1.39), which counts only if the account had the flag
+  itself (`legacyApprovedModules` in `config/features.js`; the Profile page
+  uses the same rule).
 - **Tokens only open `/api/mcp`.** `glo_` tokens are accepted by
   `requireMcpAuth` alone; `requireAuth` (every REST route) rejects them.
 - **PKCE S256 is mandatory** (a 43-character challenge), redirect URIs are

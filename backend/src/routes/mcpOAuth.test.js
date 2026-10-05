@@ -584,6 +584,25 @@ describe('modules (audit: a connection never widens by itself)', () => {
     }
   });
 
+  test('a connection from before the field never gains a module released later — unless the account had it', async () => {
+    const { tokens } = await connect();
+    delete McpToken._docs[0].modules;
+    FEATURES.study.released = true;
+    try {
+      const list = await request(app).get('/api/mcp/connections').set('Authorization', `Bearer ${jwtFor()}`);
+      expect(list.body.connections[0].missingModules).toEqual([{ key: 'study', label: 'Plugga' }]);
+      expect((await mcpCall(tokens.access_token)).body.features).toEqual([]);
+      await new Promise((r) => setImmediate(r));
+      expect(McpToken._docs[0].modules).toEqual([]);
+      // Hade kontot Plugga själv (före släppet) räknas det som förut.
+      delete McpToken._docs[0].modules;
+      mockFeatures.set(USER_ID, ['study']);
+      expect((await mcpCall(tokens.access_token)).body.features).toEqual(['study']);
+    } finally {
+      FEATURES.study.released = false;
+    }
+  });
+
   test('a connection from before the field is frozen to what it reaches on first use', async () => {
     const { tokens } = await connect();
     delete McpToken._docs[0].modules;

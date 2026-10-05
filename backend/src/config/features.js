@@ -53,4 +53,17 @@ function hasFeature(user, key) {
   return effectiveFeatures(user).includes(key);
 }
 
-module.exports = { FEATURES, FEATURE_KEYS, FEATURE_FIELDS, featuresForAll, featuresDisabled, effectiveFeatures, hasFeature };
+/**
+ * Vad en AI-anslutning från före McpToken.modules (v0.1.27–v0.1.29) räknas ha
+ * godkänt: det kontot når nu — utom en modul som släppts för alla efteråt,
+ * som bara räknas om kontot har flaggan själv (hade modulen redan innan).
+ * Annars skulle en gammal anslutning få Plugga utan att någon godkänt det.
+ */
+function legacyApprovedModules(user) {
+  const own = Array.isArray(user?.features) ? user.features : [];
+  return effectiveFeatures(user).filter((k) => !FEATURES[k].released || own.includes(k));
+}
+
+module.exports = {
+  FEATURES, FEATURE_KEYS, FEATURE_FIELDS, featuresForAll, featuresDisabled, effectiveFeatures, hasFeature, legacyApprovedModules
+};

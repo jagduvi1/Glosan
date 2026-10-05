@@ -462,6 +462,13 @@ db.studyitems.updateMany(
 db.studyitems.updateMany({ rollbackHidden: true }, { $set: { usage: 'practice' }, $unset: { rollbackHidden: '' } })
 ```
 
+**Below v0.1.39, Plugga is hidden again.** Older images don't know it is
+released, and since the release nobody gets the flag of their own (no invite
+grant). Re-tagging an older image would give everyone else 404 on `/plugga`,
+and their AIs would lose the tools. Their content stays, but they can't reach
+it. So set `FEATURES_FOR_ALL=study` in the VM's `.env` together with the older
+image, then restart the backend.
+
 The other fas 2 collections (tests, links, deletions) simply sit unused by the
 older release. Restoring a database dump from before a release drops the whole
 database first (`scripts/backup/restore.sh`), so no newer collections are

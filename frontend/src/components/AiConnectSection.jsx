@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { hasFeature } from '../utils/features';
 import { fetchMcpConnections, revokeMcpConnection } from '../api/mcp';
 
 // Profil → "Koppla din AI". Visar MCP-adressen att klistra in i claude.ai
@@ -19,7 +20,7 @@ function formatDate(iso) {
 }
 
 export default function AiConnectSection() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, user } = useAuth();
   const [connections, setConnections] = useState(null);
   const [endpoint, setEndpoint] = useState(`${window.location.origin}/api/mcp`);
   const [error, setError] = useState('');
@@ -66,7 +67,8 @@ export default function AiConnectSection() {
       <h2 style={{ marginTop: 0 }}>🤖 Koppla din AI</h2>
       <p className="t-hand muted" style={{ fontSize: 16, marginTop: 0 }}>
         Fota glosbladet i Claude och säg <em>"gör en glosa av det här"</em> — så skapas listan direkt i Glosan.
-        Fota sidorna i boken så gör den ett område i Plugga. Lägg till Glosan som connector i din AI med adressen nedan.
+        {hasFeature(user, 'study') ? ' Fota sidorna i boken så gör den ett område i Plugga.' : ''} Lägg till Glosan som
+        connector i din AI med adressen nedan.
       </p>
 
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
