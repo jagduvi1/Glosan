@@ -89,6 +89,34 @@ function redirectError(res, redirectUri, error, description, state) {
   return res.redirect(302, u.toString());
 }
 
+// En okänd klient på /authorize är en MÄNNISKA i en browser: AI:n öppnade
+// sidan åt hen. Oftast har AI:n loggat in med ett sätt Glosan inte stöder
+// (Claude föreslår "Use Claude's published identity" — Glosan har bara
+// Dynamic Client Registration) eller så har en oanvänd registrering städats
+// bort. Browsern får en sida som säger vad man gör i stället för rå JSON —
+// fortfarande 400 och aldrig en redirect (RFC 6749 §4.1.2.1: informera
+// användaren, skicka inte vidare).
+function unknownClient(req, res) {
+  if (req.accepts(['json', 'html']) !== 'html') return oauthError(res, 400, 'invalid_client', 'unknown client_id');
+  const base = issuer();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(400).type('html').send(`<!doctype html>
+<html lang="sv">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Glosan kände inte igen din AI</title></head>
+<body>
+<h1>Glosan kände inte igen din AI</h1>
+<p>Din AI försökte ansluta till Glosan, men Glosan kände inte igen den. Så här fixar du det:</p>
+<ol>
+<li>Ta bort Glosan bland din AI:s connectors (i Claude: <strong>Customize → Connectors</strong>).</li>
+<li>Lägg till den igen med adressen <code>${base}/api/mcp</code>.</li>
+<li>Frågar Claude om <strong>OAuth client</strong>: välj <strong>Register automatically</strong>.</li>
+</ol>
+<p><a href="${base}/koppla-ai">Läs hela guiden: Koppla din AI till Glosan</a></p>
+</body>
+</html>
+`);
+}
+
 function isValidRedirectUri(uri) {
   let u;
   try { u = new URL(uri); } catch { return false; }
@@ -162,7 +190,7 @@ router.get('/authorize', oauthLimiter, async (req, res) => {
     // (open redirect / kodläcka) — de får ett rent 400.
     if (!client_id || typeof client_id !== 'string') return oauthError(res, 400, 'invalid_request', 'client_id is required');
     const client = await OAuthClient.findOne({ clientId: client_id });
-    if (!client) return oauthError(res, 400, 'invalid_client', 'unknown client_id');
+    if (!client) return unknownClient(req, res);
     if (typeof redirect_uri !== 'string' || !redirectUriRegistered(client, redirect_uri)) {
       return oauthError(res, 400, 'invalid_request', 'redirect_uri does not match a registered URI');
     }

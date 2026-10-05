@@ -133,6 +133,14 @@ const OAuthClient = require('../models/OAuthClient');
 const OAuthAuthCode = require('../models/OAuthAuthCode');
 const McpToken = require('../models/McpToken');
 const mcpOAuthRoute = require('./mcpOAuth');
+
+// Modulreglerna prövas med Plugga som en modul som INTE är släppt, så varje
+// konto styrs av mockFeatures. Att släppet följer samma regler prövas för sig
+// (se "a module released after connecting …" nedan).
+const { FEATURES } = require('../config/features');
+const studyReleased = FEATURES.study.released;
+beforeAll(() => { FEATURES.study.released = false; });
+afterAll(() => { FEATURES.study.released = studyReleased; });
 const mcpRoute = require('./mcp');
 
 const app = express();
@@ -240,6 +248,18 @@ describe('GET /authorize', () => {
     });
     expect(wrongUri.status).toBe(400);
     expect(wrongUri.headers.location).toBeUndefined();
+  });
+
+  test('a browser with an unknown client (e.g. Claude\'s published identity) gets a page saying what to do', async () => {
+    const { challenge } = pkcePair();
+    const res = await request(app).get('/api/mcp/oauth/authorize').set('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8').query({
+      client_id: 'https://claude.ai/oauth/mcp-oauth-client-metadata', redirect_uri: CALLBACK, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256'
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.text).toContain('Register automatically');
+    expect(res.text).toContain('https://glosan.test/koppla-ai');
   });
 
   test('missing PKCE → error redirected back to the (validated) client with state', async () => {
@@ -546,6 +566,22 @@ describe('modules (audit: a connection never widens by itself)', () => {
     // Och en modul som slås AV når inte heller anslutningen som godkände den.
     mockFeatures.set(USER_ID, []);
     expect((await mcpCall(second.tokens.access_token)).body.features).toEqual([]);
+  });
+
+  test('a module released after connecting reaches new connections only (v0.1.39: Plugga for everyone)', async () => {
+    const before = await connect();
+    expect(McpToken._docs[0].modules).toEqual([]);
+    FEATURES.study.released = true;
+    try {
+      // Släppt är inte detsamma som godkänt: den gamla anslutningen når det inte.
+      expect((await mcpCall(before.tokens.access_token)).body.features).toEqual([]);
+      const list = await request(app).get('/api/mcp/connections').set('Authorization', `Bearer ${jwtFor()}`);
+      expect(list.body.connections[0].missingModules).toEqual([{ key: 'study', label: 'Plugga' }]);
+      const after = await connect();
+      expect((await mcpCall(after.tokens.access_token)).body.features).toEqual(['study']);
+    } finally {
+      FEATURES.study.released = false;
+    }
   });
 
   test('a connection from before the field is frozen to what it reaches on first use', async () => {

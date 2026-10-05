@@ -34,6 +34,7 @@ const MagicLink = lazy(() => import('./pages/MagicLink'));
 const JoinList = lazy(() => import('./pages/JoinList'));
 const JoinStudyUnit = lazy(() => import('./pages/JoinStudyUnit'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
+const ConnectAiGuide = lazy(() => import('./pages/ConnectAiGuide'));
 const Plugga = lazy(() => import('./pages/Plugga'));
 const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
 const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
@@ -108,13 +109,15 @@ function AppRoutes() {
         <Route path="/login/callback" element={<LoginCallback />} />
         <Route path="/register" element={<AuthPage><Register /></AuthPage>} />
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
+        {/* Guiden till att koppla sin AI (MCP) — publik, så den kan läsas före kontot. */}
+        <Route path="/koppla-ai" element={user ? <Layout><ConnectAiGuide /></Layout> : <ConnectAiGuide />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/lists" replace /> : <ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/magic-link" element={user ? <Navigate to="/lists" replace /> : <MagicLink />} />
         <Route path="/j/:code" element={<JoinList />} />
         {/* Delat Plugga-område (QR-kod). Publik och INTE bakom flaggan — den som
-            går med får Plugga påslaget. */}
+            går med får Plugga påslaget om det inte redan är på för alla. */}
         <Route path="/p/:code" element={<JoinStudyUnit />} />
         {/* OAuth-samtycket för MCP-connectorn — hanterar utloggat läge själv
             så att OAuth-parametrarna ligger kvar i URL:en. */}

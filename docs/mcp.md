@@ -15,11 +15,23 @@ declarative tool registry), trimmed to what Glosan needs: **stateless only**
 
 ## Connecting (user side)
 
-1. Glosan → **Profil → Koppla din AI** shows the endpoint URL.
-2. claude.ai → **Settings → Connectors → Add custom connector**, paste the URL.
-3. Claude opens Glosan's consent page (`/connect-ai/authorize`). The user logs
+The public guide at `/koppla-ai` (`frontend/src/pages/ConnectAiGuide.jsx`)
+walks users through this in Swedish. It covers example requests, what the AI
+sees, and troubleshooting. Keep it in step with this list.
+
+1. Glosan → **Profil → Koppla din AI** (or the guide) shows the endpoint URL.
+2. claude.ai → **Customize → Connectors → Add custom connector** (older UI:
+   Settings → Connectors). Paste the URL.
+3. If Claude asks how to sign in, pick **Register automatically** under
+   *OAuth client*. That's Dynamic Client Registration, which Glosan supports.
+   Claude recommends **Claude's published identity** (a Client ID Metadata
+   Document), which Glosan does **not** support yet. Picked anyway, the user's
+   browser lands on `/api/mcp/oauth/authorize` with an unknown `client_id`. It
+   gets a 400 HTML page that explains the fix and links to the guide (JSON
+   for non-browser clients, never a redirect).
+4. Claude opens Glosan's consent page (`/connect-ai/authorize`). The user logs
    in (password or Google) and picks **Bara läsa** or **Läsa och skapa**.
-4. Done. Connections are listed on the Profile page, each with a
+5. Done. Connections are listed on the Profile page, each with a
    **Koppla bort** button that kills access immediately.
 
 ## Flow
@@ -47,7 +59,7 @@ Claude ──POST /api/mcp (Bearer glo_…) ────────────
 | `backend/src/models/{McpToken,OAuthClient,OAuthAuthCode}.js` | A connection, a registered connector, a one-time auth code |
 | `backend/src/mcp/server.js` | Builds one MCP server per request with only the tools the scopes allow; call + write budgets |
 | `backend/src/mcp/registry.js` | `registerTool` / `registerPrompt` |
-| `backend/src/mcp/tools/*.js` | The tools (`lists`, `words`, `categories`, `meta`, and `study` — Plugga, behind the `study` flag) |
+| `backend/src/mcp/tools/*.js` | The tools (`lists`, `words`, `categories`, `meta`, and `study` — Plugga, declared with `feature: 'study'`; released to everyone in v0.1.39, but a connection approved before then doesn't reach it until the user reconnects) |
 | `backend/src/mcp/instructions.js` | Server instructions — the "system prompt" the AI gets at connect |
 | `frontend/src/pages/ConnectAiAuthorize.jsx` | Consent page |
 | `frontend/src/components/AiConnectSection.jsx` | Profile section |

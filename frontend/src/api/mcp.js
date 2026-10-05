@@ -10,6 +10,20 @@ export async function fetchMcpConnections(apiFetch) {
   return data;
 }
 
+// MCP-adressen att lägga in i en AI — utan inloggning (guiden /koppla-ai).
+// Läses ur den publika resursmetadatan (RFC 9728), så det blir den riktiga
+// adressen även på den gamla domänen (glosan.jeklund.dev).
+export async function fetchMcpEndpoint() {
+  const fallback = `${window.location.origin}/api/mcp`;
+  try {
+    const res = await fetch('/.well-known/oauth-protected-resource/api/mcp');
+    const data = res.ok ? await res.json() : null;
+    return typeof data?.resource === 'string' ? data.resource : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // DELETE /api/mcp/connections/:id — kopplar bort en AI direkt.
 export async function revokeMcpConnection(apiFetch, id) {
   const res = await apiFetch(`/api/mcp/connections/${id}`, { method: 'DELETE' });

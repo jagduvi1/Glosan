@@ -5,7 +5,7 @@ import { useDocumentTitle } from '../utils/useDocumentTitle';
 
 // Integritetspolicy. Personuppgiftsansvarig + kontaktuppgifter ska
 // fyllas i av Majkens vårdnadshavare innan publik produktion.
-const LAST_UPDATED = '2026-05-21';
+const LAST_UPDATED = '2026-10-05';
 const CONTACT_EMAIL = 'info@glosan.app';
 const CONTROLLER_NAME = 'Glosan';
 
@@ -54,7 +54,7 @@ export default function Integritet() {
           <li><strong>Co-op-streaks</strong> (<em>CoopStreak</em>): gemensam streak per kompis-par och senaste dagen ni båda var aktiva.</li>
           <li><strong>Utmaningar</strong> (<em>Duel</em>): async-, mål- eller live-duells du deltagit i, inklusive snapshot av frågorna och varje deltagares resultat (rätt/total/tid). Live-duells visar tillfälligt din avatar och dina svar för motspelaren i realtid över WebSocket.</li>
           <li><strong>AI-anslutningar</strong> (<em>McpToken</em>): om du kopplar din egen AI (till exempel Claude) till Glosan sparar vi anslutningens namn, behörighet (läsa, eller läsa och skapa), när den användes senast och en hashad nyckel. Du kopplar bort den på profilsidan.</li>
-          <li><strong>Plugga</strong> (för konton där det är påslaget): områden, genomgångar, kort, övningar och övningsprov som din AI skapat; dina svar, din pluggtid och dina resultat (&quot;Min plugg&quot;); och AI:ns återkoppling på lösningar du fotat — själva fotot når aldrig oss. Delar du ett område får mottagaren en egen kopia av innehållet — aldrig dina resultat — och kopian visar att den kom från dig. Går någon med via en delningslänk sparar länken vem som gått med.</li>
+          <li><strong>Plugga</strong> (skolämnen): områden, genomgångar, kort, övningar och övningsprov som din AI skapat; dina svar, din pluggtid och dina resultat (&quot;Min plugg&quot;); och AI:ns återkoppling på lösningar du fotat — själva fotot når aldrig oss. Delar du ett område får mottagaren en egen kopia av innehållet — aldrig dina resultat — och kopian visar att den kom från dig. Går någon med via en delningslänk sparar länken vem som gått med.</li>
           <li><strong>Tekniska detaljer:</strong> en httpOnly-cookie med en hashad refresh-token som håller dig inloggad i upp till 7 dagar.</li>
         </ul>
       </section>

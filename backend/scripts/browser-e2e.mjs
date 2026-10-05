@@ -65,7 +65,9 @@ async function main() {
     // ── data via API/MCP ────────────────────────────────────────────────────
     const A = await signUp('bra');
     const B = await signUp('brb');
-    grantFeatureInLocalDb(A.name, 'study');
+    // Plugga är på för alla sedan v0.1.39 — B har ingen egen flagga.
+    if ((await api('/api/study/overview', A.token)).status !== 200) grantFeatureInLocalDb(A.name, 'study');
+    else assert.equal((await api('/api/study/overview', B.token)).status, 200, 'Plugga is on for an account without a flag of its own');
     const claude = await connectMcp(A.token);
     const unitIds = [];
     for (const [subject, title] of [['matematik', 'Procent'], ['matematik', 'Förändringsfaktor'], ['historia', 'Industriella revolutionen']]) {
@@ -107,6 +109,24 @@ async function main() {
     current = page;
     watch(page);
     await page.setViewport({ width: 390, height: 844 });
+
+    // ── utloggad: framsidan visar Plugga och leder till AI-guiden ────────────
+    await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' });
+    await waitForText(page, 'alla ämnen');
+    await clickText(page, 'button', 'Så kopplar du din AI');
+    await page.waitForFunction(() => window.location.pathname === '/koppla-ai');
+    await waitForText(page, 'Koppla din AI till Glosan');
+    await waitForText(page, 'Register automatically');
+    await page.waitForFunction(() => /\/api\/mcp$/.test(document.querySelector('code')?.textContent || ''));
+    // En AI som loggar in på ett sätt Glosan inte stöder (Claudes "published
+    // identity") — browsern får en sida som säger vad man gör, ingen redirect.
+    const unknownAi = await fetch(`${BASE}/api/mcp/oauth/authorize?client_id=${encodeURIComponent('https://claude.ai/oauth/mcp-oauth-client-metadata')}`, {
+      headers: { Accept: 'text/html' },
+      redirect: 'manual'
+    });
+    assert.equal(unknownAi.status, 400);
+    assert.match(await unknownAi.text(), /Register automatically/);
+    ok('logged out: the front page shows Plugga and leads to the AI guide (address, Claude steps); an AI Glosan doesn\'t recognise gets a page saying what to do');
 
     // ── inloggning: tillbaka dit man skulle ─────────────────────────────────
     await page.goto(`${BASE}/plugga`, { waitUntil: 'networkidle0' });
@@ -259,11 +279,12 @@ async function main() {
     ok('a list QR code makes nobody a friend unless you tick "Bli kompisar"');
 
     // ── resten av glos-sidorna laddar ───────────────────────────────────────
-    for (const p of [`/lists`, `/lists/${listId}/flashcards`, `/lists/${listId}/galge`, `/lists/${listId}/ordfall`, '/profile', '/integritet']) {
+    for (const p of [`/lists`, `/lists/${listId}/flashcards`, `/lists/${listId}/galge`, `/lists/${listId}/ordfall`, '/profile', '/integritet', '/koppla-ai']) {
       await page.goto(`${BASE}${p}`, { waitUntil: 'networkidle0' });
       await pause(200);
     }
-    ok('lists, flashcards, galge, ordfall, profile and the privacy page load');
+    await waitForText(page, 'Till Profil'); // guiden, inloggad: knappen till anslutningarna
+    ok('lists, flashcards, galge, ordfall, profile, the privacy page and the AI guide load');
 
     // ── Kompisar: blockera och häv ──────────────────────────────────────────
     await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });

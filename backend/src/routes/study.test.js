@@ -1,6 +1,7 @@
 /**
- * Plugga-routerna genom den RIKTIGA appen: dolda (404) utan flaggan, och
- * översikten svarar med ämneskatalogen och terminer när flaggan är på.
+ * Plugga-routerna genom den RIKTIGA appen: dolda (404) där Plugga är avstängt,
+ * och översikten svarar med ämneskatalogen och terminer när det är på (för
+ * alla sedan v0.1.39, utan egen flagga).
  * User och StudyUnit fejkas — sviten har ingen Mongo.
  */
 process.env.JWT_SECRET = 'test-secret';
@@ -33,12 +34,18 @@ const app = require('../app');
 const { termFor } = require('../utils/term');
 
 const ON = '64b000000000000000000001';
-const OFF = '64b000000000000000000002';
+const OFF = '64b000000000000000000002'; // admin har stängt av Plugga för kontot
+const PLAIN = '64b000000000000000000003'; // ingen egen flagga
 mockUsers.set(ON, { _id: ON, features: ['study'] });
-mockUsers.set(OFF, { _id: OFF, features: [] });
+mockUsers.set(OFF, { _id: OFF, features: [], featureBlocks: ['study'] });
+mockUsers.set(PLAIN, { _id: PLAIN, features: [] });
 const bearer = (id) => `Bearer ${jwt.sign({ id, roles: ['user'] }, process.env.JWT_SECRET, { algorithm: 'HS256' })}`;
 
-test('hidden (404) for users without the flag — indistinguishable from an unknown route', async () => {
+test('Plugga is released: an account without a flag of its own has it', async () => {
+  expect((await request(app).get('/api/study/overview').set('Authorization', bearer(PLAIN))).status).toBe(200);
+});
+
+test('hidden (404) where it is switched off for the account — indistinguishable from an unknown route', async () => {
   const res = await request(app).get('/api/study/overview').set('Authorization', bearer(OFF));
   expect(res.status).toBe(404);
   expect(res.body).toEqual({ error: 'Route not found' });

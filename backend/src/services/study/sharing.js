@@ -21,6 +21,7 @@ const StudyShareLink = require('../../models/StudyShareLink');
 const User = require('../../models/User');
 const Friendship = require('../../models/Friendship');
 const { getSubject } = require('../../config/subjects');
+const { featuresForAll } = require('../../config/features');
 const { termLabel } = require('../../utils/term');
 const { randomCode } = require('../../utils/friendCode');
 const { isId, oid } = require('./access');
@@ -44,13 +45,13 @@ const LINK_MAX_USES = [10, 30, 100];
 const LINK_GONE = 'Den här länken är ogiltig eller har gått ut.';
 
 /**
- * Inbjudningsbeta: den som får ett område delat får Plugga påslaget, annars
- * skulle hen inte se det hen fått. Modulen sprids alltså bara till dem som
- * någon med Plugga bjuder in. Har admin slagit av Plugga för ett konto
- * (featureBlocks) slås den inte på igen.
+ * Inbjudningsbeta (före v0.1.39): den som får ett område delat får Plugga
+ * påslaget, annars skulle hen inte se det hen fått. Är Plugga på för alla
+ * (släppt, eller FEATURES_FOR_ALL) finns inget att slå på. Har admin slagit av
+ * Plugga för ett konto (featureBlocks) slås den inte på igen.
  */
 async function grantStudyFeature(userIds) {
-  if (!userIds.length) return;
+  if (!userIds.length || featuresForAll().includes('study')) return;
   await User.updateMany({ _id: { $in: userIds.map(oid) }, featureBlocks: { $ne: 'study' } }, { $addToSet: { features: 'study' } });
 }
 
