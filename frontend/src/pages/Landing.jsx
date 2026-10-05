@@ -28,6 +28,15 @@ const FAQ = [
   {
     q: 'Kan jag öva med kompisar?',
     a: 'Ja — dela dina listor read-only eller med skrivrätt, utmana en kompis i async-duell, ta en live-duell över Socket.IO eller jämför era streaks och rekord på leaderboards.'
+  },
+  {
+    q: 'Vad är Plugga?',
+    a: 'Plugga är Glosans del för alla skolämnen — matte, NO, SO, historia och resten. Du fotar sidorna i boken och din egen AI, till exempel Claude, gör genomgångar, kort, övningar och övningsprov som du övar på i Glosan. Du kan dela dem med kompisar, som får en egen kopia.'
+  },
+  {
+    q: 'Hur kopplar jag min AI till Glosan?',
+    a: 'Lägg till Glosan som connector i din AI med adressen https://glosan.app/api/mcp och logga in i Glosan när du blir tillfrågad. I Claude gör du det under Customize → Connectors → Add custom connector. Steg för steg, och vad AI:n ser, finns i guiden "Koppla din AI".',
+    link: { to: '/koppla-ai', label: 'Läs guiden: Koppla din AI →' }
   }
 ];
 
@@ -55,7 +64,7 @@ export default function Landing() {
     <div className="paper-texture" style={{ minHeight: '100vh' }}>
       <Helmet>
         <title>Glosan — Lär dig glosor smart med AI och kompis-utmaningar</title>
-        <meta name="description" content="Glosan är en gratis svensk glos-app med AI. Skapa egna ordlistor, öva med sex spellägen, utmana kompisar i live-dueller och samla streaks." />
+        <meta name="description" content="Glosan är en gratis svensk glos-app med AI. Skapa egna ordlistor, öva med sex spellägen, utmana kompisar i live-dueller — och plugga alla skolämnen med din egen AI." />
         <link rel="canonical" href="https://glosan.app/" />
         <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>
       </Helmet>
@@ -256,6 +265,49 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Plugga — alla skolämnen, innehållet gör användarens egen AI (MCP) */}
+      <section id="plugga" style={{ padding: '64px 24px 24px' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 10 }}>
+            <span className="pill tilt-l" style={{ background: 'var(--mustard)' }}>
+              <Sparkle size={14} /> Nytt
+            </span>
+          </div>
+          <h2 style={{ fontSize: 40, marginBottom: 8, textAlign: 'center' }}>
+            <span className="mark-highlight">Plugga</span> alla ämnen
+          </h2>
+          <p className="t-hand muted" style={{ fontSize: 17, textAlign: 'center', margin: '0 0 36px' }}>
+            Matte, NO, SO, historia — din egen AI gör boken till något att öva på.
+          </p>
+          <div className="features-grid">
+            <div className="card card-lg tilt-l" style={{ background: 'var(--sky-soft)' }}>
+              <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }} aria-hidden="true">📷</div>
+              <h3 style={{ margin: '0 0 8px' }}>Fota boken</h3>
+              <p style={{ margin: 0, fontSize: 15 }}>
+                Skicka sidorna till din AI, till exempel Claude. Den gör genomgångar, kort och övningar på bokens nivåer och lägger in allt i Glosan.
+              </p>
+            </div>
+            <div className="card card-lg tilt-r" style={{ background: 'var(--leaf-soft)' }}>
+              <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }} aria-hidden="true">📝</div>
+              <h3 style={{ margin: '0 0 8px' }}>Öva och gör prov</h3>
+              <p style={{ margin: 0, fontSize: 15 }}>
+                Övningar som rättas direkt, övningsprov i appen eller på papper och en nivåstege från E till A. Du ser vad som sitter och vad som behöver mer jobb.
+              </p>
+            </div>
+            <div className="card card-lg tilt-l" style={{ background: 'var(--coral-soft)' }}>
+              <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }} aria-hidden="true">👥</div>
+              <h3 style={{ margin: '0 0 8px' }}>Plugga ihop</h3>
+              <p style={{ margin: 0, fontSize: 15 }}>
+                Dela ett område med kompisar — eller hela klassen med en QR-kod. Alla får en egen kopia, och ingen behöver en egen AI för att öva.
+              </p>
+            </div>
+          </div>
+          <div className="row" style={{ justifyContent: 'center', marginTop: 28 }}>
+            <Link to="/koppla-ai"><button className="btn" type="button">Så kopplar du din AI →</button></Link>
+          </div>
+        </div>
+      </section>
+
       {/* Språkstöd */}
       <section style={{ padding: '48px 24px', textAlign: 'center' }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -300,6 +352,9 @@ export default function Landing() {
                   <span aria-hidden="true" style={{ position: 'absolute', right: 0, top: 0, fontSize: 20 }}>＋</span>
                 </summary>
                 <p style={{ margin: '12px 0 0', fontSize: 16, lineHeight: 1.5 }}>{item.a}</p>
+                {item.link && (
+                  <p style={{ margin: '8px 0 0', fontSize: 16 }}><Link to={item.link.to}>{item.link.label}</Link></p>
+                )}
               </details>
             ))}
           </div>
@@ -325,6 +380,7 @@ export default function Landing() {
         <div className="row between" style={{ maxWidth: 1080, margin: '0 auto', flexWrap: 'wrap', gap: 12 }}>
           <span className="t-hand muted" style={{ fontSize: 14 }}>© Glosan · pluggets gladaste hörn</span>
           <div className="row" style={{ gap: 18 }}>
+            <Link to="/koppla-ai" className="t-hand" style={{ fontSize: 14 }}>Koppla din AI</Link>
             <Link to="/login" className="t-hand" style={{ fontSize: 14 }}>Logga in</Link>
             <Link to="/register" className="t-hand" style={{ fontSize: 14 }}>Skapa konto</Link>
           </div>

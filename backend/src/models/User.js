@@ -89,9 +89,9 @@ const userSchema = new mongoose.Schema({
     enum: ['free', 'basic', 'premium'],
     default: 'free'
   },
-  // Funktionsflaggor som admin slagit på för just det här kontot (t.ex.
-  // 'study' = Plugga medan modulen är dold). Katalog + "på för alla" i
-  // config/features.js — läs alltid via effectiveFeatures(), inte direkt.
+  // Funktionsflaggor som slagits på för just det här kontot medan en modul är
+  // dold (admin eller en inbjudan). Katalog + "på för alla" (släppta moduler)
+  // i config/features.js — läs alltid via effectiveFeatures(), inte direkt.
   features: {
     type: [{ type: String, enum: FEATURE_KEYS }],
     default: []
@@ -187,8 +187,8 @@ userSchema.methods.toJSON = function () {
   obj.hasPassword = !!obj.password;
   // Bara provider-NAMNEN (t.ex. ['google']) — aldrig råa provider-id:n.
   obj.linkedProviders = Array.isArray(obj.authProviders) ? obj.authProviders.map((p) => p.provider) : [];
-  // De EFFEKTIVA flaggorna (egna + FEATURES_FOR_ALL), så frontend kan visa
-  // dolda moduler utan att känna till env-variabeln.
+  // De EFFEKTIVA flaggorna (egna + de som är på för alla), så frontend kan
+  // visa moduler utan att känna till katalogen eller env-variablerna.
   obj.features = effectiveFeatures(obj);
   delete obj.featureBlocks;
   delete obj.blocked; // egen endpoint: GET /api/me/blocks

@@ -124,7 +124,7 @@ function HowToCreate() {
         <div className="grow" style={{ minWidth: 240 }}>
           <h2 style={{ margin: '0 0 6px' }}>Så skapar du ditt första område</h2>
           <ol style={{ margin: '0 0 8px', paddingLeft: 22, lineHeight: 1.7 }}>
-            <li>Koppla din AI (t.ex. Claude) till Glosan under <Link to="/profile">Profil → Koppla din AI</Link>.</li>
+            <li>Koppla din AI (t.ex. Claude) till Glosan — <Link to="/koppla-ai">så gör du</Link>.</li>
             <li>Fota sidorna i boken — gärna både lätta och svåra uppgifter.</li>
             <li>Skicka bilderna till Claude och skriv <em>"Hjälp mig plugga på det här i Glosan"</em>.</li>
             <li>Claude frågar vilken årskurs du går i, föreslår vad som ska skapas och lägger in allt här.</li>
@@ -176,12 +176,9 @@ export default function Plugga() {
     <div className="stack" style={{ gap: 24 }}>
       <div className="row between" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-            <h1 style={{ fontSize: 40, margin: 0 }}>
-              <span className="mark-highlight">Plugga</span>
-            </h1>
-            <span className="pill" style={{ background: 'var(--mustard-soft)', fontSize: 13 }}>beta</span>
-          </div>
+          <h1 style={{ fontSize: 40, margin: 0 }}>
+            <span className="mark-highlight">Plugga</span>
+          </h1>
           <p className="t-hand muted" style={{ fontSize: 17, margin: '4px 0 0' }}>
             Matte, NO, SO och alla andra ämnen — sorterat per termin.
           </p>
@@ -254,6 +251,11 @@ export default function Plugga() {
       ))}
 
       {(data.totalUnits > 0 || folders.length > 0) && <FoldersSection folders={folders} onCreate={createFolder} />}
+      {data.totalUnits > 0 && (
+        <p className="t-hand muted" style={{ fontSize: 15, margin: 0, textAlign: 'center' }}>
+          🤖 Nya områden gör du med din AI — <Link to="/koppla-ai">så kopplar du den till Glosan</Link>.
+        </p>
+      )}
       {sharing && <ShareStudyDialog onClose={() => setSharing(false)} />}
     </div>
   );

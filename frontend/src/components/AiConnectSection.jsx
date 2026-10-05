@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { hasFeature } from '../utils/features';
 import { fetchMcpConnections, revokeMcpConnection } from '../api/mcp';
 
 // Profil → "Koppla din AI". Visar MCP-adressen att klistra in i claude.ai
 // (eller en annan AI som stöder MCP-connectors) och de AI:er som redan är
-// anslutna, med en knapp för att koppla bort var och en. Se docs/mcp.md.
+// anslutna, med en knapp för att koppla bort var och en. Den långa
+// förklaringen finns i guiden /koppla-ai (pages/ConnectAiGuide.jsx). Se docs/mcp.md.
 
 const SCOPE_LABEL = {
   read: 'läsa',
@@ -17,7 +20,7 @@ function formatDate(iso) {
 }
 
 export default function AiConnectSection() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, user } = useAuth();
   const [connections, setConnections] = useState(null);
   const [endpoint, setEndpoint] = useState(`${window.location.origin}/api/mcp`);
   const [error, setError] = useState('');
@@ -64,7 +67,8 @@ export default function AiConnectSection() {
       <h2 style={{ marginTop: 0 }}>🤖 Koppla din AI</h2>
       <p className="t-hand muted" style={{ fontSize: 16, marginTop: 0 }}>
         Fota glosbladet i Claude och säg <em>"gör en glosa av det här"</em> — så skapas listan direkt i Glosan.
-        Lägg till Glosan som connector i din AI med adressen nedan.
+        {hasFeature(user, 'study') ? ' Fota sidorna i boken så gör den ett område i Plugga.' : ''} Lägg till Glosan som
+        connector i din AI med adressen nedan.
       </p>
 
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -88,12 +92,16 @@ export default function AiConnectSection() {
       <details style={{ marginBottom: 14 }}>
         <summary className="t-hand" style={{ cursor: 'pointer', fontSize: 16 }}>Så gör du i Claude</summary>
         <ol style={{ margin: '8px 0 0', paddingLeft: 22, lineHeight: 1.6 }}>
-          <li>Öppna <strong>claude.ai</strong> → <strong>Settings → Connectors</strong>.</li>
+          <li>Öppna <strong>claude.ai</strong> → <strong>Customize → Connectors</strong>.</li>
           <li>Välj <strong>Add custom connector</strong>, döp den till <em>Glosan</em> och klistra in adressen ovan.</li>
-          <li>Klicka <strong>Connect</strong> — du hamnar här i Glosan, loggar in och godkänner.</li>
+          <li>Frågar Claude om <em>OAuth client</em>: välj <strong>Register automatically</strong>.</li>
+          <li>Klicka <strong>Add</strong> / <strong>Connect</strong> — du hamnar här i Glosan, loggar in och godkänner.</li>
           <li>Klart! Skicka en bild på glosorna i en chatt och be Claude skapa listan.</li>
         </ol>
       </details>
+      <p className="t-hand" style={{ fontSize: 16, margin: '0 0 14px' }}>
+        <Link to="/koppla-ai">Hela guiden: vad du kan be din AI om, vad den ser och om något strular →</Link>
+      </p>
 
       {error && <p className="error">{error}</p>}
 

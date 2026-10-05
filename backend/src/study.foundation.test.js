@@ -3,7 +3,7 @@
  * uppgiftskoder och datamodellens valideringsregler. Rena funktioner och
  * Mongoose-validering (validateSync) — ingen databas behövs.
  */
-const { effectiveFeatures, hasFeature, featuresForAll } = require('./config/features');
+const { FEATURES, effectiveFeatures, hasFeature, featuresForAll } = require('./config/features');
 const { termFor, isValidTerm, termLabel, compareTerms, shiftTerm } = require('./utils/term');
 const { parseStudyCode, formatItemCode } = require('./utils/studyCodes');
 const { SUBJECTS, subjectByCode, subjectsInGroup } = require('./config/subjects');
@@ -16,10 +16,15 @@ const User = require('./models/User');
 const OID = '64b000000000000000000001';
 
 describe('feature flags', () => {
-  const ORIGINAL = process.env.FEATURES_FOR_ALL;
+  const ORIGINAL = { FEATURES_FOR_ALL: process.env.FEATURES_FOR_ALL, FEATURES_DISABLED: process.env.FEATURES_DISABLED };
+  const RELEASED = FEATURES.study.released;
+  // Flaggornas regler prövas med Plugga som en modul som inte är släppt.
+  beforeEach(() => { FEATURES.study.released = false; });
   afterEach(() => {
-    if (ORIGINAL === undefined) delete process.env.FEATURES_FOR_ALL;
-    else process.env.FEATURES_FOR_ALL = ORIGINAL;
+    FEATURES.study.released = RELEASED;
+    for (const [k, v] of Object.entries(ORIGINAL)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
   });
 
   test('per-user flags', () => {
@@ -34,6 +39,18 @@ describe('feature flags', () => {
     expect(featuresForAll()).toEqual(['study']);
     expect(hasFeature({ features: [] }, 'study')).toBe(true);
     expect(effectiveFeatures({ features: ['study'] })).toEqual(['study']);
+  });
+
+  test('Plugga is released: on for everyone, and the brakes still work', () => {
+    delete process.env.FEATURES_FOR_ALL;
+    FEATURES.study.released = RELEASED;
+    expect(RELEASED).toBe(true);
+    expect(featuresForAll()).toEqual(['study']);
+    expect(hasFeature({ features: [] }, 'study')).toBe(true);
+    expect(hasFeature(null, 'study')).toBe(true);
+    expect(hasFeature({ featureBlocks: ['study'] }, 'study')).toBe(false); // admin har stängt av det för kontot
+    process.env.FEATURES_DISABLED = 'study';
+    expect(hasFeature({ features: ['study'] }, 'study')).toBe(false); // nödbromsen
   });
 
   test('User.toJSON exposes the EFFECTIVE flags and hides the code counters', () => {

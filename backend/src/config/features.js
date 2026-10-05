@@ -1,14 +1,20 @@
 // Funktionsflaggor — för moduler som byggs dolt och släpps stegvis.
 // En flagga slås på per användare (admin-sidan, User.features) eller för
-// ALLA via env-variabeln FEATURES_FOR_ALL (kommaseparerad, t.ex. "study") när
-// modulen är redo att släppas. FEATURES_DISABLED är nödbromsen: en flagga där
-// är av för alla, vad som än står på kontona (starta om backend). Enda källan
-// till sanning för backend, MCP och (via User.toJSON) frontend.
+// ALLA: med `released: true` här när modulen är släppt, eller via
+// env-variabeln FEATURES_FOR_ALL (kommaseparerad, t.ex. "study") för att prova
+// ett släpp utan ny kod. FEATURES_DISABLED är nödbromsen: en flagga där är av
+// för alla, vad som än står här eller på kontona (starta om backend). Enda
+// källan till sanning för backend, MCP och (via User.toJSON) frontend.
+//
+// En släppt modul behåller sin flagga: nödbromsen och admins avstängning per
+// konto fungerar som förut, och en AI som anslöts innan modulen fanns når den
+// inte förrän användaren anslutit igen och godkänt (McpToken.modules).
 
 const FEATURES = {
   study: {
     label: 'Plugga',
-    description: 'Skolämnen: områden med genomgångar, kort, övningar och prov — innehållet skapas via MCP.'
+    description: 'Skolämnen: områden med genomgångar, kort, övningar och prov — innehållet skapas via MCP.',
+    released: true // för alla sedan v0.1.39
   }
 };
 
@@ -19,9 +25,9 @@ const envList = (name) => (process.env[name] || '')
   .map((s) => s.trim())
   .filter((k) => FEATURE_KEYS.includes(k));
 
-/** Flaggor som är på för alla just nu (FEATURES_FOR_ALL). Okända nycklar ignoreras. */
+/** Flaggor som är på för alla just nu: släppta moduler + FEATURES_FOR_ALL. Okända nycklar ignoreras. */
 function featuresForAll() {
-  return envList('FEATURES_FOR_ALL');
+  return [...new Set([...FEATURE_KEYS.filter((k) => FEATURES[k].released), ...envList('FEATURES_FOR_ALL')])];
 }
 
 /** Flaggor som är AV för alla (FEATURES_DISABLED) — nödbroms. */
@@ -47,4 +53,17 @@ function hasFeature(user, key) {
   return effectiveFeatures(user).includes(key);
 }
 
-module.exports = { FEATURES, FEATURE_KEYS, FEATURE_FIELDS, featuresForAll, featuresDisabled, effectiveFeatures, hasFeature };
+/**
+ * Vad en AI-anslutning från före McpToken.modules (v0.1.27–v0.1.29) räknas ha
+ * godkänt: det kontot når nu — utom en modul som släppts för alla efteråt,
+ * som bara räknas om kontot har flaggan själv (hade modulen redan innan).
+ * Annars skulle en gammal anslutning få Plugga utan att någon godkänt det.
+ */
+function legacyApprovedModules(user) {
+  const own = Array.isArray(user?.features) ? user.features : [];
+  return effectiveFeatures(user).filter((k) => !FEATURES[k].released || own.includes(k));
+}
+
+module.exports = {
+  FEATURES, FEATURE_KEYS, FEATURE_FIELDS, featuresForAll, featuresDisabled, effectiveFeatures, hasFeature, legacyApprovedModules
+};

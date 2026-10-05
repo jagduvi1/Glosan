@@ -3,9 +3,10 @@
 // övningsprov i appen (med självbedömning) och på papper (rättat av AI:n) →
 // "Min plugg". Engångsanvändare raderas efteråt.
 //
-// Bäst UTAN FEATURES_FOR_ALL — då slår skriptet på Plugga för skaparen direkt
-// i den lokala databasen (docker exec glosan-mongo) och kontrollerar att de
-// som får något delat får Plugga påslaget (inbjudningsbeta):
+// Plugga är på för alla sedan v0.1.39. Är det inte det (en dold modul igen)
+// slår skriptet på det för skaparen direkt i den lokala databasen (docker
+// exec glosan-mongo) och kontrollerar att de som får något delat får Plugga
+// påslaget (inbjudningsbetan):
 //
 //   FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 //   cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080
@@ -30,7 +31,7 @@ async function main() {
     const forAll = await hasPlugga(B);
     if (!(await hasPlugga(A))) grantFeatureInLocalDb(A.name, 'study');
     assert.ok(await hasPlugga(A), 'the creator needs Plugga');
-    ok(forAll ? 'Plugga on for everyone (FEATURES_FOR_ALL) — invite-grant checks skipped' : 'Plugga on for the creator only; friend and classmate have no Plugga yet');
+    ok(forAll ? 'Plugga on for everyone (released) — invite-grant checks skipped' : 'Plugga on for the creator only; friend and classmate have no Plugga yet');
 
     const claude = await connectMcp(A.token);
     const tools = (await claude.listTools()).tools.map((t) => t.name);

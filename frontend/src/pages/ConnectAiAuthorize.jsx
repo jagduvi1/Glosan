@@ -25,13 +25,13 @@ import { hasFeature } from '../utils/features';
 const LEVELS = {
   read: {
     title: 'Bara läsa',
-    desc: 'Den kan se dina listor, glosor och resultat — men aldrig ändra något.',
-    studyDesc: 'Den kan se dina listor, glosor, pluggområden och resultat — men aldrig ändra något.'
+    desc: 'Den kan se dina listor, glosor och resultat, och vilka kompisar du har och delar med — men aldrig ändra något.',
+    studyDesc: 'Den kan se dina listor, glosor, pluggområden och resultat, och vilka kompisar du har och delar med — men aldrig ändra något.'
   },
   write: {
     title: 'Läsa och skapa',
-    desc: 'Den kan också skapa listor (t.ex. från ett foto), lägga till, rätta och radera glosor.',
-    studyDesc: 'Den kan också skapa listor och pluggområden (t.ex. från foton av boken), lägga till, rätta och radera — och rätta dina papperslösningar.'
+    desc: 'Den kan också skapa listor (t.ex. från ett foto), lägga till, rätta och radera glosor — och dela med kompisar eller göra en delningslänk när du ber om det.',
+    studyDesc: 'Den kan också skapa listor och pluggområden (t.ex. från foton av boken), lägga till, rätta och radera, rätta dina papperslösningar — och dela med kompisar eller göra en delningslänk när du ber om det.'
   }
 };
 const GRANTABLE = ['read', 'write'];
@@ -228,8 +228,8 @@ export default function ConnectAiAuthorize() {
       </div>
 
       <p className="t-hand muted" style={{ fontSize: 15 }}>
-        Du kan koppla bort AI:n när som helst under Profil. Den når dina listor, glosor{study ? ', pluggområden' : ''} och
-        resultat — aldrig ditt lösenord eller din e-post. Slås fler delar av Glosan på senare når AI:n dem först
+        Du kan koppla bort AI:n när som helst under Profil. Den når dina listor, glosor{study ? ', pluggområden' : ''},
+        resultat och kompislista — aldrig ditt lösenord eller din e-post. Slås fler delar av Glosan på senare når AI:n dem först
         när du anslutit igen.
       </p>
       <p className="t-hand muted" style={{ fontSize: 14 }}>

@@ -3,8 +3,8 @@
 // appen (rättas på servern) → XP och streak → felrapport → AI:n rättar och
 // stänger → en annan användare ser ingenting. Engångsanvändare raderas efteråt.
 //
-// Fungerar med och utan FEATURES_FOR_ALL=study (utan slås flaggan på för
-// testanvändarna direkt i den lokala databasen, som i prod).
+// Plugga är på för alla sedan v0.1.39. Är det inte det (en dold modul igen)
+// slås flaggan på för testanvändarna direkt i den lokala databasen.
 //
 //   FRONTEND_URL=http://localhost:8080 docker compose up --build -d
 //   cd backend && node scripts/plugga-e2e.mjs http://localhost:8080
@@ -20,7 +20,7 @@ async function main() {
   try {
     const A = await signUp('plugga');
     const B = await signUp('pluggb');
-    // Utan FEATURES_FOR_ALL=study slås Plugga på för testanvändaren direkt i den lokala databasen.
+    // Är Plugga inte på för alla slås det på för testanvändaren direkt i den lokala databasen.
     if ((await api('/api/study/overview', A.token)).status !== 200) grantFeatureInLocalDb(A.name, 'study');
     assert.equal((await api('/api/study/overview', A.token)).status, 200, 'Plugga must be enabled for the test user');
     ok('Plugga enabled for the test user');

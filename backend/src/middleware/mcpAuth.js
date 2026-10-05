@@ -1,7 +1,7 @@
 const McpToken = require('../models/McpToken');
 const User = require('../models/User');
 const { requireAuth } = require('./auth');
-const { effectiveFeatures, FEATURE_FIELDS } = require('../config/features');
+const { effectiveFeatures, legacyApprovedModules, FEATURE_FIELDS } = require('../config/features');
 
 const { TOKEN_PREFIX, TOKEN_SCOPES } = McpToken;
 
@@ -64,9 +64,10 @@ async function requireMcpAuth(req, res, next) {
     const current = effectiveFeatures(user);
     let approved = Array.isArray(token.modules) ? token.modules : null;
     if (!approved) {
-      // Anslutning från före McpToken.modules: frys den till det den når nu.
-      approved = current;
-      McpToken.updateOne({ _id: token._id, modules: { $exists: false } }, { $set: { modules: current } }).catch(() => {});
+      // Anslutning från före McpToken.modules: frys den till det den når nu —
+      // utom moduler som släppts för alla senare (legacyApprovedModules).
+      approved = legacyApprovedModules(user);
+      McpToken.updateOne({ _id: token._id, modules: { $exists: false } }, { $set: { modules: approved } }).catch(() => {});
     }
     req.mcpFeatures = current.filter((k) => approved.includes(k));
 

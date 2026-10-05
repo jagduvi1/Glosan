@@ -2,8 +2,9 @@
 
 Plugga turns Glosan from a vocabulary app into a study trainer for **every
 school subject**: Matematik, Fysik, Kemi, Biologi, NO, Historia, Geografi,
-Religionskunskap, Samhällskunskap, SO, Teknik and the languages. It is built
-behind a feature flag and shown to more users step by step.
+Religionskunskap, Samhällskunskap, SO, Teknik and the languages. It was built
+behind a feature flag, shown to more users step by step, and released to
+everyone in v0.1.39 (see Rollout — the flag stays as an emergency brake).
 
 ## Principles (decided with Johan, 2026-09-29)
 
@@ -281,11 +282,12 @@ what is new. Code: `services/study/copies.js`.
   added, `sharedVia`) and can remove them; they can leave. Unfriending and
   blocking end these shares both ways (`unshareBetween`). Nobody new is added
   this way — new shares are copies. Rules for these in `services/sharedVia.js`.
-- **Invite-only beta**: whoever receives a unit gets the `study` flag switched
-  on, so Plugga spreads only to people a beta user invites
-  (`grantStudyFeature` in `services/study/sharing.js`). Switching it off on
-  the admin page blocks it (`User.featureBlocks`): no share, link or
-  `FEATURES_FOR_ALL` switches it on again for that account.
+- **Invite-only beta (until v0.1.39)**: whoever received a unit got the
+  `study` flag switched on, so Plugga spread only to people a beta user
+  invited (`grantStudyFeature` in `services/study/sharing.js`, a no-op while
+  Plugga is on for everyone). Switching it off on the admin page blocks it
+  (`User.featureBlocks`): no share, link, release or `FEATURES_FOR_ALL`
+  switches it on again for that account.
 
 ## Deleting and history
 
@@ -350,20 +352,38 @@ every answer → send the link.
 
 ## Rollout
 
-- `User.features` (per account, admin page switch "Plugga (beta)"), the
-  invite-only beta above, `FEATURES_FOR_ALL=study` (env) to release for
-  everyone, and `FEATURES_DISABLED=study` (env) as the emergency brake — off
-  for everyone, whatever the accounts say. Both are passed through by
-  `docker-compose.prod.yml`; restart the backend after changing them.
-- Backend: `requireFeature('study')` answers **404** without the flag — a
+- **Released to everyone in v0.1.39** (Johan, 2026-10-05): `released: true`
+  on `study` in `config/features.js` puts it in every account's effective
+  flags. The flag itself stays:
+  - `FEATURES_DISABLED=study` (env) is the emergency brake — off for
+    everyone, whatever the code or the accounts say. Passed through by
+    `docker-compose.prod.yml`; restart the backend after changing it.
+  - The admin page can still switch it off for one account (`featureBlocks`).
+  - An AI connection approved before the release doesn't reach Plugga until
+    the user connects again — consent is per module (`McpToken.modules`).
+    The profile page ("Når inte Plugga") and the guide say so.
+- **Before the release:** per account (`User.features`, the admin switch),
+  the invite-only beta above, and `FEATURES_FOR_ALL=<flag>` (env) to try a
+  release without new code. All of it still works for the next hidden module.
+- **Connecting an AI** is how content gets in, so the release came with a
+  public guide, `/koppla-ai` (`pages/ConnectAiGuide.jsx`): Claude step by
+  step, example requests for glosor and Plugga, what the AI sees, and what to
+  do when something fails. It is linked from the profile, the Plugga start
+  page and the landing page (which now has a Plugga section and FAQ). Claude's
+  connector dialog recommends "Claude's published identity" (a Client ID
+  Metadata Document), which Glosan doesn't support yet — the guide says to
+  pick **Register automatically**, and a browser that reaches
+  `/api/mcp/oauth/authorize` with an unknown client gets a page saying the
+  same instead of raw JSON.
+- Backend: `requireFeature('study')` answers **404** where it is off — a
   hidden module can't be discovered by guessing URLs. `/api/study` is limited
   per user (a class shares one IP), behind a high per-IP flood limit; the
-  public invite preview is not. Known gap: login, registration and
-  `/api/auth/refresh` are still limited per IP, so a whole class joining by
-  QR on one school IP can hit them — fix together with the real client IP
-  behind Cloudflare (see the audit).
-- Frontend: the "Plugga" nav item and `/plugga/*` exist only with the flag
-  (`hasFeature(user, 'study')`); `/p/<code>` is public.
+  public invite preview is not. Login, registration and refresh are keyed per
+  account or session with a high per-address ceiling
+  (`middleware/authLimits.js`), so a whole class joining by QR on one school
+  IP fits.
+- Frontend: the "Plugga" nav item and `/plugga/*` follow the flag
+  (`hasFeature(user, 'study')`); `/p/<code>` and `/koppla-ai` are public.
 
 ## Data model
 
@@ -418,9 +438,10 @@ cd backend && node scripts/plugga-e2e.mjs http://localhost:8080       # fas 1
 cd backend && node scripts/plugga-fas2-e2e.mjs http://localhost:8080  # fas 2 + the MCP feedback fixes
 ```
 
-Both scripts work with and without `FEATURES_FOR_ALL=study`; without it (as in
-prod) they switch the flag on for their users in the local database, and the
-fas 2 script checks that sharing switches it on for recipients.
+Both scripts detect whether Plugga is on for everyone (it is, since v0.1.39).
+If it isn't — a hidden module again — they switch the flag on for their users
+in the local database, and the fas 2 script checks that sharing switches it on
+for recipients.
 
 ## Rolling back
 
@@ -440,6 +461,13 @@ db.studyitems.updateMany(
 // after rolling forward again
 db.studyitems.updateMany({ rollbackHidden: true }, { $set: { usage: 'practice' }, $unset: { rollbackHidden: '' } })
 ```
+
+**Below v0.1.39, Plugga is hidden again.** Older images don't know it is
+released, and since the release nobody gets the flag of their own (no invite
+grant). Re-tagging an older image would give everyone else 404 on `/plugga`,
+and their AIs would lose the tools. Their content stays, but they can't reach
+it. So set `FEATURES_FOR_ALL=study` in the VM's `.env` together with the older
+image, then restart the backend.
 
 The other fas 2 collections (tests, links, deletions) simply sit unused by the
 older release. Restoring a database dump from before a release drops the whole
