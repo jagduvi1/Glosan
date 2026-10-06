@@ -39,7 +39,13 @@ describe('the rules for a username', () => {
     ['glosan-support', looksLikeGlosan],
     ['admin1', looksLikeGlosan],
     ['glosån', looksLikeGlosan],
-    ['glo', looksLikeGlosan]
+    ['glosanteam', looksLikeGlosan],
+    ['glo', looksLikeGlosan],
+    ['administratör', looksLikeGlosan],
+    // Vanliga namn som bara råkar innehålla orden: ord för ord, inte delsträngar.
+    ['badmintonlisa', null],
+    ['aik.supporter', null],
+    ['moderatorn', null]
   ])('%s', (name, expected) => {
     expect(usernameProblem(name)).toEqual(expected);
   });
@@ -110,6 +116,14 @@ describe('changeUsername', () => {
     expect([pick.username, pick.needsUsername, pick.usernameChangedAt, pick.previousUsername]).toEqual(['emma', false, null, null]);
   });
 
+  test('an old name from before the rules is not held, and no undo is offered for it', async () => {
+    const doc = userDoc({ username: 'majken s' }); // registrerat innan reglerna fanns
+    User.findById.mockResolvedValue(doc);
+    User.exists.mockResolvedValue(null);
+    await changeUsername(ID, 'majken_s', NOW);
+    expect([doc.username, doc.previousUsername, doc.usernameChangedAt]).toEqual(['majken_s', null, NOW]);
+  });
+
   test('a suggestion that breaks the rules (support@…) cannot just be kept', async () => {
     const doc = userDoc({ username: 'support', needsUsername: true });
     User.findById.mockResolvedValue(doc);
@@ -126,11 +140,14 @@ describe('changeUsername', () => {
   });
 });
 
-test('admin sets a name: same rules, no lock, and the old name is not held', async () => {
-  const doc = userDoc({ username: 'elak-namn', usernameChangedAt: NOW, previousUsername: 'emma' });
+test('admin sets a name: same rules, a fresh weekly lock and no way back to the old name', async () => {
+  const doc = userDoc({ username: 'elak-namn', usernameChangedAt: new Date('2026-10-01T12:00:00Z'), previousUsername: 'emma' });
   User.findById.mockResolvedValue(doc);
   User.exists.mockResolvedValue(null);
-  expect((await adminSetUsername(ID, 'admin1')).status).toBe(400);
-  expect((await adminSetUsername(ID, 'Emma')).user).toBe(doc);
-  expect([doc.username, doc.previousUsername, doc.usernameChangedAt]).toEqual(['emma', null, null]);
+  expect((await adminSetUsername(ID, 'admin1', NOW)).status).toBe(400);
+  expect((await adminSetUsername(ID, 'Elev123', NOW)).user).toBe(doc);
+  expect([doc.username, doc.previousUsername, doc.usernameChangedAt]).toEqual(['elev123', null, NOW]);
+  // Den som fick namnet bytt kan inte genast välja ett nytt elakt namn.
+  User.findById.mockResolvedValue(doc);
+  expect((await changeUsername(ID, 'elak-igen', new Date(NOW.getTime() + DAY))).status).toBe(429);
 });

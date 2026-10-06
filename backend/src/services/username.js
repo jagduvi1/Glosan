@@ -15,9 +15,11 @@ const MAX_LENGTH = 30; // som modellen
 // bokstäver från andra alfabet som ser likadana ut.
 const ALLOWED = /^[a-z0-9åäöéü._-]+$/;
 const HAS_LETTER_OR_DIGIT = /[a-z0-9åäöéü]/;
-// Namn som ser ut att vara Glosan själv — de här orden får inte ingå alls
-// (även "glosån", "glosan-support", "admin1").
-const RESERVED_PARTS = ['glosan', 'admin', 'support', 'moderator'];
+// Namn som ser ut att vara Glosan själv. Jämförs ord för ord (namnet delat
+// vid punkt, bindestreck, understreck och siffror), så "glosan-support",
+// "admin1" och "glosån" stoppas men "badminton" och "aik.supporter" går bra.
+// Ett ord som BÖRJAR med glosan ("glosanteam") räknas också.
+const RESERVED_WORDS = new Set(['admin', 'administrator', 'support', 'moderator']);
 const RESERVED = new Set(['glo', 'system', 'root', 'null', 'undefined']);
 const TAKEN = 'Det namnet är upptaget — välj ett annat.';
 
@@ -35,7 +37,8 @@ function usernameProblem(name) {
   if (name.length > MAX_LENGTH) return `Högst ${MAX_LENGTH} tecken.`;
   if (!ALLOWED.test(name)) return 'Bara bokstäver, siffror, punkt, bindestreck och understreck — inga mellanslag.';
   if (!HAS_LETTER_OR_DIGIT.test(name)) return 'Minst en bokstav eller siffra.';
-  if (RESERVED.has(name) || RESERVED_PARTS.some((p) => folded(name).includes(p))) {
+  const words = folded(name).split(/[._\-0-9]+/).filter(Boolean);
+  if (RESERVED.has(name) || words.some((w) => RESERVED_WORDS.has(w) || w.startsWith('glosan'))) {
     return 'Det namnet ser ut att höra till Glosan — välj ett annat.';
   }
   return null;
@@ -93,7 +96,9 @@ async function changeUsername(userId, raw, now = new Date()) {
     // ångrar hålls inte kvar åt en.
     user.previousUsername = null;
   } else if (!firstChoice) {
-    user.previousUsername = user.username;
+    // Det gamla namnet hålls (och går att ångra till) bara om det klarar
+    // reglerna — ett konto från före dem kan ha ett som inte gör det.
+    user.previousUsername = usernameProblem(user.username) ? null : user.username;
     user.usernameChangedAt = now;
   }
   user.username = name;
@@ -109,10 +114,11 @@ async function changeUsername(userId, raw, now = new Date()) {
 }
 
 /**
- * Admin byter namnet åt någon (t.ex. ett elakt namn någon annan satt):
- * samma regler, men ingen spärr — och det gamla namnet hålls inte kvar.
+ * Admin byter namnet åt någon (t.ex. ett elakt namn): samma regler, och
+ * kontot låses en vecka utan väg tillbaka — det gamla namnet hålls inte och
+ * går inte att ångra till. (Den som utsatts för ett skämt kan ångra själv.)
  */
-async function adminSetUsername(userId, raw) {
+async function adminSetUsername(userId, raw, now = new Date()) {
   const user = await User.findById(userId);
   if (!user) return { error: 'User not found', status: 404 };
   const name = normalizeUsername(raw);
@@ -121,7 +127,7 @@ async function adminSetUsername(userId, raw) {
   if (name !== user.username && await usernameTaken(name, user._id)) return { error: TAKEN, status: 409 };
   user.username = name;
   user.previousUsername = null;
-  user.usernameChangedAt = null;
+  user.usernameChangedAt = now;
   user.needsUsername = false;
   try {
     await user.save();

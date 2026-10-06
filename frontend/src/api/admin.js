@@ -57,7 +57,7 @@ export async function fetchAdminFeatures(apiFetch) {
   return data.features;
 }
 
-// PATCH /api/admin/users/:id/username — byt namn åt någon (ingen veckospärr).
+// PATCH /api/admin/users/:id/username — byt namn åt någon (kontot låses en vecka).
 export async function setUsernameAsAdmin(apiFetch, userId, username) {
   const res = await apiFetch(`/api/admin/users/${userId}/username`, {
     method: 'PATCH',

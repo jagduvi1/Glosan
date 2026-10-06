@@ -171,6 +171,9 @@ const userSchema = new mongoose.Schema({
 // Google-login slår upp kontot via (provider, providerId) vid varje
 // inloggning — indexera så det inte blir en collection-scan.
 userSchema.index({ 'authProviders.provider': 1, 'authProviders.providerId': 1 });
+// Namn som hålls åt någon som just bytt (services/username.js): ingår i varje
+// namnkontroll, och en $or använder bara index om alla delar har ett.
+userSchema.index({ previousUsername: 1 });
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

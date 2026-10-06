@@ -167,7 +167,7 @@ cd backend && node scripts/make-icons.mjs
 - **Usernames:** [services/username.js](backend/src/services/username.js) holds the rules: 3–30 of `a-z 0-9 å ä ö é ü . - _`, no Glosan-like words, no `@`. The same rules apply at registration, to the Google sign-up suggestion and on rename.
   - Renaming is allowed once a week. The old name is held for its owner that week, and they can switch back to it (undo).
   - A new Google account picks its name on first login (`User.needsUsername`).
-  - The admin page can rename anyone, with no weekly lock.
+  - The admin page can rename anyone. That locks the account for a week, with no way back to the old name.
   - Nothing stores a copy of the username, so compare people by id, never by name.
 - **Maintenance:** [services/maintenance.js](backend/src/services/maintenance.js) runs hourly in the backend: mails admins when the disk is over `DISK_ALERT_PERCENT` and closes abandoned Plugga sessions. Retention is TTL indexes on the models (see the Retention section in [docs/plugga.md](docs/plugga.md)).
 - **Ownership checks:** Routes that touch a `GlosList` or `Glos` verify `list.user === req.user.id` before any mutation. Helper `loadOwnedList(req, res, next)` could be extracted if duplication grows.

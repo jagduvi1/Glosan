@@ -68,8 +68,8 @@ router.get('/features', (req, res) => {
 });
 
 // PATCH /api/admin/users/:id/username — byt namn åt någon (t.ex. ett elakt
-// namn någon annan satt). Body: { username }. Samma regler som när man byter
-// själv, men ingen veckospärr och det gamla namnet hålls inte kvar
+// namn). Body: { username }. Samma regler som när man byter själv; kontot
+// låses en vecka och det gamla namnet går inte att ångra till
 // (services/username.js adminSetUsername).
 router.patch('/users/:id/username', async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {

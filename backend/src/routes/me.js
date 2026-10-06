@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
-const { changeUsername } = require('../services/username');
+const { changeUsername, normalizeUsername } = require('../services/username');
 const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
@@ -256,6 +256,12 @@ const usernameLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   skipSuccessfulRequests: true,
+  // Att behålla förslaget efter första Google-inloggningen stoppas aldrig —
+  // annars kunde den som provat många namn bli fast i dialogen.
+  skip: async (req) => {
+    const u = await User.findById(req.user.id, 'username needsUsername').lean();
+    return Boolean(u?.needsUsername) && normalizeUsername(req.body?.username) === u.username;
+  },
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `username:${req.user.id}`,

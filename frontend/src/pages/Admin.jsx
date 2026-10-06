@@ -123,7 +123,7 @@ export default function Admin() {
     }
   };
 
-  // Byt namn åt någon — samma regler som när man byter själv, men ingen spärr.
+  // Byt namn åt någon — samma regler som när man byter själv; kontot låses en vecka.
   const onRename = async (u) => {
     const next = window.prompt(`Nytt användarnamn för ${u.username}:`, u.username);
     if (!next || next.trim().toLowerCase() === u.username) return;
@@ -230,7 +230,7 @@ export default function Admin() {
                       className="btn btn-sm btn-ghost"
                       style={{ padding: '2px 8px', fontSize: 12 }}
                       onClick={() => onRename(u)}
-                      title="Byt namn åt kontot (t.ex. ett elakt namn någon annan satt) — ingen veckospärr"
+                      title="Byt namn åt kontot (t.ex. ett elakt namn) — kontot låses sedan en vecka, utan väg tillbaka till det gamla namnet"
                     >
                       Byt namn
                     </button>
