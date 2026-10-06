@@ -65,7 +65,7 @@ router.post('/coop-streaks', async (req, res) => {
       coopStreak: {
         _id: coop._id,
         other: other ? { _id: other._id, username: other.username, avatar: other.avatar } : null,
-        current: coop.current,
+        current: effectiveCoopCurrent(coop), // fanns paret redan: som den är nu
         longest: coop.longest,
         lastBothActiveDay: coop.lastBothActiveDay,
         createdAt: coop.createdAt

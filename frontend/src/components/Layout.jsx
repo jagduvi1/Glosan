@@ -67,6 +67,8 @@ export default function Layout({ children }) {
   // Logga outfit-egg och gyllene streak när villkoren uppfylls
   useEffect(() => { if (outfit) markEggFound('logo-outfit'); }, [outfit]);
   useEffect(() => {
+    // Här och inte bara efter en quiz: dagen kan ha räknats av flashkort eller en duell.
+    if (profile?.streak?.current >= 7) markEggFound('streak-7');
     if (profile?.streak?.current >= 30) markEggFound('streak-30');
   }, [profile?.streak?.current]);
 

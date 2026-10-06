@@ -16,6 +16,7 @@ export function StreakPill({ n, today = true }) {
       bg={isGolden ? 'var(--mustard)' : today ? 'var(--sky-soft)' : 'var(--paper-edge)'}
       style={isGolden ? { boxShadow: '2px 2px 0 0 var(--ink), 0 0 0 2px var(--mustard-soft)', color: 'var(--ink)', fontWeight: 800 } : undefined}
       title={title}
+      role="img"
       aria-label={title}
     >
       <img

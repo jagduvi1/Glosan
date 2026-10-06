@@ -25,10 +25,14 @@ describe('tickStreak', () => {
     expect(tickStreak(u, day('2026-10-02T00:30:00+02:00'))).toBe('continued');
   });
 
-  test('the switch to winter time (a 25-hour day) is still one day', () => {
-    const u = { streak: { current: 4, longest: 4, lastActiveDay: day('2026-10-24T18:00:00+02:00') } };
-    expect(tickStreak(u, day('2026-10-25T18:00:00+01:00'))).toBe('continued');
-    expect(u.streak.current).toBe(5);
+  test('the clock changes: a 25-hour and a 23-hour day are still one day each', () => {
+    // 25 oktober 2026 har 25 timmar (vintertid), 28 mars 2027 23 (sommartid).
+    const autumn = { streak: { current: 4, longest: 4, lastActiveDay: day('2026-10-25T18:00:00+01:00') } };
+    expect(tickStreak(autumn, day('2026-10-26T07:00:00+01:00'))).toBe('continued');
+    expect(autumn.streak.current).toBe(5);
+    const spring = { streak: { current: 2, longest: 2, lastActiveDay: day('2027-03-28T18:00:00+02:00') } };
+    expect(tickStreak(spring, day('2027-03-29T07:00:00+02:00'))).toBe('continued');
+    expect(effectiveStreak(spring.streak, new Date('2027-03-30T23:30:00+02:00')).current).toBe(3); // igår → lever
   });
 });
 
