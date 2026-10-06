@@ -279,12 +279,12 @@ async function main() {
     ok('a list QR code makes nobody a friend unless you tick "Bli kompisar"');
 
     // ── resten av glos-sidorna laddar ───────────────────────────────────────
-    for (const p of [`/lists`, `/lists/${listId}/flashcards`, `/lists/${listId}/galge`, `/lists/${listId}/ordfall`, '/profile', '/integritet', '/koppla-ai']) {
+    for (const p of [`/lists`, `/lists/${listId}/flashcards`, `/lists/${listId}/galge`, `/lists/${listId}/ordfall`, '/profile', '/integritet', '/koppla-ai', '/om']) {
       await page.goto(`${BASE}${p}`, { waitUntil: 'networkidle0' });
       await pause(200);
     }
-    await waitForText(page, 'Till Profil'); // guiden, inloggad: knappen till anslutningarna
-    ok('lists, flashcards, galge, ordfall, profile, the privacy page and the AI guide load');
+    await waitForText(page, 'Vem driver Glosan?'); // Om Glosan
+    ok('lists, flashcards, galge, ordfall, profile, the privacy page, the AI guide and Om Glosan load');
 
     // ── Kompisar: blockera och häv ──────────────────────────────────────────
     await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });
