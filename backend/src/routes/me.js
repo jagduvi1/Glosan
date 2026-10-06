@@ -250,9 +250,12 @@ router.post('/practice-day', async (req, res) => {
 // det föreslagna efter första Google-inloggningen. Body: { username }.
 // Svarar { user } (som /api/auth/me) eller { error, nextChangeAt? }.
 // Taket per konto hindrar att någon provar igenom vilka namn som är upptagna.
+// Bara misslyckade försök räknas — den som till slut får ett namn (eller
+// behåller förslaget) ska aldrig stoppas av taket.
 const usernameLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `username:${req.user.id}`,

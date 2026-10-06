@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const User = require('../models/User');
 const { PLANS, PLAN_IDS, isValidPlanId, effectivePlan, monthKey } = require('../config/plans');
 const { FEATURES, FEATURE_KEYS, featuresForAll, featuresDisabled } = require('../config/features');
+const { adminSetUsername } = require('../services/username');
 
 const router = express.Router();
 
@@ -64,6 +65,24 @@ router.get('/features', (req, res) => {
   res.json({
     features: FEATURE_KEYS.map((key) => ({ key, ...FEATURES[key], forAll: forAll.includes(key), disabled: disabled.includes(key) }))
   });
+});
+
+// PATCH /api/admin/users/:id/username — byt namn åt någon (t.ex. ett elakt
+// namn någon annan satt). Body: { username }. Samma regler som när man byter
+// själv, men ingen veckospärr och det gamla namnet hålls inte kvar
+// (services/username.js adminSetUsername).
+router.patch('/users/:id/username', async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  try {
+    const r = await adminSetUsername(req.params.id, req.body?.username);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ user: shapeUserForAdmin(r.user.toObject()) });
+  } catch (err) {
+    console.error('Admin set username error:', err);
+    res.status(500).json({ error: 'Failed to update username' });
+  }
 });
 
 // PATCH /api/admin/users/:id/features — slå på/av en flagga för ett konto.

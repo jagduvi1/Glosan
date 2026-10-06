@@ -66,6 +66,20 @@ jest.mock('../models/User', () => {
     return chain;
   };
 
+  // usernameTaken (services/username.js): $or av upptaget namn och ett namn
+  // som hålls åt någon som just bytt bort det.
+  User.exists = async (query) => {
+    const ors = query.$or || [query];
+    const hit = store.users.find((u) => (!query._id || u._id !== query._id.$ne) && ors.some((q) => {
+      if (q.username !== undefined) return u.username === q.username;
+      if (q.previousUsername !== undefined) {
+        return u.previousUsername === q.previousUsername && u.usernameChangedAt > q.usernameChangedAt.$gt;
+      }
+      return false;
+    }));
+    return hit ? { _id: hit._id } : null;
+  };
+
   User.__store = store;
   User.__seed = (doc) => {
     const u = new User(doc);
@@ -104,6 +118,8 @@ describe('upsertGoogleUser', () => {
     expect(user.emailVerifiedAt).toBeInstanceOf(Date);
     // Texten under Google-knappen bär 13-årsbekräftelsen.
     expect(user.ageConsent).toBe(true);
+    // Namnet kom ur e-posten — hen får välja ett eget vid första inloggningen.
+    expect(user.needsUsername).toBe(true);
   });
 
   test('returnerar SAMMA konto när provider-id:t redan är länkat (ingen dubblett)', async () => {
@@ -137,6 +153,8 @@ describe('upsertGoogleUser', () => {
     // Länkning ändrar INTE befintligt GDPR-samtycke — det stämplas bara på
     // konton som skapas via SSO-flödet.
     expect(user.ageConsent).toBe(false);
+    // Kontot hade redan ett namn hen valt — ingen fråga om det.
+    expect(user.needsUsername).toBeUndefined();
   });
 
   test('matchar email case-okänsligt vid länkning', async () => {
@@ -220,6 +238,18 @@ describe('generateUniqueUsername', () => {
     const name = await generateUniqueUsername('jane@example.com', 'Jane');
     expect(name).not.toBe('jane');
     expect(name).toMatch(/^jane-[0-9a-f]{4}$/);
+  });
+
+  test('ett namn som ser ut att höra till Glosan blir det inte (support@…, admin@…)', async () => {
+    expect(await generateUniqueUsername('support@skolan.se', '')).toBe('user');
+    expect(await generateUniqueUsername('glosan.admin@x.com', '')).not.toMatch(/glosan|admin/);
+  });
+
+  test('ett namn någon just bytt bort hålls åt hen en vecka', async () => {
+    User.__seed({ username: 'emma-ny', previousUsername: 'emma', usernameChangedAt: new Date() });
+    expect(await generateUniqueUsername('emma@x.com', '')).toMatch(/^emma-[0-9a-f]{4}$/);
+    User.__store.users[0].usernameChangedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    expect(await generateUniqueUsername('emma@x.com', '')).toBe('emma');
   });
 
   test('returnerar alltid ett schema-giltigt användarnamn', async () => {

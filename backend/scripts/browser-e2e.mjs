@@ -42,12 +42,11 @@ async function clickText(page, selector, text, timeout = 10000) {
   if (!el) throw new Error(`no ${selector} containing "${text}" on ${page.url()}`);
   await el.click();
 }
-// Töm ett fält som man gör för hand (markera allt, radera) — så React ser ändringen.
+// Töm ett fält som man gör för hand (markera allt, radera) — så React ser
+// ändringen. select() i stället för Ctrl+A, som inte markerar allt på macOS.
 async function clearInput(page, el) {
   await el.click();
-  await page.keyboard.down('Control');
-  await page.keyboard.press('KeyA');
-  await page.keyboard.up('Control');
+  await el.evaluate((input) => input.select());
   await page.keyboard.press('Backspace');
 }
 const waitForText = (page, text, timeout = 10000) =>
@@ -361,7 +360,12 @@ async function main() {
     await waitForText(fpage, 'nytt namn går att välja');
     assert.equal((await api('/api/auth/login', null, { method: 'POST', body: { username: fName, password: 'E2e-Passw0rd!x' } })).status, 200, 'log in with the new name');
     const again = await api('/api/me/username', F.token, { method: 'PATCH', body: { username: `${fName}2` } });
-    assert.equal(again.status, 429, 'once a week');
+    assert.ok(again.status === 429 && again.body.nextChangeAt, 'once a week (the weekly lock, not the rate limit)');
+    // Det gamla namnet hålls åt sin ägare under veckan: ingen annan kan ta det…
+    assert.equal((await api('/api/me/username', G.token, { method: 'PATCH', body: { username: F.name } })).status, 409, 'the old name is held for its owner');
+    // …och ägaren kan ångra: tillbaka till det gamla namnet med knappen.
+    await clickText(fpage, 'button', `Byt tillbaka till ${F.name}`);
+    await fpage.waitForFunction((n) => document.querySelector('h1')?.textContent === n, {}, F.name);
     await fctx.close();
     setNeedsUsernameInLocalDb(G.name);
     const nctx = await browser.createBrowserContext();

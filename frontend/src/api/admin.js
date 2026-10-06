@@ -57,6 +57,18 @@ export async function fetchAdminFeatures(apiFetch) {
   return data.features;
 }
 
+// PATCH /api/admin/users/:id/username — byt namn åt någon (ingen veckospärr).
+export async function setUsernameAsAdmin(apiFetch, userId, username) {
+  const res = await apiFetch(`/api/admin/users/${userId}/username`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Kunde inte byta namn');
+  return data.user;
+}
+
 export async function setUserFeature(apiFetch, userId, feature, enabled) {
   const res = await apiFetch(`/api/admin/users/${userId}/features`, {
     method: 'PATCH',

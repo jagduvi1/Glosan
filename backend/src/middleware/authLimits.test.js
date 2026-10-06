@@ -110,6 +110,18 @@ test('forms with mistakes do not use up the sign-up quota; every real attempt co
   exists.mockRestore();
 });
 
+test('a new account gets the same username rules as a rename (no Glosan-like names, no @, no look-alike letters)', async () => {
+  const app = makeApp();
+  const exists = jest.spyOn(User, 'exists').mockResolvedValue(null);
+  for (const username of ['admin', 'glosan-support', 'emma@skola.test', 'emmа', 'a b']) {
+    const r = await request(app).post('/register').send({ username, email: 'ny@skola.test', password: 'Hemligt123abc', ageConsent: true });
+    expect(r.status).toBe(400);
+    expect(r.body.error).not.toMatch(/Registration failed/); // säger vad som är fel med namnet
+  }
+  expect(exists).not.toHaveBeenCalled();
+  exists.mockRestore();
+});
+
 test('refresh counts per session, not per school', async () => {
   const app = makeApp();
   const cookie = (fam) => `refreshToken=${fam.padEnd(32, '0')}.${'a'.repeat(64)}`;

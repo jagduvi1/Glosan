@@ -1,16 +1,18 @@
 /**
- * Byta användarnamn (services/username.js): reglerna för ett namn, veckospärren
- * och det första valet efter en Google-inloggning. User fejkas — ingen Mongo.
+ * Användarnamn (services/username.js): reglerna för ett namn, veckospärren,
+ * ångra (tillbaka till det förra namnet), att ett bytt namn hålls åt sin
+ * ägare, och det första valet efter en Google-inloggning. User fejkas.
  */
 jest.mock('../models/User', () => ({ findById: jest.fn(), exists: jest.fn() }));
 const User = require('../models/User');
-const { usernameProblem, normalizeUsername, nextChangeAt, changeUsername } = require('./username');
+const { usernameProblem, normalizeUsername, nextChangeAt, changeUsername, adminSetUsername } = require('./username');
 
 const ID = '64b000000000000000000001';
 const NOW = new Date('2026-10-06T12:00:00Z');
+const DAY = 24 * 60 * 60 * 1000;
 
 function userDoc(fields) {
-  const doc = { _id: ID, username: 'emmnil1130', needsUsername: false, usernameChangedAt: null, ...fields };
+  const doc = { _id: ID, username: 'emmnil1130', needsUsername: false, usernameChangedAt: null, previousUsername: null, ...fields };
   doc.save = jest.fn(async () => doc);
   return doc;
 }
@@ -21,6 +23,7 @@ describe('the rules for a username', () => {
     expect(normalizeUsername(42)).toBe('');
   });
 
+  const looksLikeGlosan = expect.stringMatching(/höra till Glosan/);
   test.each([
     ['majken', null],
     ['åsa.öberg-2', null],
@@ -28,9 +31,15 @@ describe('the rules for a username', () => {
     ['a'.repeat(31), 'Högst 30 tecken.'],
     ['majken s', expect.stringMatching(/inga mellanslag/)],
     ['majken🔥', expect.stringMatching(/Bara bokstäver/)],
+    ['emmа', expect.stringMatching(/Bara bokstäver/)], // kyrilliskt а som ser ut som ett a
+    ['emma@skolan.se', expect.stringMatching(/Bara bokstäver/)], // inget @: inloggningen tar namn eller e-post
     ['...', 'Minst en bokstav eller siffra.'],
-    ['admin', expect.stringMatching(/reserverat/)],
-    ['glosan', expect.stringMatching(/reserverat/)]
+    ['admin', looksLikeGlosan],
+    ['glosan', looksLikeGlosan],
+    ['glosan-support', looksLikeGlosan],
+    ['admin1', looksLikeGlosan],
+    ['glosån', looksLikeGlosan],
+    ['glo', looksLikeGlosan]
   ])('%s', (name, expected) => {
     expect(usernameProblem(name)).toEqual(expected);
   });
@@ -45,17 +54,22 @@ test('once a week: the next change is allowed 7 days after the last', () => {
 describe('changeUsername', () => {
   beforeEach(() => { User.findById.mockReset(); User.exists.mockReset(); });
 
-  test('a free, valid name is saved and starts the weekly lock', async () => {
+  test('a free, valid name is saved, starts the weekly lock and keeps the old name for its owner', async () => {
     const doc = userDoc();
     User.findById.mockResolvedValue(doc);
     User.exists.mockResolvedValue(null);
     const r = await changeUsername(ID, ' Emma ', NOW);
     expect(r.user).toBe(doc);
-    expect([doc.username, doc.usernameChangedAt, doc.needsUsername]).toEqual(['emma', NOW, false]);
-    expect(User.exists).toHaveBeenCalledWith({ username: 'emma', _id: { $ne: ID } });
+    expect([doc.username, doc.previousUsername, doc.usernameChangedAt, doc.needsUsername]).toEqual(['emma', 'emmnil1130', NOW, false]);
+    // Upptaget = någon heter så, eller hålls namnet åt någon som just bytt bort det.
+    const q = User.exists.mock.calls[0][0];
+    expect(q._id).toEqual({ $ne: ID });
+    expect(q.$or[0]).toEqual({ username: 'emma' });
+    expect(q.$or[1].previousUsername).toBe('emma');
+    expect(q.$or[1].usernameChangedAt.$gt).toEqual(new Date(NOW.getTime() - 7 * DAY));
   });
 
-  test('a taken name is refused, also when someone takes it at the same moment', async () => {
+  test('a taken (or held) name is refused, also when someone takes it at the same moment', async () => {
     User.findById.mockResolvedValue(userDoc());
     User.exists.mockResolvedValue({ _id: 'other' });
     expect(await changeUsername(ID, 'majken', NOW)).toEqual({ error: expect.stringMatching(/upptaget/), status: 409 });
@@ -66,12 +80,21 @@ describe('changeUsername', () => {
     expect((await changeUsername(ID, 'majken', NOW)).status).toBe(409);
   });
 
-  test('within a week of the last change: refused with the date it is allowed again', async () => {
-    User.findById.mockResolvedValue(userDoc({ usernameChangedAt: new Date('2026-10-03T12:00:00Z') }));
-    const r = await changeUsername(ID, 'emma', NOW);
+  test('within a week of the last change: refused with when it is allowed again', async () => {
+    User.findById.mockResolvedValue(userDoc({ usernameChangedAt: new Date('2026-10-03T12:00:00Z'), previousUsername: 'emmnil1130', username: 'emma' }));
+    const r = await changeUsername(ID, 'emma2', NOW);
     expect([r.status, r.nextChangeAt]).toEqual([429, new Date('2026-10-10T12:00:00Z')]);
     expect(r.error).toMatch(/10 oktober/);
     expect(User.exists).not.toHaveBeenCalled();
+  });
+
+  test('undo: back to the previous name works during the lock, without extending it', async () => {
+    const changedAt = new Date('2026-10-05T12:00:00Z');
+    const doc = userDoc({ username: 'elak-namn', previousUsername: 'emma', usernameChangedAt: changedAt });
+    User.findById.mockResolvedValue(doc);
+    User.exists.mockResolvedValue(null);
+    expect((await changeUsername(ID, 'Emma', NOW)).user).toBe(doc);
+    expect([doc.username, doc.previousUsername, doc.usernameChangedAt]).toEqual(['emma', null, changedAt]);
   });
 
   test('the first choice after a Google sign-in: keeping the suggestion just confirms it, and a new name does not start the lock', async () => {
@@ -80,11 +103,18 @@ describe('changeUsername', () => {
     expect((await changeUsername(ID, 'EMMNIL1130', NOW)).user).toBe(keep);
     expect([keep.needsUsername, keep.usernameChangedAt]).toEqual([false, null]);
 
-    const pick = userDoc({ needsUsername: true, usernameChangedAt: null });
+    const pick = userDoc({ needsUsername: true });
     User.findById.mockResolvedValue(pick);
     User.exists.mockResolvedValue(null);
     await changeUsername(ID, 'emma', NOW);
-    expect([pick.username, pick.needsUsername, pick.usernameChangedAt]).toEqual(['emma', false, null]);
+    expect([pick.username, pick.needsUsername, pick.usernameChangedAt, pick.previousUsername]).toEqual(['emma', false, null, null]);
+  });
+
+  test('a suggestion that breaks the rules (support@…) cannot just be kept', async () => {
+    const doc = userDoc({ username: 'support', needsUsername: true });
+    User.findById.mockResolvedValue(doc);
+    expect((await changeUsername(ID, 'support', NOW)).status).toBe(400);
+    expect(doc.needsUsername).toBe(true);
   });
 
   test('the same name again (not the first choice) and invalid names are refused without saving', async () => {
@@ -94,4 +124,13 @@ describe('changeUsername', () => {
     expect((await changeUsername(ID, 'a b', NOW)).status).toBe(400);
     expect(doc.save).not.toHaveBeenCalled();
   });
+});
+
+test('admin sets a name: same rules, no lock, and the old name is not held', async () => {
+  const doc = userDoc({ username: 'elak-namn', usernameChangedAt: NOW, previousUsername: 'emma' });
+  User.findById.mockResolvedValue(doc);
+  User.exists.mockResolvedValue(null);
+  expect((await adminSetUsername(ID, 'admin1')).status).toBe(400);
+  expect((await adminSetUsername(ID, 'Emma')).user).toBe(doc);
+  expect([doc.username, doc.previousUsername, doc.usernameChangedAt]).toEqual(['emma', null, null]);
 });

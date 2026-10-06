@@ -4,6 +4,8 @@
 // konton. Allt som klarar kontrollen räknas sedan, oavsett hur det går (även
 // om klienten lägger på innan svaret), så taket inte går att komma runt.
 const User = require('../models/User');
+const { heldUsernameFilter } = require('../config/username');
+const { usernameProblem } = require('../services/username');
 
 // Samma vaga svar som routen alltid gett: det säger inte om det är namnet
 // eller e-posten som är upptagen.
@@ -29,11 +31,17 @@ async function validateRegistration(req, res, next) {
     }
     return next(error);
   }
+  // Samma regler för namnet som när man byter det (services/username.js):
+  // tecken, längd, inga Glosan-liknande namn, inget @ (inloggningen tar namn
+  // ELLER e-post).
+  const problem = usernameProblem(user.username);
+  if (problem) return res.status(400).json({ error: problem });
   // Ett upptaget namn är också ett fel i formuläret: en klass där många heter
   // samma sak provar nya namn, och det ska inte stänga ute resten av klassen.
-  // Modellen har gjort namn och e-post gemena och trimmade.
+  // Modellen har gjort namn och e-post gemena och trimmade. Ett namn någon
+  // just bytt bort hålls åt hen en vecka.
   try {
-    if (await User.exists({ $or: [{ email: user.email }, { username: user.username }] })) {
+    if (await User.exists({ $or: [{ email: user.email }, { username: user.username }, heldUsernameFilter(user.username)] })) {
       return res.status(400).json({ error: TAKEN });
     }
   } catch (error) {

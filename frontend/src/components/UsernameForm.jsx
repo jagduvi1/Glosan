@@ -9,7 +9,7 @@ import { changeUsername } from '../api/me';
 export const USERNAME_HINT = '3–30 tecken: bokstäver, siffror, punkt, bindestreck eller understreck.';
 
 export default function UsernameForm({ initial, submitLabel = 'Spara', onDone, onCancel, autoFocus = true }) {
-  const { apiFetch, refreshUser } = useAuth();
+  const { apiFetch, updateUser } = useAuth();
   const { refresh } = useGamification();
   const [name, setName] = useState(initial || '');
   const [busy, setBusy] = useState(false);
@@ -20,9 +20,11 @@ export default function UsernameForm({ initial, submitLabel = 'Spara', onDone, o
     setError('');
     setBusy(true);
     try {
-      await changeUsername(apiFetch, name);
-      await refreshUser();
+      const { user } = await changeUsername(apiFetch, name);
+      // Svaret har den nya användaren — ingen ny fråga som kan misslyckas.
+      updateUser(user);
       refresh(); // profilen (topplistor m.m.) har också namnet
+      setBusy(false);
       onDone?.();
     } catch (err) {
       setError(err.message);
@@ -47,7 +49,7 @@ export default function UsernameForm({ initial, submitLabel = 'Spara', onDone, o
         />
       </label>
       <p className="t-hand muted" style={{ fontSize: 14, margin: 0 }}>{USERNAME_HINT}</p>
-      {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+      {error && <p className="error" role="alert" style={{ margin: 0 }}>{error}</p>}
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <button className="btn btn-primary btn-sm" type="submit" disabled={busy || !name.trim()}>
           {busy ? 'Sparar…' : submitLabel}

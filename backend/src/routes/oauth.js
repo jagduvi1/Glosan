@@ -4,6 +4,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+const { usernameProblem, usernameTaken } = require('../services/username');
 const { ipKey } = require('../middleware/rateKeys');
 const { issueTokens } = require('../services/authTokens');
 const { CookieStateStore } = require('../services/oauthStateStore');
@@ -45,11 +46,14 @@ async function generateUniqueUsername(email, displayName) {
   let base = seed.toLowerCase().replace(/[^a-z0-9_.-]/g, '');
   if (base.length < 3) base = `${base}user`;
   base = base.slice(0, 24); // utrymme kvar för suffix inom 30-teckensgränsen
+  // Samma regler som när man väljer själv (services/username.js): t.ex.
+  // support@… eller admin@… blir inte "support"/"admin".
+  if (usernameProblem(base)) base = 'user';
 
   for (let attempt = 0; attempt < 10; attempt++) {
     const candidate = attempt === 0 ? base : `${base}-${crypto.randomBytes(2).toString('hex')}`;
-    const exists = await User.findOne({ username: candidate }).select('_id').lean();
-    if (!exists) return candidate;
+    // Upptaget, eller ett namn någon just bytt bort (hålls åt hen en vecka).
+    if (!(await usernameTaken(candidate))) return candidate;
   }
   // Extremt osannolik fallback: base + längre slump, fortfarande inom 30 tecken.
   return `${base}-${crypto.randomBytes(4).toString('hex')}`.slice(0, 30);

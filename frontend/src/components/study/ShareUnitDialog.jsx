@@ -24,7 +24,7 @@ function FriendsTab({ friends, copies, recipients, isOwner, gaveMe, busy, onShar
   // nya. Vilka andra som har området syns aldrig.
   const following = new Set(recipients.map((r) => r._id));
   const hasCopy = new Set(copies.map((c) => c._id));
-  const available = friends.filter((f) => !following.has(f._id) && f.username !== gaveMe);
+  const available = friends.filter((f) => !following.has(f._id) && String(f._id) !== gaveMe);
   const toggle = (id) => setSelected((cur) => {
     const next = new Set(cur);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -300,7 +300,7 @@ export default function ShareUnitDialog({ unit, onClose, onChanged }) {
               copies={copies}
               recipients={recipients}
               isOwner={unit.isOwner}
-              gaveMe={unit.isCopy ? unit.copiedFrom : null}
+              gaveMe={unit.isCopy ? unit.copiedFromId : null}
               busy={busy}
               onShare={onShare}
               onRemove={onRemove}

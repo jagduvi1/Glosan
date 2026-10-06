@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { FEATURE_KEYS, effectiveFeatures } = require('../config/features');
+const { nextUsernameChangeAt } = require('../config/username');
 
 const userSchema = new mongoose.Schema({
   username: {
@@ -16,6 +17,9 @@ const userSchema = new mongoose.Schema({
   // Senaste gången användaren bytte namn — man får byta en gång i veckan
   // (services/username.js). null = aldrig.
   usernameChangedAt: { type: Date, default: null },
+  // Namnet före det bytet: hålls åt ägaren under veckan (ingen annan kan ta
+  // det) och går att byta tillbaka till — ett ångra.
+  previousUsername: { type: String, trim: true, lowercase: true, default: null },
   // Nytt Google-konto: namnet togs ur e-posten, så användaren får välja ett
   // eget vid första inloggningen (frontend visar en dialog tills dess).
   needsUsername: { type: Boolean, default: false },
@@ -196,6 +200,10 @@ userSchema.methods.toJSON = function () {
   // De EFFEKTIVA flaggorna (egna + de som är på för alla), så frontend kan
   // visa moduler utan att känna till katalogen eller env-variablerna.
   obj.features = effectiveFeatures(obj);
+  // Namnbyte: när nästa byte går (serverns klocka), och det förra namnet bara
+  // så länge det går att byta tillbaka till (services/username.js).
+  obj.nextUsernameChangeAt = nextUsernameChangeAt(obj.usernameChangedAt);
+  if (!obj.nextUsernameChangeAt) obj.previousUsername = null;
   delete obj.featureBlocks;
   delete obj.blocked; // egen endpoint: GET /api/me/blocks
   delete obj.studyCodeCounters;
