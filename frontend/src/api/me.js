@@ -16,6 +16,19 @@ export async function updateAvatar(apiFetch, body) {
   return data;
 }
 
+// PATCH /api/me/username — byt användarnamn (en gång i veckan) eller bekräfta
+// det föreslagna efter första Google-inloggningen. Svarar { user }.
+export async function changeUsername(apiFetch, username) {
+  const res = await apiFetch('/api/me/username', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Kunde inte byta användarnamn');
+  return data;
+}
+
 export async function postQuizComplete(apiFetch, body) {
   const res = await apiFetch('/api/me/quiz-complete', {
     method: 'POST',

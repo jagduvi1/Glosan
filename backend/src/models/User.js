@@ -13,6 +13,12 @@ const userSchema = new mongoose.Schema({
     minlength: [3, 'Username must be at least 3 characters'],
     maxlength: [30, 'Username too long']
   },
+  // Senaste gången användaren bytte namn — man får byta en gång i veckan
+  // (services/username.js). null = aldrig.
+  usernameChangedAt: { type: Date, default: null },
+  // Nytt Google-konto: namnet togs ur e-posten, så användaren får välja ett
+  // eget vid första inloggningen (frontend visar en dialog tills dess).
+  needsUsername: { type: Boolean, default: false },
   email: {
     type: String,
     required: [true, 'Email is required'],

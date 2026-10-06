@@ -112,7 +112,10 @@ async function upsertSsoUser(provider, claims) {
     // användaren bekräftar 13-årsgränsen/förälders tillåtelse — samma
     // innebörd som registreringsformulärets kryssruta.
     ageConsent: true,
-    authProviders: [{ provider, providerId }]
+    authProviders: [{ provider, providerId }],
+    // Namnet kommer ur e-posten (ofta skolans) — användaren väljer ett eget
+    // vid första inloggningen (services/username.js).
+    needsUsername: true
   });
   await user.save();
   return user;

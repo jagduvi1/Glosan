@@ -8,9 +8,13 @@ import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
 import AiConnectSection from '../components/AiConnectSection';
+import UsernameForm from '../components/UsernameForm';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
+
+// Samma som CHANGE_COOLDOWN_DAYS i backend/src/services/username.js.
+const USERNAME_COOLDOWN_DAYS = 7;
 
 function daysUntil(iso) {
   if (!iso) return 0;
@@ -78,6 +82,14 @@ export default function Profile() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+  // En gång i veckan (services/username.js) — sedan dess står datumet här.
+  const nextNameChange = (() => {
+    if (!user?.usernameChangedAt) return null;
+    const at = new Date(new Date(user.usernameChangedAt).getTime() + USERNAME_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+    return at > new Date() ? at : null;
+  })();
 
   const loadPlan = useCallback(async () => {
     try {
@@ -197,7 +209,31 @@ export default function Profile() {
             </button>
           </div>
           <div className="grow" style={{ minWidth: 240 }}>
-            <h1 style={{ margin: 0 }}>{user.username}</h1>
+            {editingName ? (
+              <UsernameForm
+                initial={user.username}
+                onDone={() => { setEditingName(false); setNameSaved(true); }}
+                onCancel={() => setEditingName(false)}
+              />
+            ) : (
+              <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0 }}>{user.username}</h1>
+                {nextNameChange ? (
+                  <span className="t-hand muted" style={{ fontSize: 14 }}>
+                    nytt namn går att välja {nextNameChange.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' })}
+                  </span>
+                ) : (
+                  <button className="btn btn-sm" type="button" onClick={() => { setEditingName(true); setNameSaved(false); }}>
+                    Byt namn
+                  </button>
+                )}
+              </div>
+            )}
+            {nameSaved && (
+              <p className="t-hand" style={{ fontSize: 15, margin: '6px 0 0', color: 'var(--leaf-deep, var(--ink))' }}>
+                Klart! Du loggar in med ditt nya namn eller din e-post.
+              </p>
+            )}
             <p className="t-hand muted" style={{ fontSize: 16, margin: '4px 0 12px' }}>
               medlem sedan {memberSince} · {profile.totalLists} {profile.totalLists === 1 ? 'lista' : 'listor'}
             </p>
