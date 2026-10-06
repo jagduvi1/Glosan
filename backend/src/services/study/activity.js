@@ -11,7 +11,7 @@ const User = require('../../models/User');
 const { getSubject } = require('../../config/subjects');
 const { oid } = require('./access');
 const { TZ, periodRange, daysBetween, localYmd } = require('../../utils/localTime');
-const { daysBetween: streakDaysBetween } = require('../gamification');
+const { effectiveStreak: sharedEffectiveStreak } = require('../gamification');
 
 // Detaljerad tidslinje (varje pass med uppgifterna) för dag och vecka; för
 // månad och termin en rad per dag — klicka dig in på dagen för detaljerna.
@@ -209,12 +209,10 @@ async function activityFor(userId, { period, anchor } = {}) {
   };
 }
 
-/** Streaken som den är NU — har eleven missat en dag är den bruten (0), även om den inte räknats om än. */
+/** Streaken som den är NU (services/gamification.js effectiveStreak). */
 function effectiveStreak(user) {
-  const st = user?.streak;
-  if (!st?.lastActiveDay) return { current: 0, longest: st?.longest || 0 };
-  const alive = streakDaysBetween(st.lastActiveDay, new Date()) <= 1;
-  return { current: alive ? st.current || 0 : 0, longest: st.longest || 0 };
+  const { current, longest } = sharedEffectiveStreak(user?.streak);
+  return { current, longest };
 }
 
 /** Kort sammanfattning för idag (Plugga-startsidan). */

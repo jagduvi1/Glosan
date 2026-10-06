@@ -4,16 +4,28 @@ export default function Pill({ children, bg, color, flat = false, style = {}, ..
   return <span className={cls} style={merged} {...rest}>{children}</span>;
 }
 
-export function StreakPill({ n }) {
+// `today` = har övat idag. Annars lever streaken bara till midnatt: flamman är
+// grå tills man övat.
+export function StreakPill({ n, today = true }) {
   // 30+ dagars streak → gyllene variant (påskägg)
   const isGolden = n >= 30;
+  const days = `${n} ${n === 1 ? 'dag' : 'dagar'} i rad`;
+  const title = !today ? `${days} — öva idag så håller streaken` : isGolden ? `${days} — gyllene streak!` : days;
   return (
     <Pill
-      bg={isGolden ? 'var(--mustard)' : 'var(--sky-soft)'}
+      bg={isGolden ? 'var(--mustard)' : today ? 'var(--sky-soft)' : 'var(--paper-edge)'}
       style={isGolden ? { boxShadow: '2px 2px 0 0 var(--ink), 0 0 0 2px var(--mustard-soft)', color: 'var(--ink)', fontWeight: 800 } : undefined}
-      title={isGolden ? `${n} dagar i rad — gyllene streak!` : undefined}
+      title={title}
+      role="img"
+      aria-label={title}
     >
-      <img src="/assets/flame-streak.svg" width="14" height="18" alt="" /> {n}
+      <img
+        src="/assets/flame-streak.svg"
+        width="14"
+        height="18"
+        alt=""
+        style={today ? undefined : { filter: 'grayscale(1)', opacity: 0.5 }}
+      /> {n}
     </Pill>
   );
 }

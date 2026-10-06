@@ -50,6 +50,25 @@ function tickStreak(user, today = startOfDay(new Date())) {
 }
 
 /**
+ * Streaken som den är NU. Den sparade siffran räknas om först nästa gång man
+ * övar, så har man missat en dag är den bruten (0) här även om den inte
+ * nollställts än. `today` = man har redan övat idag; annars lyser flamman
+ * grått tills man gjort det. Allt som visar en streak ska gå via den här.
+ */
+function effectiveStreak(streak, now = new Date()) {
+  const longest = streak?.longest || 0;
+  if (!streak?.lastActiveDay) return { current: 0, longest, today: false };
+  const gap = daysBetween(streak.lastActiveDay, now);
+  return { current: gap <= 1 ? streak.current || 0 : 0, longest, today: gap <= 0 };
+}
+
+/** Samma sak för en co-op-streak: bruten om ni inte båda övade igår eller idag. */
+function effectiveCoopCurrent(coop, now = new Date()) {
+  if (!coop?.lastBothActiveDay) return 0;
+  return daysBetween(coop.lastBothActiveDay, now) <= 1 ? coop.current || 0 : 0;
+}
+
+/**
  * Co-op-streaks: för varje par jag är med i tickas streaken upp om den andre
  * också är aktiv idag. Brytlogiken körs implicit — om lastBothActiveDay är
  * äldre än igår sätts current till 1 vid nästa gemensamma dag. Kör EFTER att
@@ -92,6 +111,23 @@ async function tickCoopStreaks(user, today = startOfDay(new Date())) {
   return coopUpdates;
 }
 
+/**
+ * En övningsdag utan XP — flashkort och dueller: tickar streaken och
+ * co-op-streaks som en quizrunda gör. Returnerar null om kontot är borta.
+ */
+async function recordPracticeDay(userId) {
+  const today = startOfDay(new Date());
+  const user = await User.findById(userId);
+  if (!user) return null;
+  const streakChange = tickStreak(user, today);
+  const { current, longest, lastActiveDay } = user.streak;
+  await User.updateOne({ _id: user._id }, {
+    $set: { 'streak.current': current, 'streak.longest': longest, 'streak.lastActiveDay': lastActiveDay }
+  });
+  const coopUpdates = await tickCoopStreaks(user, today);
+  return { streak: effectiveStreak(user.streak), streakChange, coopUpdates };
+}
+
 /** Summan av all Plugga-XP (User.subjectXp) — skild från språk-XP:n. */
 function subjectXpTotal(user) {
   const map = user?.subjectXp && typeof user.subjectXp === 'object' ? user.subjectXp : {};
@@ -128,4 +164,7 @@ async function awardStudyActivity(userId, { xp, subject, tickStreakToo = true })
   return { xpEarned: amount, xp: user.xp, streak: user.streak, streakChange, coopUpdates };
 }
 
-module.exports = { startOfDay, daysBetween, tickStreak, tickCoopStreaks, subjectXpTotal, awardStudyActivity };
+module.exports = {
+  startOfDay, daysBetween, tickStreak, effectiveStreak, effectiveCoopCurrent, tickCoopStreaks,
+  recordPracticeDay, subjectXpTotal, awardStudyActivity
+};

@@ -13,7 +13,9 @@ const OAuthAuthCode = require('../models/OAuthAuthCode');
 const { exportStudyData, deleteStudyDataForUser } = require('../services/studyData');
 const { sharerOf, profiles } = require('../services/sharedVia');
 const { canEditWords } = require('../services/listSharing');
-const { startOfDay, tickStreak, tickCoopStreaks, subjectXpTotal } = require('../services/gamification');
+const {
+  startOfDay, tickStreak, effectiveStreak, tickCoopStreaks, recordPracticeDay, subjectXpTotal
+} = require('../services/gamification');
 const { unlockLevelFor } = require('../config/avatarUnlocks');
 const { PLANS, effectivePlan, monthKey } = require('../config/plans');
 
@@ -99,9 +101,9 @@ router.get('/profile', async (req, res) => {
       nextLevelAt,
       thisLevelAt,
       languageXp: buildLanguageBreakdown(user.languageXp),
+      // Som den är nu: 0 efter en missad dag, `today` = redan övat idag.
       streak: {
-        current: user.streak?.current ?? 0,
-        longest: user.streak?.longest ?? 0,
+        ...effectiveStreak(user.streak),
         lastActiveDay: user.streak?.lastActiveDay ?? null
       },
       quizzesCompleted: user.quizzesCompleted ?? 0,
@@ -210,7 +212,7 @@ router.post('/quiz-complete', async (req, res) => {
       level: levelFromXp(user.xp),
       sourceLang,
       languageXp: buildLanguageBreakdown(user.languageXp),
-      streak: user.streak,
+      streak: { ...effectiveStreak(user.streak), lastActiveDay: user.streak.lastActiveDay },
       streakChange,
       perfectRounds: user.perfectRounds,
       quizzesCompleted: user.quizzesCompleted,
@@ -219,6 +221,26 @@ router.post('/quiz-complete', async (req, res) => {
   } catch (err) {
     console.error('Quiz-complete error:', err);
     res.status(500).json({ error: 'Failed to record quiz' });
+  }
+});
+
+// POST /api/me/practice-day — övning utan poäng (flashkort): räknas som en
+// övningsdag för streaken och co-op-streaks, men ger ingen XP.
+// Body: { listId } — en lista man har (egen eller delad med en).
+router.post('/practice-day', async (req, res) => {
+  const listId = req.body?.listId;
+  if (!listId || !mongoose.Types.ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: 'listId is required' });
+  }
+  try {
+    const list = await GlosList.exists({ _id: listId, $or: [{ user: req.user.id }, { sharedWith: req.user.id }] });
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    const r = await recordPracticeDay(req.user.id);
+    if (!r) return res.status(404).json({ error: 'User not found' });
+    res.json(r);
+  } catch (err) {
+    console.error('Practice-day error:', err);
+    res.status(500).json({ error: 'Failed to record practice' });
   }
 });
 

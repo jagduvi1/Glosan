@@ -1,14 +1,18 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { getProfile } from '../api/me';
 
 const Ctx = createContext(null);
+
+// Dagen i svensk tid — samma dagar som streaken räknas i (services/gamification.js).
+const swedishDay = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 
 export function GamificationProvider({ children }) {
   const { user, apiFetch } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const fetchedDay = useRef(null);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -20,6 +24,7 @@ export function GamificationProvider({ children }) {
     try {
       const p = await getProfile(apiFetch);
       setProfile(p);
+      fetchedDay.current = swedishDay();
     } catch (e) {
       console.error('Failed to load profile:', e);
       setError(e.message);
@@ -29,6 +34,16 @@ export function GamificationProvider({ children }) {
   }, [user, apiFetch]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Appen öppen över natten: när fliken visas igen en ny dag hämtas profilen
+  // om, så att flamman (streak och "övat idag") stämmer för den nya dagen.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && fetchedDay.current && fetchedDay.current !== swedishDay()) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
 
   return (
     <Ctx.Provider value={{ profile, loading, error, refresh }}>

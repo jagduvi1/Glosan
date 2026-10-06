@@ -67,6 +67,8 @@ export default function Layout({ children }) {
   // Logga outfit-egg och gyllene streak när villkoren uppfylls
   useEffect(() => { if (outfit) markEggFound('logo-outfit'); }, [outfit]);
   useEffect(() => {
+    // Här och inte bara efter en quiz: dagen kan ha räknats av flashkort eller en duell.
+    if (profile?.streak?.current >= 7) markEggFound('streak-7');
     if (profile?.streak?.current >= 30) markEggFound('streak-30');
   }, [profile?.streak?.current]);
 
@@ -216,7 +218,7 @@ export default function Layout({ children }) {
                 <QuotaPill used={profile.aiUsage.used} limit={profile.aiUsage.limit} />
               </Link>
             )}
-            {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} />}
+            {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} today={profile.streak.today !== false} />}
             {profile && profile.xp > 0 && (
               <span className="nav-pill-link" onClick={onXpPillClick} style={{ cursor: 'pointer' }}>
                 <XpPill n={profile.xp} />

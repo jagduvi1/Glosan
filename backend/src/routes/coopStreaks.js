@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const CoopStreak = require('../models/CoopStreak');
 const Friendship = require('../models/Friendship');
 const User = require('../models/User');
+const { effectiveCoopCurrent } = require('../services/gamification');
 
 const router = express.Router();
 
@@ -15,7 +16,6 @@ router.get('/coop-streaks', async (req, res) => {
   try {
     const streaks = await CoopStreak.find({ users: req.user.id })
       .populate('users', 'username avatar')
-      .sort({ current: -1, longest: -1 })
       .lean();
     res.json({
       coopStreaks: streaks.map((s) => {
@@ -25,12 +25,13 @@ router.get('/coop-streaks', async (req, res) => {
           other: other
             ? { _id: other._id, username: other.username, avatar: other.avatar }
             : null,
-          current: s.current,
+          // Som den är nu: 0 om ni inte båda övade igår eller idag.
+          current: effectiveCoopCurrent(s),
           longest: s.longest,
           lastBothActiveDay: s.lastBothActiveDay,
           createdAt: s.createdAt
         };
-      })
+      }).sort((a, b) => b.current - a.current || b.longest - a.longest)
     });
   } catch (err) {
     console.error('Coop-streak list error:', err);
@@ -64,7 +65,7 @@ router.post('/coop-streaks', async (req, res) => {
       coopStreak: {
         _id: coop._id,
         other: other ? { _id: other._id, username: other.username, avatar: other.avatar } : null,
-        current: coop.current,
+        current: effectiveCoopCurrent(coop), // fanns paret redan: som den är nu
         longest: coop.longest,
         lastBothActiveDay: coop.lastBothActiveDay,
         createdAt: coop.createdAt

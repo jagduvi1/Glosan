@@ -119,4 +119,16 @@ export function followStudyUnitInLocalDb(unitId, username, container) {
   localMongo(`const u = db.users.findOne({ username: ${JSON.stringify(username.toLowerCase())} }, { _id: 1 }); db.studyunits.updateOne({ _id: ObjectId(${JSON.stringify(unitId)}) }, { $addToSet: { sharedWith: u._id } })`, container);
 }
 
+/**
+ * Sätt en streak som om `username` senast övade för `daysAgo` svenska
+ * kalenderdagar sedan — för att testa en levande (1) eller bruten (2+)
+ * streak. Mitt på den dagen, inte "nu minus N × 24 h", som slår fel kring
+ * sommartid och midnatt.
+ */
+export function setStreakInLocalDb(username, current, daysAgo, container) {
+  const [y, m, d] = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' }).split('-').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d - Number(daysAgo), 10)).toISOString(); // 10.00 UTC = 11 eller 12 i Sverige
+  localMongo(`db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $set: { 'streak.current': ${Number(current)}, 'streak.longest': ${Number(current)}, 'streak.lastActiveDay': new Date(${JSON.stringify(at)}) } })`, container);
+}
+
 export const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

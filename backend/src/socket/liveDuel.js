@@ -1,4 +1,5 @@
 const Duel = require('../models/Duel');
+const { recordPracticeDay } = require('../services/gamification');
 
 // In-memory state per pågående live-duel. Process-lokalt — för en singel-
 // nod räcker det. Vid skalning över flera noder behöver man Redis-adapter.
@@ -89,6 +90,8 @@ function getOrCreateGame(duelId, duel) {
     scores: new Map(duel.participants.map((p) => [p.user.toString(), 0])),
     currentIdx: -1,
     roundAnswered: new Set(),
+    // Alla som svarat minst en gång — de har övat idag (streak) när matchen är slut.
+    played: new Set(),
     // En runda är öppen från frågan tills den avgjorts: svar efter det (en
     // andra rätt inom pausen) räknas inte och startar inga fler rundor.
     roundOpen: false,
@@ -179,6 +182,11 @@ async function finishGame(io, duelId, game) {
   });
   // Bara den här matchen — en ny av samma duell får aldrig raderas härifrån.
   if (games.get(duelId) === game) games.delete(duelId);
+  // Den som svarat i matchen har övat idag (streak), som efter en quizrunda.
+  // Efter game-over, så att slutet aldrig väntar på databasen.
+  for (const userId of game.played) {
+    await recordPracticeDay(userId).catch((e) => console.error('Live duel streak error:', e.message)); // eslint-disable-line no-await-in-loop
+  }
 }
 
 function registerLiveDuel(io) {
@@ -263,6 +271,7 @@ function registerLiveDuel(io) {
       const userId = socket.user.id;
       if (game.roundAnswered.has(userId)) return; // har redan svarat i denna runda
       game.roundAnswered.add(userId);
+      game.played.add(userId);
 
       const q = game.questions[game.currentIdx];
       const expected = expectedFor(q, game.reversed);

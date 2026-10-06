@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { fetchLists, createList, deleteList, updateList } from '../api/lists';
 import { createGlos } from '../api/glosor';
 import {
@@ -33,6 +34,7 @@ const dateFmt = new Intl.DateTimeFormat('sv-SE', { weekday: 'long', day: 'numeri
 export default function Lists() {
   useDocumentTitle('Mina listor');
   const { user, apiFetch } = useAuth();
+  const streak = useGamification().profile?.streak;
   const navigate = useNavigate();
   const [lists, setLists] = useState({ owned: [], shared: [] });
   const [categories, setCategories] = useState([]);
@@ -224,6 +226,11 @@ export default function Lists() {
           <h1 style={{ fontSize: 40, margin: '4px 0 0' }}>
             Hej {user?.username || 'där'} — <span className="mark-highlight">hänger du med?</span>
           </h1>
+          {streak?.current > 0 && streak.today === false && (
+            <p className="t-hand" style={{ fontSize: 17, margin: '6px 0 0', color: 'var(--berry-deep)' }}>
+              🔥 {streak.current} {streak.current === 1 ? 'dag' : 'dagar'} i rad — öva idag så håller streaken!
+            </p>
+          )}
         </div>
         <div style={{ position: 'relative' }}>
           <GloAvatar size={92} float tilt={-4} />

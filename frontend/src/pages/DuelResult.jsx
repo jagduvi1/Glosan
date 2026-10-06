@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { fetchDuel } from '../api/duels';
 import GloAvatar from '../components/GloAvatar';
 import AvatarDisplay from '../components/AvatarDisplay';
@@ -18,6 +19,14 @@ function formatTime(ms) {
 export default function DuelResult() {
   const { id } = useParams();
   const { user, apiFetch } = useAuth();
+  const { refresh } = useGamification();
+  // En spelad duell är en övningsdag: hämta streaken (flamman) på nytt. En gång
+  // till strax efter — en live-duell räknas strax efter att matchen tagit slut.
+  useEffect(() => {
+    refresh();
+    const t = setTimeout(refresh, 1500);
+    return () => clearTimeout(t);
+  }, [refresh]);
   const [duel, setDuel] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

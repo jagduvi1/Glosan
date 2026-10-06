@@ -27,6 +27,19 @@ export async function postQuizComplete(apiFetch, body) {
   return data;
 }
 
+// POST /api/me/practice-day — övning utan poäng (flashkort) räknas som en
+// övningsdag för streaken. Body: { listId }.
+export async function postPracticeDay(apiFetch, body) {
+  const res = await apiFetch('/api/me/practice-day', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Kunde inte spara övningen');
+  return data;
+}
+
 export async function getMyPlan(apiFetch) {
   const res = await apiFetch('/api/me/plan');
   const data = await res.json();
