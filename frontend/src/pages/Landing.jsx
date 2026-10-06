@@ -380,6 +380,7 @@ export default function Landing() {
         <div className="row between" style={{ maxWidth: 1080, margin: '0 auto', flexWrap: 'wrap', gap: 12 }}>
           <span className="t-hand muted" style={{ fontSize: 14 }}>© Glosan · pluggets gladaste hörn</span>
           <div className="row" style={{ gap: 18 }}>
+            <Link to="/om" className="t-hand" style={{ fontSize: 14 }}>Om Glosan</Link>
             <Link to="/koppla-ai" className="t-hand" style={{ fontSize: 14 }}>Koppla din AI</Link>
             <Link to="/login" className="t-hand" style={{ fontSize: 14 }}>Logga in</Link>
             <Link to="/register" className="t-hand" style={{ fontSize: 14 }}>Skapa konto</Link>

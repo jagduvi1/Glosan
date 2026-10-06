@@ -265,6 +265,7 @@ export default function Layout({ children }) {
         >
           Integritetspolicy
         </Link>
+        <Link to="/om" style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>Om Glosan</Link>
       </footer>
     </div>
   );

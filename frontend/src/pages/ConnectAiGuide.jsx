@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import GloAvatar from '../components/GloAvatar';
+import PublicShell from '../components/PublicShell';
 import { useAuth } from '../contexts/AuthContext';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
 import { hasFeature } from '../utils/features';
@@ -229,19 +230,9 @@ export default function ConnectAiGuide() {
   );
   if (user) return <>{head}<Guide loggedIn hasPlugga={hasFeature(user, 'study')} /></>;
   return (
-    <div className="paper-texture" style={{ minHeight: '100vh' }}>
+    <PublicShell>
       {head}
-      <nav className="navbar" style={{ background: 'transparent', borderBottom: 'none' }}>
-        <div className="nav-inner">
-          <Link to="/"><img src="/assets/logo-wordmark.svg" height={44} alt="Glosan" /></Link>
-          <div className="row" style={{ gap: 12 }}>
-            <Link to="/login"><button className="btn btn-sm btn-ghost" type="button">Logga in</button></Link>
-          </div>
-        </div>
-      </nav>
-      <main style={{ padding: '16px 16px 48px' }}>
-        <Guide loggedIn={false} />
-      </main>
-    </div>
+      <Guide loggedIn={false} />
+    </PublicShell>
   );
 }

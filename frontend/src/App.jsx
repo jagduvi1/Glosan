@@ -35,6 +35,7 @@ const JoinList = lazy(() => import('./pages/JoinList'));
 const JoinStudyUnit = lazy(() => import('./pages/JoinStudyUnit'));
 const ConnectAiAuthorize = lazy(() => import('./pages/ConnectAiAuthorize'));
 const ConnectAiGuide = lazy(() => import('./pages/ConnectAiGuide'));
+const About = lazy(() => import('./pages/About'));
 const Plugga = lazy(() => import('./pages/Plugga'));
 const PluggaSubject = lazy(() => import('./pages/PluggaSubject'));
 const PluggaUnit = lazy(() => import('./pages/PluggaUnit'));
@@ -111,6 +112,7 @@ function AppRoutes() {
         <Route path="/integritet" element={user ? <Layout><Integritet /></Layout> : <Integritet />} />
         {/* Guiden till att koppla sin AI (MCP) — publik, så den kan läsas före kontot. */}
         <Route path="/koppla-ai" element={user ? <Layout><ConnectAiGuide /></Layout> : <ConnectAiGuide />} />
+        <Route path="/om" element={user ? <Layout><About /></Layout> : <About />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/lists" replace /> : <ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
