@@ -100,6 +100,8 @@ function unitSummary(u, userId, progress, who = {}) {
     // En egen kopia som någon delat ("från X"): ägaren kan ta bort den i appen.
     isCopy,
     copiedFrom: isCopy ? who.from || null : null,
+    // Givarens id — dialoger jämför på id, inte namn (namn kan bytas).
+    copiedFromId: isCopy ? who.fromId || null : null,
     alsoFrom: isCopy ? who.alsoFrom || [] : [],
     sharedBy: isOwner ? null : who.sharer || null,
     // Hur många användaren delat området med: de som följer originalet (från
@@ -153,6 +155,7 @@ async function summarizeUnits(userId, units) {
 function giversOf(u, names) {
   const by = u.copiedFrom?.by ? String(u.copiedFrom.by) : null;
   return {
+    fromId: by,
     from: by ? names.get(by)?.username || null : null,
     alsoFrom: (u.copiedFrom?.givers || []).map(String).filter((g) => g !== by).map((g) => names.get(g)?.username).filter(Boolean)
   };

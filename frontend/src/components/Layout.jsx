@@ -7,6 +7,7 @@ import AvatarDisplay from './AvatarDisplay';
 import ConfettiBurst from './ConfettiBurst';
 import EmojiBurst from './EmojiBurst';
 import EasterEggListModal from './EasterEggListModal';
+import ChooseUsernameDialog from './ChooseUsernameDialog';
 import { useKonamiCode } from '../utils/useKonamiCode';
 import { useLogoOutfit } from '../utils/useLogoOutfit';
 import { useSeasonalTheme } from '../utils/useSeasonalTheme';
@@ -269,6 +270,8 @@ export default function Layout({ children }) {
         </Link>
         <Link to="/om" style={{ color: 'var(--ink-soft)', fontWeight: 400 }}>Om Glosan</Link>
       </footer>
+      {/* Nytt Google-konto: välj ett eget användarnamn i stället för e-postens. */}
+      {user?.needsUsername && <ChooseUsernameDialog />}
     </div>
   );
 }

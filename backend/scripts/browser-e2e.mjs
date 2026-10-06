@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
-import { e2e, grantFeatureInLocalDb, setStreakInLocalDb } from './lib/e2e.mjs';
+import { e2e, grantFeatureInLocalDb, setStreakInLocalDb, setNeedsUsernameInLocalDb } from './lib/e2e.mjs';
 
 const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 const SHOTS = path.resolve(process.env.BROWSER_SHOTS || 'browser-shots');
@@ -41,6 +41,13 @@ async function clickText(page, selector, text, timeout = 10000) {
   const el = found && found.asElement();
   if (!el) throw new Error(`no ${selector} containing "${text}" on ${page.url()}`);
   await el.click();
+}
+// Töm ett fält som man gör för hand (markera allt, radera) — så React ser
+// ändringen. select() i stället för Ctrl+A, som inte markerar allt på macOS.
+async function clearInput(page, el) {
+  await el.click();
+  await el.evaluate((input) => input.select());
+  await page.keyboard.press('Backspace');
 }
 const waitForText = (page, text, timeout = 10000) =>
   page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
@@ -325,6 +332,61 @@ async function main() {
     await dctx.close();
     current = page;
     ok('streaks: a missed day shows 0 (to friends too); duels and flashcards count; the flame is grey with a reminder until today is done');
+
+    // ── användarnamn: byt under Profil (en gång i veckan) och välj vid första
+    // Google-inloggningen (needsUsername, här satt direkt i databasen) ───────
+    const F = await signUp('brf');
+    const G = await signUp('brg');
+    const fName = `ny${F.name.slice(-6)}`;
+    const gName = `vald${G.name.slice(-6)}`;
+    const fctx = await browser.createBrowserContext();
+    const fpage = await fctx.newPage();
+    current = fpage;
+    watch(fpage);
+    await fpage.setViewport({ width: 390, height: 844 });
+    await fpage.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
+    await login(fpage, F);
+    await fpage.goto(`${BASE}/profile`, { waitUntil: 'networkidle0' });
+    await clickText(fpage, 'button', 'Byt namn');
+    const nameInput = await fpage.waitForSelector('input[autocomplete="username"]');
+    await clearInput(fpage, nameInput);
+    await nameInput.type('a b'); // ogiltigt: mellanslag
+    await clickText(fpage, 'form button', 'Spara');
+    await waitForText(fpage, 'inga mellanslag');
+    await clearInput(fpage, nameInput);
+    await nameInput.type(fName.toUpperCase());
+    await clickText(fpage, 'form button', 'Spara');
+    await waitForText(fpage, 'Du loggar in med ditt nya namn');
+    await waitForText(fpage, 'nytt namn går att välja');
+    assert.equal((await api('/api/auth/login', null, { method: 'POST', body: { username: fName, password: 'E2e-Passw0rd!x' } })).status, 200, 'log in with the new name');
+    const again = await api('/api/me/username', F.token, { method: 'PATCH', body: { username: `${fName}2` } });
+    assert.ok(again.status === 429 && again.body.nextChangeAt, 'once a week (the weekly lock, not the rate limit)');
+    // Det gamla namnet hålls åt sin ägare under veckan: ingen annan kan ta det…
+    assert.equal((await api('/api/me/username', G.token, { method: 'PATCH', body: { username: F.name } })).status, 409, 'the old name is held for its owner');
+    // …och ägaren kan ångra: tillbaka till det gamla namnet med knappen.
+    await clickText(fpage, 'button', `Byt tillbaka till ${F.name}`);
+    await fpage.waitForFunction((n) => document.querySelector('h1')?.textContent === n, {}, F.name);
+    await fctx.close();
+    setNeedsUsernameInLocalDb(G.name);
+    const nctx = await browser.createBrowserContext();
+    const npage = await nctx.newPage();
+    current = npage;
+    watch(npage);
+    await npage.setViewport({ width: 390, height: 844 });
+    await npage.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
+    await login(npage, G);
+    await waitForText(npage, 'Välj ditt användarnamn');
+    const gInput = await npage.waitForSelector('.modal input[autocomplete="username"]');
+    assert.equal(await gInput.evaluate((el) => el.value), G.name, 'the suggested name is filled in');
+    await clearInput(npage, gInput);
+    await gInput.type(gName);
+    await clickText(npage, '.modal button', 'Spara');
+    await npage.waitForFunction(() => !document.querySelector('.modal'));
+    const gMe = (await api('/api/auth/me', G.token)).body.user;
+    assert.deepEqual([gMe.username, gMe.needsUsername, gMe.usernameChangedAt], [gName, false, null], 'the first choice does not start the weekly lock');
+    await nctx.close();
+    current = page;
+    ok('usernames: change it under Profil (rules checked, log in with the new name, once a week); a new Google account picks one on first login');
 
     // ── Kompisar: blockera och häv ──────────────────────────────────────────
     await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });

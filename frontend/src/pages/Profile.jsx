@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGamification } from '../contexts/GamificationContext';
-import { updateAvatar, getMyPlan, startMyTrial, exportMyData, deleteMyAccount } from '../api/me';
+import { updateAvatar, changeUsername, getMyPlan, startMyTrial, exportMyData, deleteMyAccount } from '../api/me';
 import GloAvatar from '../components/GloAvatar';
 import StatTile from '../components/StatTile';
 import AvatarDisplay from '../components/AvatarDisplay';
 import AvatarPicker from '../components/AvatarPicker';
 import AiConnectSection from '../components/AiConnectSection';
+import UsernameForm from '../components/UsernameForm';
 import Flag from '../components/Flag';
 import { LANG_TO_FLAG, nameForLang } from '../utils/lang';
 import { useDocumentTitle } from '../utils/useDocumentTitle';
@@ -66,7 +67,7 @@ const BADGES = [
 
 export default function Profile() {
   useDocumentTitle('Profil');
-  const { user, apiFetch, logout } = useAuth();
+  const { user, apiFetch, logout, updateUser } = useAuth();
   const { profile, loading, error, refresh } = useGamification();
   const [showPicker, setShowPicker] = useState(false);
   const [avatarError, setAvatarError] = useState('');
@@ -78,6 +79,30 @@ export default function Profile() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [undoError, setUndoError] = useState('');
+  // En gång i veckan (services/username.js) — servern säger när nästa byte går.
+  const nextNameChange = user?.nextUsernameChangeAt && new Date(user.nextUsernameChangeAt) > new Date()
+    ? new Date(user.nextUsernameChangeAt)
+    : null;
+
+  // Ångra ett namnbyte: tillbaka till det förra namnet går under hela veckan.
+  const onUndoName = async () => {
+    setUndoError('');
+    setUndoBusy(true);
+    try {
+      const { user: next } = await changeUsername(apiFetch, user.previousUsername);
+      updateUser(next);
+      refresh();
+      setNameSaved(false);
+    } catch (e) {
+      setUndoError(e.message);
+    } finally {
+      setUndoBusy(false);
+    }
+  };
 
   const loadPlan = useCallback(async () => {
     try {
@@ -197,7 +222,39 @@ export default function Profile() {
             </button>
           </div>
           <div className="grow" style={{ minWidth: 240 }}>
-            <h1 style={{ margin: 0 }}>{user.username}</h1>
+            {editingName ? (
+              <UsernameForm
+                initial={user.username}
+                onDone={() => { setEditingName(false); setNameSaved(true); }}
+                onCancel={() => setEditingName(false)}
+              />
+            ) : (
+              <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0 }}>{user.username}</h1>
+                {nextNameChange ? (
+                  <span className="t-hand muted" style={{ fontSize: 14 }}>
+                    nytt namn går att välja {nextNameChange.toLocaleString('sv-SE', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                ) : (
+                  <button className="btn btn-sm" type="button" onClick={() => { setEditingName(true); setNameSaved(false); }}>
+                    Byt namn
+                  </button>
+                )}
+              </div>
+            )}
+            {!editingName && nextNameChange && user.previousUsername && (
+              <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+                <button className="btn btn-sm btn-ghost" type="button" onClick={onUndoName} disabled={undoBusy}>
+                  ↶ Byt tillbaka till {user.previousUsername}
+                </button>
+                {undoError && <span className="error" role="alert">{undoError}</span>}
+              </div>
+            )}
+            {nameSaved && (
+              <p className="t-hand" style={{ fontSize: 15, margin: '6px 0 0', color: 'var(--leaf-deep, var(--ink))' }}>
+                Klart! Du loggar in med ditt nya namn eller din e-post.
+              </p>
+            )}
             <p className="t-hand muted" style={{ fontSize: 16, margin: '4px 0 12px' }}>
               medlem sedan {memberSince} · {profile.totalLists} {profile.totalLists === 1 ? 'lista' : 'listor'}
             </p>

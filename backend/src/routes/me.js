@@ -1,6 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middleware/auth');
+const { changeUsername, normalizeUsername } = require('../services/username');
 const User = require('../models/User');
 const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
@@ -241,6 +243,39 @@ router.post('/practice-day', async (req, res) => {
   } catch (err) {
     console.error('Practice-day error:', err);
     res.status(500).json({ error: 'Failed to record practice' });
+  }
+});
+
+// PATCH /api/me/username — byt användarnamn (en gång i veckan), eller bekräfta
+// det föreslagna efter första Google-inloggningen. Body: { username }.
+// Svarar { user } (som /api/auth/me) eller { error, nextChangeAt? }.
+// Taket per konto hindrar att någon provar igenom vilka namn som är upptagna.
+// Bara misslyckade försök räknas — den som till slut får ett namn (eller
+// behåller förslaget) ska aldrig stoppas av taket.
+const usernameLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: true,
+  // Att behålla förslaget efter första Google-inloggningen stoppas aldrig —
+  // annars kunde den som provat många namn bli fast i dialogen.
+  skip: async (req) => {
+    const u = await User.findById(req.user.id, 'username needsUsername').lean();
+    return Boolean(u?.needsUsername) && normalizeUsername(req.body?.username) === u.username;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `username:${req.user.id}`,
+  handler: (req, res) => res.status(429).json({ error: 'För många försök — vänta en stund.' })
+});
+
+router.patch('/username', usernameLimiter, async (req, res) => {
+  try {
+    const r = await changeUsername(req.user.id, req.body?.username);
+    if (r.error) return res.status(r.status).json({ error: r.error, ...(r.nextChangeAt ? { nextChangeAt: r.nextChangeAt } : {}) });
+    res.json({ user: r.user.toJSON() });
+  } catch (err) {
+    console.error('Username change error:', err);
+    res.status(500).json({ error: 'Kunde inte byta användarnamn' });
   }
 });
 

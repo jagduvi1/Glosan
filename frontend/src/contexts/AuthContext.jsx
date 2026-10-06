@@ -184,7 +184,11 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('glosan:feature-off', onFeatureOff);
   }, [refreshUser]);
 
-  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken, refreshUser };
+  // Servern har just skickat den uppdaterade användaren (t.ex. efter ett
+  // namnbyte) — använd den direkt i stället för att fråga igen.
+  const updateUser = useCallback((nextUser) => { if (nextUser) setUser(nextUser); }, []);
+
+  const value = { user, token, loading, register, login, logout, apiFetch, applyExternalToken, refreshUser, updateUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

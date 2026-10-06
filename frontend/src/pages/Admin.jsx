@@ -8,7 +8,8 @@ import {
   clearTrial,
   resetUsage,
   fetchAdminFeatures,
-  setUserFeature
+  setUserFeature,
+  setUsernameAsAdmin
 } from '../api/admin';
 import AvatarDisplay from '../components/AvatarDisplay';
 import GloAvatar from '../components/GloAvatar';
@@ -122,6 +123,19 @@ export default function Admin() {
     }
   };
 
+  // Byt namn åt någon — samma regler som när man byter själv; kontot låses en vecka.
+  const onRename = async (u) => {
+    const next = window.prompt(`Nytt användarnamn för ${u.username}:`, u.username);
+    if (!next || next.trim().toLowerCase() === u.username) return;
+    setActionError('');
+    try {
+      const updated = await setUsernameAsAdmin(apiFetch, u._id, next);
+      replaceUser(updated);
+    } catch (e) {
+      setActionError(e.message);
+    }
+  };
+
   const onResetUsage = async (u) => {
     setActionError('');
     try {
@@ -211,6 +225,15 @@ export default function Admin() {
                     <h3 style={{ margin: 0, fontSize: 20 }}>{u.username}</h3>
                     {isAdmin && <span className="pill" style={{ background: 'var(--coral-soft)', fontSize: 12 }}>admin</span>}
                     {isMe && <span className="t-hand muted" style={{ fontSize: 13 }}>(du)</span>}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      style={{ padding: '2px 8px', fontSize: 12 }}
+                      onClick={() => onRename(u)}
+                      title="Byt namn åt kontot (t.ex. ett elakt namn) — kontot låses sedan en vecka, utan väg tillbaka till det gamla namnet"
+                    >
+                      Byt namn
+                    </button>
                   </div>
                   <p className="t-hand muted" style={{ fontSize: 14, margin: '2px 0 0' }}>{u.email}</p>
                 </div>

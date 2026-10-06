@@ -131,4 +131,9 @@ export function setStreakInLocalDb(username, current, daysAgo, container) {
   localMongo(`db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $set: { 'streak.current': ${Number(current)}, 'streak.longest': ${Number(current)}, 'streak.lastActiveDay': new Date(${JSON.stringify(at)}) } })`, container);
 }
 
+/** Låt `username` vara som ett nytt Google-konto: hen får välja användarnamn vid inloggningen. */
+export function setNeedsUsernameInLocalDb(username, container) {
+  localMongo(`db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $set: { needsUsername: true } })`, container);
+}
+
 export const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
