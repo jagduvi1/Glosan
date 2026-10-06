@@ -6,6 +6,7 @@ const GlosList = require('../models/GlosList');
 const Glos = require('../models/Glos');
 const Friendship = require('../models/Friendship');
 const User = require('../models/User');
+const { recordPracticeDay } = require('../services/gamification');
 
 const router = express.Router();
 
@@ -351,6 +352,8 @@ router.post('/:id/submit', async (req, res) => {
     mine.durationMs = durationMs;
     mine.completedAt = new Date();
     await duel.save();
+    // En spelad utmaning är en övningsdag (streak), som en quizrunda.
+    await recordPracticeDay(req.user.id).catch((e) => console.error('Duel streak error:', e.message));
     const populated = await Duel.findById(duel._id)
       .populate('participants.user', 'username avatar')
       .populate('list', 'title');

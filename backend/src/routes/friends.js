@@ -8,6 +8,7 @@ const Friendship = require('../models/Friendship');
 const InviteCode = require('../models/InviteCode');
 const { randomCode } = require('../utils/friendCode');
 const { unshareBetween } = require('../services/study/sharing');
+const { effectiveStreak } = require('../services/gamification');
 const { isBlockedBetween, hasBlocked, listBlocked, blockUser, unblockUser } = require('../services/blocks');
 
 const INVITE_TTL_DAYS = 7;
@@ -72,10 +73,8 @@ router.get('/friends', async (req, res) => {
         _id: r.friend._id,
         username: r.friend.username,
         avatar: r.friend.avatar || { kind: 'initial', value: '' },
-        streak: {
-          current: r.friend.streak?.current ?? 0,
-          longest: r.friend.streak?.longest ?? 0
-        },
+        // Som den är nu — en missad dag ger 0 (services/gamification.js).
+        streak: (({ current, longest }) => ({ current, longest }))(effectiveStreak(r.friend.streak)),
         xp: r.friend.xp ?? 0,
         addedAt: r.addedAt
       }))

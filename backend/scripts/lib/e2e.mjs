@@ -119,4 +119,9 @@ export function followStudyUnitInLocalDb(unitId, username, container) {
   localMongo(`const u = db.users.findOne({ username: ${JSON.stringify(username.toLowerCase())} }, { _id: 1 }); db.studyunits.updateOne({ _id: ObjectId(${JSON.stringify(unitId)}) }, { $addToSet: { sharedWith: u._id } })`, container);
 }
 
+/** Sätt en streak som om `username` senast övade för `daysAgo` dagar sedan — för att testa en levande (1) eller bruten (2+) streak. */
+export function setStreakInLocalDb(username, current, daysAgo, container) {
+  localMongo(`db.users.updateOne({ username: ${JSON.stringify(username.toLowerCase())} }, { $set: { 'streak.current': ${Number(current)}, 'streak.longest': ${Number(current)}, 'streak.lastActiveDay': new Date(Date.now() - ${Number(daysAgo)} * 86400000) } })`, container);
+}
+
 export const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

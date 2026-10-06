@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
-import { e2e, grantFeatureInLocalDb } from './lib/e2e.mjs';
+import { e2e, grantFeatureInLocalDb, setStreakInLocalDb } from './lib/e2e.mjs';
 
 const { BASE, ok, api, register, connectMcp, call } = e2e(process.argv[2]);
 const SHOTS = path.resolve(process.env.BROWSER_SHOTS || 'browser-shots');
@@ -285,6 +285,46 @@ async function main() {
     }
     await waitForText(page, 'Vem driver Glosan?'); // Om Glosan
     ok('lists, flashcards, galge, ordfall, profile, the privacy page, the AI guide and Om Glosan load');
+
+    // ── streak: det som visas är streaken som den är nu ──────────────────────
+    // En missad dag ger 0; flashkort och dueller räknas som övning; har man
+    // inte övat idag är flamman grå och listsidan påminner.
+    const D = await signUp('brd');
+    const E = await signUp('bre');
+    const dInvite = (await api('/api/me/invite-codes', D.token, { method: 'POST' })).body.inviteCode.code;
+    assert.ok((await api('/api/me/friends/by-code', E.token, { method: 'POST', body: { code: dInvite } })).status < 300);
+    const dList = (await api('/api/lists', D.token, { method: 'POST', body: { title: 'Färger', sourceLang: 'sv', targetLang: 'en' } })).body.list._id;
+    await api(`/api/lists/${dList}/glosor`, D.token, { method: 'POST', body: { source: 'röd', target: 'red' } });
+    const streakOf = async (u) => (await api('/api/me/profile', u.token)).body.streak;
+    setStreakInLocalDb(E.name, 3, 2); // övade senast i förrgår: bruten
+    const eBroken = await streakOf(E);
+    assert.deepEqual([eBroken.current, eBroken.longest, eBroken.today], [0, 3, false], 'a missed day shows 0 before it is recounted');
+    assert.equal((await api('/api/me/friends', D.token)).body.friends.find((f) => f.username === E.name).streak.current, 0, 'friends see 0 too');
+    const duel = await api('/api/duels', D.token, { method: 'POST', body: { listId: dList, opponentIds: [E.id] } });
+    assert.equal(duel.status, 201, JSON.stringify(duel.body));
+    assert.equal((await api(`/api/duels/${duel.body.duel._id}/submit`, E.token, { method: 'POST', body: { correct: 1, total: 1, durationMs: 900 } })).status, 200);
+    const ePlayed = await streakOf(E);
+    assert.deepEqual([ePlayed.current, ePlayed.today], [1, true], 'a played duel is a practice day (starting over after the missed day)');
+    setStreakInLocalDb(D.name, 4, 1); // övade senast igår: lever, men inte gjort idag
+    const dctx = await browser.createBrowserContext();
+    const dpage = await dctx.newPage();
+    current = dpage;
+    watch(dpage);
+    await dpage.setViewport({ width: 390, height: 844 });
+    await dpage.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
+    await login(dpage, D);
+    await waitForText(dpage, 'öva idag så håller streaken');
+    await dpage.waitForSelector('[title="4 dagar i rad — öva idag så håller streaken"]');
+    await dpage.goto(`${BASE}/lists/${dList}/flashcards`, { waitUntil: 'networkidle0' });
+    await dpage.click('.flashcard');
+    await dpage.waitForSelector('[title="5 dagar i rad"]');
+    const dDone = await streakOf(D);
+    assert.deepEqual([dDone.current, dDone.today], [5, true], 'going through the flashcards counts');
+    await dpage.goto(`${BASE}/lists`, { waitUntil: 'networkidle0' });
+    assert.ok(!(await dpage.evaluate(() => document.body.innerText.includes('öva idag så håller streaken'))), 'no reminder once today is done');
+    await dctx.close();
+    current = page;
+    ok('streaks: a missed day shows 0 (to friends too); duels and flashcards count; the flame is grey with a reminder until today is done');
 
     // ── Kompisar: blockera och häv ──────────────────────────────────────────
     await page.goto(`${BASE}/kompisar`, { waitUntil: 'networkidle0' });

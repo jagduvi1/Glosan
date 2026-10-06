@@ -3,6 +3,7 @@ const User = require('../../models/User');
 const GlosList = require('../../models/GlosList');
 const Glos = require('../../models/Glos');
 const { effectivePlan } = require('../../config/plans');
+const { effectiveStreak } = require('../../services/gamification');
 const { registerTool } = require('../registry');
 const { ok } = require('../toolUtil');
 const { issuer } = require('../../services/mcpOAuth');
@@ -59,7 +60,8 @@ registerTool({
       username: user.username,
       level: levelFromXp(user.xp),
       xp: user.xp || 0,
-      streak: { current: user.streak?.current ?? 0, longest: user.streak?.longest ?? 0 },
+      // Som den är nu: 0 efter en missad dag; practised_today = redan övat idag.
+      streak: (({ current, longest, today }) => ({ current, longest, practised_today: today }))(effectiveStreak(user.streak)),
       quizzes_completed: user.quizzesCompleted ?? 0,
       total_lists: lists.length,
       total_words: agg?.words || 0,

@@ -6,7 +6,9 @@
  * räknar ut alla kombinationer.
  */
 jest.mock('../models/Duel', () => ({ findById: jest.fn() }));
+jest.mock('../services/gamification', () => ({ recordPracticeDay: jest.fn(async () => null) }));
 const Duel = require('../models/Duel');
+const { recordPracticeDay } = require('../services/gamification');
 const { registerLiveDuel, answerMatches, _games } = require('./liveDuel');
 
 const DUEL = '64b0000000000000000000d1';
@@ -107,6 +109,7 @@ describe('the live duel', () => {
   test('one point and one advance per round, even when both answer right at once; the game ends once', async () => {
     const doc = duelDoc([{ source: 'häst', target: 'horse' }, { source: 'hund', target: 'dog' }]);
     const { emitted, connect } = setup(doc);
+    recordPracticeDay.mockClear();
     const a = connect(A);
     const b = connect(B);
     a.fire('live:join', { duelId: DUEL });
@@ -133,6 +136,8 @@ describe('the live duel', () => {
     await flush();
     expect(count(emitted, 'live:game-over')).toBe(1);
     expect(doc.save).toHaveBeenCalledTimes(1);
+    // Båda svarade i matchen → båda har övat idag (streak), en gång var.
+    expect(recordPracticeDay.mock.calls.map((c) => c[0]).sort()).toEqual([A, B].sort());
 
     // Inget kvar som kan slå till efter sista frågan (förut: en 15 s-timer som kraschade).
     expect(() => jest.advanceTimersByTime(60000)).not.toThrow();

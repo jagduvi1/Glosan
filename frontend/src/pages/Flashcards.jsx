@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useGamification } from '../contexts/GamificationContext';
 import { fetchList } from '../api/lists';
+import { postPracticeDay } from '../api/me';
 import Flag from '../components/Flag';
 import GloAvatar from '../components/GloAvatar';
 import { LANG_TO_FLAG } from '../utils/lang';
@@ -48,6 +50,18 @@ export default function Flashcards() {
     () => cards.slice(page * CARDS_PER_PAGE, (page + 1) * CARDS_PER_PAGE),
     [cards, page]
   );
+
+  // Har man bläddrat fram till sista sidan och vänt ett kort där har man övat
+  // idag — det räknas för streaken (utan XP). En gång per besök på sidan.
+  const { refresh } = useGamification();
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current || cards.length === 0 || page !== totalPages - 1 || flipped.size === 0) return;
+    reported.current = true;
+    postPracticeDay(apiFetch, { listId: id })
+      .then(() => refresh())
+      .catch(() => { reported.current = false; });
+  }, [cards.length, page, totalPages, flipped, apiFetch, id, refresh]);
 
   const toggleFlip = (idx) => {
     setFlipped((cur) => {

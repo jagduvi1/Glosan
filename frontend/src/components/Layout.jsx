@@ -216,7 +216,7 @@ export default function Layout({ children }) {
                 <QuotaPill used={profile.aiUsage.used} limit={profile.aiUsage.limit} />
               </Link>
             )}
-            {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} />}
+            {profile && profile.streak.current > 0 && <StreakPill n={profile.streak.current} today={profile.streak.today !== false} />}
             {profile && profile.xp > 0 && (
               <span className="nav-pill-link" onClick={onXpPillClick} style={{ cursor: 'pointer' }}>
                 <XpPill n={profile.xp} />
