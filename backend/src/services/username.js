@@ -15,11 +15,13 @@ const MAX_LENGTH = 30; // som modellen
 // bokstäver från andra alfabet som ser likadana ut.
 const ALLOWED = /^[a-z0-9åäöéü._-]+$/;
 const HAS_LETTER_OR_DIGIT = /[a-z0-9åäöéü]/;
-// Namn som ser ut att vara Glosan själv. Jämförs ord för ord (namnet delat
-// vid punkt, bindestreck, understreck och siffror), så "glosan-support",
-// "admin1" och "glosån" stoppas men "badminton" och "aik.supporter" går bra.
-// Ett ord som BÖRJAR med glosan ("glosanteam") räknas också.
-const RESERVED_WORDS = new Set(['admin', 'administrator', 'support', 'moderator']);
+// Namn som ser ut att vara Glosan själv. "glosan" får inte finnas någonstans
+// (även "glosån", "teamglosan"), och inget ord — namnet delat vid punkt,
+// bindestreck, understreck och siffror — får BÖRJA med admin, moderator eller
+// support ("admin1", "moderatorn", "supporten", "adminteam"). "badminton" och
+// "aik.supporter" går bra: där börjar orden inte så, och en supporter är ingen
+// supportpersonal.
+const STAFF_WORD = /^(admin|moderator|support(?!er))/;
 const RESERVED = new Set(['glo', 'system', 'root', 'null', 'undefined']);
 const TAKEN = 'Det namnet är upptaget — välj ett annat.';
 
@@ -37,8 +39,9 @@ function usernameProblem(name) {
   if (name.length > MAX_LENGTH) return `Högst ${MAX_LENGTH} tecken.`;
   if (!ALLOWED.test(name)) return 'Bara bokstäver, siffror, punkt, bindestreck och understreck — inga mellanslag.';
   if (!HAS_LETTER_OR_DIGIT.test(name)) return 'Minst en bokstav eller siffra.';
-  const words = folded(name).split(/[._\-0-9]+/).filter(Boolean);
-  if (RESERVED.has(name) || words.some((w) => RESERVED_WORDS.has(w) || w.startsWith('glosan'))) {
+  const plain = folded(name);
+  const words = plain.split(/[._\-0-9]+/).filter(Boolean);
+  if (RESERVED.has(name) || plain.includes('glosan') || words.some((w) => STAFF_WORD.test(w))) {
     return 'Det namnet ser ut att höra till Glosan — välj ett annat.';
   }
   return null;

@@ -40,12 +40,21 @@ describe('the rules for a username', () => {
     ['admin1', looksLikeGlosan],
     ['glosån', looksLikeGlosan],
     ['glosanteam', looksLikeGlosan],
+    ['teamglosan', looksLikeGlosan],
     ['glo', looksLikeGlosan],
     ['administratör', looksLikeGlosan],
-    // Vanliga namn som bara råkar innehålla orden: ord för ord, inte delsträngar.
+    ['administratören', looksLikeGlosan],
+    ['moderatorn', looksLikeGlosan],
+    ['adminen', looksLikeGlosan],
+    ['admins', looksLikeGlosan],
+    ['supporten', looksLikeGlosan],
+    ['adminteam', looksLikeGlosan],
+    ['supportteam', looksLikeGlosan],
+    // Vanliga namn som bara råkar innehålla orden.
     ['badmintonlisa', null],
     ['aik.supporter', null],
-    ['moderatorn', null]
+    ['hammarbysupporter', null],
+    ['supporters', null]
   ])('%s', (name, expected) => {
     expect(usernameProblem(name)).toEqual(expected);
   });
